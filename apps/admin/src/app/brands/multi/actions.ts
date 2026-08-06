@@ -2,9 +2,15 @@
 
 import { redirect } from 'next/navigation';
 import {
+  DEFAULT_BRAND_CURRENCY,
+  DEFAULT_BRAND_THEME_COLOR,
+  DEFAULT_BRAND_TIMEZONE,
+} from '@fenwick/shared';
+import {
   ApiError,
   completeMultiBrandOnboarding,
   createBrand,
+  getMerchantOnboarding,
   uploadBrandLogo,
   type BrandFormInput,
 } from '@/lib/api';
@@ -51,21 +57,26 @@ export async function createBrandsAction(
 
   if (entries.length === 0) return { error: 'Give at least one brand a name.' };
 
+  // The merchant already told us its legal structure on the Company Details
+  // step, so every brand inherits it rather than being pinned to a guess. This
+  // form only asks for a name; anything it does not ask, it must not invent.
+  const { companyDetails } = await getMerchantOnboarding();
+
   for (const entry of entries) {
     // invoicePrefix is create-only, which is why it sits outside BrandFormInput.
     const input: BrandFormInput & { invoicePrefix: string } = {
       legalName: entry.name,
       displayName: entry.name,
-      businessType: 'LLC',
+      businessType: companyDetails?.businessType ?? 'LLC',
       salesPersonName: null,
       phone: null,
       email: null,
       mailingAddress: null,
       billingAddress: null,
       taxId: null,
-      currency: 'USD',
-      timezone: 'America/New_York',
-      themeColor: '#2D6A6A',
+      currency: DEFAULT_BRAND_CURRENCY,
+      timezone: DEFAULT_BRAND_TIMEZONE,
+      themeColor: DEFAULT_BRAND_THEME_COLOR,
       invoicePrefix: invoicePrefixFrom(entry.name),
     };
 

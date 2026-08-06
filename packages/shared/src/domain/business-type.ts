@@ -16,3 +16,9 @@ export const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
   PARTNERSHIP: 'Partnership',
   NONPROFIT: 'Nonprofit',
 };
+
+/** Narrowing guard, so callers validating user input do not each rebuild a
+ * Set of the same five values. */
+export function isBusinessType(value: unknown): value is BusinessType {
+  return typeof value === 'string' && (BUSINESS_TYPES as readonly string[]).includes(value);
+}

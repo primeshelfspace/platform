@@ -9,6 +9,7 @@
  * forwarded — see lib/session.ts.
  */
 
+import type { BusinessType } from '@fenwick/shared';
 import { readSessionToken } from './session';
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
@@ -206,7 +207,7 @@ export interface Brand {
   id: string;
   displayName: string;
   legalName: string;
-  businessType: 'SOLE_PROPRIETORSHIP' | 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'NONPROFIT' | null;
+  businessType: BusinessType | null;
   salesPerson: string | null;
   phone: string | null;
   email: string | null;
@@ -231,7 +232,7 @@ export function listBrands(): Promise<Brand[]> {
 export interface BrandFormInput {
   legalName: string;
   displayName: string;
-  businessType: 'SOLE_PROPRIETORSHIP' | 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'NONPROFIT';
+  businessType: BusinessType;
   salesPersonName: string | null;
   phone: string | null;
   email: string | null;
@@ -269,7 +270,7 @@ export function uploadBrandLogo(brandId: string, file: File): Promise<{ logoUrl:
 export interface CompanyDetails {
   legalName: string;
   dba: string | null;
-  businessType: string;
+  businessType: BusinessType | null;
   phone: string | null;
   email: string | null;
   mailingAddress: CustomerAddress | null;
@@ -297,7 +298,7 @@ export function getMerchantOnboarding(): Promise<MerchantOnboardingState> {
 export interface CompanyDetailsFormInput {
   legalName: string;
   dba: string | null;
-  businessType: 'SOLE_PROPRIETORSHIP' | 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'NONPROFIT';
+  businessType: BusinessType;
   phone: string | null;
   email: string | null;
   mailingAddress: CustomerAddress | null;

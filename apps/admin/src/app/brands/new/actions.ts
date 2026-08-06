@@ -9,18 +9,11 @@ import {
   type CustomerAddress,
 } from '@/lib/api';
 import { addressFromForm, describeApiError, emptyToNull } from '@/lib/form';
+import { isBusinessType } from '@fenwick/shared';
 
 export interface CompanyDetailsState {
   readonly error?: string;
 }
-
-const BUSINESS_TYPES = new Set([
-  'SOLE_PROPRIETORSHIP',
-  'LLC',
-  'CORPORATION',
-  'PARTNERSHIP',
-  'NONPROFIT',
-]);
 
 /**
  * FR-ONB step 1: stages company details on the merchant — no Brand exists
@@ -37,7 +30,7 @@ export async function saveCompanyDetailsAction(
   const businessType = emptyToNull(formData.get('businessType'));
 
   if (!legalName) return { error: 'Brand name is required.' };
-  if (!businessType || !BUSINESS_TYPES.has(businessType)) {
+  if (!isBusinessType(businessType)) {
     return { error: 'Select a business type.' };
   }
 
@@ -48,7 +41,7 @@ export async function saveCompanyDetailsAction(
   const input: CompanyDetailsFormInput = {
     legalName,
     dba: emptyToNull(formData.get('dba')),
-    businessType: businessType as CompanyDetailsFormInput['businessType'],
+    businessType,
     phone: emptyToNull(formData.get('phone')),
     email: emptyToNull(formData.get('email')),
     mailingAddress,
