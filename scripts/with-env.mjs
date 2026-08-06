@@ -51,12 +51,26 @@ function parseValue(raw) {
  * above, inside this process). The token would silently resolve to the
  * default, so `ADMIN_PORT` in .env was ignored on macOS and Linux while
  * appearing to work.
+ *
+ * Those same quotes are why this also has to strip a leftover matching pair
+ * afterward: a POSIX shell consumes single quotes as its own quoting syntax
+ * before this process ever sees the argument, but cmd.exe on Windows has no
+ * such syntax and passes them through as literal characters — without this,
+ * `'${ADMIN_PORT:-3000}'` expands to the 8-character string `'3000'` there,
+ * which every consumer (next dev --port, etc.) rejects as not a number.
  */
 function expandDefault(arg) {
-  return arg.replace(
+  const expanded = arg.replace(
     /\$\{([A-Z_][A-Z0-9_]*):-([^}]*)\}/g,
     (_, name, fallback) => process.env[name] ?? fallback,
   );
+  if (
+    (expanded.startsWith("'") && expanded.endsWith("'")) ||
+    (expanded.startsWith('"') && expanded.endsWith('"'))
+  ) {
+    return expanded.slice(1, -1);
+  }
+  return expanded;
 }
 
 const [command, ...rawArgs] = process.argv.slice(2);
