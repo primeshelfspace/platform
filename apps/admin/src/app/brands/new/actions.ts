@@ -47,6 +47,7 @@ export async function saveCompanyDetailsAction(
 
   const input: CompanyDetailsFormInput = {
     legalName,
+    dba: emptyToNull(formData.get('dba')),
     businessType: businessType as CompanyDetailsFormInput['businessType'],
     phone: emptyToNull(formData.get('phone')),
     email: emptyToNull(formData.get('email')),

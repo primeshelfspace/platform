@@ -6,6 +6,7 @@ import { PrismaService } from '../infra/prisma/prisma.service.js';
 
 export interface CompanyDetailsView {
   readonly legalName: string;
+  readonly dba: string | null;
   readonly businessType: string;
   readonly phone: string | null;
   readonly email: string | null;
@@ -54,6 +55,7 @@ export class MerchantService {
       companyDetails: merchant.companyLegalName
         ? {
             legalName: merchant.companyLegalName,
+            dba: merchant.companyDba,
             businessType: merchant.companyBusinessType ?? '',
             phone: merchant.companyPhone,
             email: merchant.companyEmail,
@@ -75,6 +77,7 @@ export class MerchantService {
         where: { id: scope.merchantId },
         data: {
           companyLegalName: input.legalName,
+          companyDba: input.dba,
           companyBusinessType: input.businessType,
           companyPhone: input.phone,
           companyEmail: input.email,

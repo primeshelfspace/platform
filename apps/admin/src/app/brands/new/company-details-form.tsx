@@ -3,6 +3,8 @@
 import { useActionState, useId, useRef, useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import { COUNTRIES, regionsFor } from '@fenwick/shared';
+
+import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@fenwick/shared';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import { saveCompanyDetailsAction, type CompanyDetailsState } from './actions';
@@ -22,6 +24,7 @@ const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-re
 const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
 
 interface FieldErrors {
+  businessType?: string;
   legalName?: string;
   email?: string;
   phone?: string;
@@ -183,6 +186,7 @@ export function CompanyDetailsForm() {
   const emailErrorId = useId();
   const phoneErrorId = useId();
   const legalNameErrorId = useId();
+  const businessTypeErrorId = useId();
   const taxIdErrorId = useId();
 
   function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -211,6 +215,7 @@ export function CompanyDetailsForm() {
     const get = (key: string) => String(formData.get(key) ?? '').trim();
 
     if (!get('legalName')) errors.legalName = 'Legal business name is required.';
+    if (!get('businessType')) errors.businessType = 'Select a business type.';
 
     const email = get('email');
     if (!email) errors.email = 'Brand email is required.';
@@ -252,7 +257,6 @@ export function CompanyDetailsForm() {
       {/* Not asked on this simplified onboarding form — defaults to the most
           common small-business structure and can be corrected later from
           brand settings once that screen exists. */}
-      <input type="hidden" name="businessType" value="LLC" />
 
       <div className="flex flex-col items-center">
         <button
@@ -303,8 +307,31 @@ export function CompanyDetailsForm() {
           error={fieldErrors.legalName}
           errorId={legalNameErrorId}
         />
+        {/* Optional: most businesses trade under their legal name. */}
+        <Field label="DBA (doing business as)" name="dba" placeholder="Enter DBA" />
+        <label className="block">
+          <span className="mb-2 block text-sm font-bold text-[#0F172A]">Business Type</span>
+          <Select
+            name="businessType"
+            required
+            placeholder="Select type"
+            error={fieldErrors.businessType}
+            errorId={businessTypeErrorId}
+          >
+            {BUSINESS_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {BUSINESS_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </Select>
+          {fieldErrors.businessType && (
+            <p id={businessTypeErrorId} role="alert" className="mt-1.5 text-sm text-red-600">
+              {fieldErrors.businessType}
+            </p>
+          )}
+        </label>
         <Field
-          label="Brand Email"
+          label="Business Email"
           name="email"
           type="email"
           required
@@ -313,7 +340,7 @@ export function CompanyDetailsForm() {
           errorId={emailErrorId}
         />
         <Field
-          label="Brand Phone"
+          label="Business Phone"
           name="phone"
           type="tel"
           required
@@ -388,7 +415,7 @@ export function CompanyDetailsForm() {
                    disabled:text-[#94A3B8] focus-visible:outline-none focus-visible:ring-2
                    focus-visible:ring-black focus-visible:ring-offset-2"
       >
-        {pending ? 'Saving…' : 'Continue'}
+        {pending ? 'Saving…' : 'Save & Continue'}
       </button>
     </form>
   );

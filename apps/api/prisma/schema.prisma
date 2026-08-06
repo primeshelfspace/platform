@@ -173,6 +173,9 @@ model Merchant {
   /// merchant decides for itself when it is done adding brands, which
   /// nothing in the data implies on its own.
   companyLegalName     String?          @map("company_legal_name")
+  /// "Doing business as" — the trading name, where it differs from the legal
+  /// one. Optional because most businesses trade under their legal name.
+  companyDba           String?          @map("company_dba")
   companyBusinessType  BusinessType?    @map("company_business_type")
   companyPhone         String?          @map("company_phone")
   companyEmail         String?          @map("company_email")

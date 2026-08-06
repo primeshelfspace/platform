@@ -35,7 +35,12 @@ export function Select({
         id={id}
         name={name}
         value={value}
-        defaultValue={defaultValue}
+        // A placeholder <option> is rendered `disabled` so it cannot be chosen
+        // again — but that also makes the browser skip it when auto-selecting,
+        // so it silently lands on the first REAL option instead. The user then
+        // submits a value they never picked. Defaulting to '' selects the
+        // placeholder, and `required` makes them choose for themselves.
+        defaultValue={defaultValue ?? (placeholder && value === undefined ? '' : undefined)}
         onChange={onChange ? (event) => onChange(event.target.value) : undefined}
         required={required}
         aria-invalid={Boolean(error)}

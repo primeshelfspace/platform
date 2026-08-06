@@ -109,6 +109,8 @@ export const brandObjectSchema = z.object({
  * timezone, invoice prefix, theme colour, display name). */
 export const companyDetailsObjectSchema = z.object({
   legalName: z.string().trim().min(1).max(200),
+  /** Trading name, where it differs from the legal one. */
+  dba: z.string().trim().max(200).nullable(),
   businessType: businessTypeSchema,
   phone: phoneSchema.nullable(),
   email: emailSchema.nullable(),
