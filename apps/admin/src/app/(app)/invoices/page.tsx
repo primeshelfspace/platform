@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Plus, ScrollText } from 'lucide-react';
-import { formatMinorForDisplay } from '@fenwick/shared/money';
+import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
 import { ApiError, listBrands, listInvoices, type Brand, type Invoice } from '@/lib/api';
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoice-presentation';
@@ -118,10 +118,10 @@ export default async function InvoicesPage({
                           {invoiceStatusLabel(inv.status)}
                         </td>
                         <td className="px-5 py-3 font-mono text-ink-strong">
-                          {formatMinorForDisplay(inv.totalMinor, inv.currency as 'USD')}
+                          {formatMinorForDisplay(inv.totalMinor, toCurrencyCode(inv.currency))}
                         </td>
                         <td className="px-5 py-3 font-mono text-ink-strong">
-                          {formatMinorForDisplay(inv.balanceMinor, inv.currency as 'USD')}
+                          {formatMinorForDisplay(inv.balanceMinor, toCurrencyCode(inv.currency))}
                         </td>
                         <td className="px-5 py-3">
                           {inv.status === 'DRAFT' ? (

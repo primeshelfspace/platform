@@ -27,7 +27,16 @@ const inputClass =
   'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong';
 const labelClass = 'mb-1 block text-xs font-medium text-ink-muted';
 
-export function InvoiceForm({ brandId, customers }: { brandId: string; customers: Customer[] }) {
+export function InvoiceForm({
+  brandId,
+  currency,
+  customers,
+}: {
+  brandId: string;
+  /** The brand's own currency — the invoice is denominated in it. */
+  currency: string;
+  customers: Customer[];
+}) {
   const [state, formAction, pending] = useActionState(createInvoiceAction, initialState);
   const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
 
@@ -41,6 +50,7 @@ export function InvoiceForm({ brandId, customers }: { brandId: string; customers
   return (
     <form action={formAction} className="space-y-6">
       <input type="hidden" name="brandId" value={brandId} />
+      <input type="hidden" name="currency" value={currency} />
       <input type="hidden" name="lineCount" value={rows.length} />
 
       <div className="rounded-lg border border-border bg-surface p-6 shadow-sm">

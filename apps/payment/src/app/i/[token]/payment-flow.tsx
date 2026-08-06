@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { applyBasisPoints, formatMinorForDisplay } from '@fenwick/shared/money';
+import { applyBasisPoints, formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import type { PublicInvoice } from '@/lib/invoice';
 import { StripeCardForm } from './stripe-card-form';
 
@@ -247,7 +247,7 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
         >
           <span>{m.label}</span>
           <span className="text-ink-muted">
-            {formatMinorForDisplay(m.quotedTotalMinor, invoice.currency as 'USD')}
+            {formatMinorForDisplay(m.quotedTotalMinor, toCurrencyCode(invoice.currency))}
           </span>
         </button>
       ))}

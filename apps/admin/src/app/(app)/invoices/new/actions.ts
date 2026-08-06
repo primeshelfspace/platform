@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, createInvoice, issueInvoice, type LineItemFormInput } from '@/lib/api';
 import { describeApiError, emptyToNull } from '@/lib/form';
+import { toCurrencyCode } from '@fenwick/shared';
 
 export interface CreateInvoiceState {
   readonly error?: string;
@@ -56,7 +57,8 @@ export async function createInvoiceAction(
     customerId,
     invoiceDate,
     dueDate,
-    currency: 'USD',
+    // Sent by the form from the brand's own setting; never assumed.
+    currency: toCurrencyCode(emptyToNull(formData.get('currency'))),
     lines,
     taxRateBp: percentToBp(formData.get('taxRatePercent')),
     cardFeeRateBp: percentToBp(formData.get('cardFeeRatePercent')),

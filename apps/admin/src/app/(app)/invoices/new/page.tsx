@@ -3,6 +3,7 @@ import { BrandTheme } from '@/components/brand-theme';
 import { ApiError, listBrands, listCustomers } from '@/lib/api';
 import { InvoiceForm } from './invoice-form';
 import { PageContainer } from '@/components/page-container';
+import { DEFAULT_BRAND_CURRENCY } from '@fenwick/shared';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
 
@@ -32,12 +33,16 @@ export default async function NewInvoicePage({
 
   let brandName = brandId;
   let themeColour = FALLBACK_THEME_COLOUR;
+  // The invoice is denominated in the brand's own currency, not a fixed one —
+  // a brand billing in EUR must not issue USD invoices.
+  let brandCurrency = DEFAULT_BRAND_CURRENCY as string;
   try {
     const brands = await listBrands();
     const brand = brands.find((b) => b.id === brandId);
     if (brand) {
       brandName = brand.displayName;
       themeColour = brand.themeColor;
+      brandCurrency = brand.currency;
     }
   } catch (cause) {
     if (!(cause instanceof ApiError)) throw cause;
@@ -72,7 +77,7 @@ export default async function NewInvoicePage({
             .
           </div>
         ) : (
-          <InvoiceForm brandId={brandId} customers={customers} />
+          <InvoiceForm brandId={brandId} currency={brandCurrency} customers={customers} />
         )}
       </PageContainer>
     </BrandTheme>

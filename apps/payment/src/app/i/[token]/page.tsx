@@ -1,5 +1,5 @@
 import { brandThemeVariables } from '@fenwick/shared/tokens';
-import { formatMinorForDisplay } from '@fenwick/shared/money';
+import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { lookupInvoice } from '@/lib/invoice';
 import { PaymentFlow } from './payment-flow';
 
@@ -63,7 +63,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
           <div className="flex justify-between">
             <dt className="text-ink-muted">Amount due</dt>
             <dd className="font-medium text-ink-strong">
-              {formatMinorForDisplay(invoice.balanceMinor, invoice.currency as 'USD')}
+              {formatMinorForDisplay(invoice.balanceMinor, toCurrencyCode(invoice.currency))}
             </dd>
           </div>
           <div className="flex justify-between">

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { CircleCheck, CircleDashed, ScrollText, Users, Wallet } from 'lucide-react';
-import { formatMinorForDisplay } from '@fenwick/shared/money';
+import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
 import {
   ApiError,
@@ -97,7 +97,7 @@ export default async function DashboardPage({
     }
   }
 
-  const currency = (activeBrand?.currency ?? 'USD') as 'USD';
+  const currency = toCurrencyCode(activeBrand?.currency);
   const recentInvoices = invoices;
 
   return (

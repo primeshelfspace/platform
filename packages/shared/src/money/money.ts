@@ -33,6 +33,23 @@ const MINOR_UNIT_EXPONENT: Record<CurrencyCode, number> = {
   GBP: 2,
 };
 
+/**
+ * Narrows a currency string coming back over the wire.
+ *
+ * Call sites previously wrote `invoice.currency as 'USD'` — which is a lie to
+ * the compiler, not a check: the runtime value could be any of the supported
+ * codes, or something unsupported entirely, and the cast hid both. This
+ * validates and falls back visibly instead.
+ */
+export function toCurrencyCode(
+  value: string | null | undefined,
+  fallback: CurrencyCode = 'USD',
+): CurrencyCode {
+  return (SUPPORTED_CURRENCIES as readonly string[]).includes(value ?? '')
+    ? (value as CurrencyCode)
+    : fallback;
+}
+
 export class MoneyError extends Error {
   constructor(message: string) {
     super(message);
