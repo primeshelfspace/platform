@@ -5,17 +5,18 @@ import {
   ApiError,
   completeMultiBrandOnboarding,
   createBrand,
+  uploadBrandLogo,
   type BrandFormInput,
 } from '@/lib/api';
-import { emptyToNull } from '@/lib/form';
+import { describeActionError } from '@/lib/form';
 
-export interface AddBrandState {
+export interface CreateBrandsState {
   readonly error?: string;
 }
 
-/** No dedicated prefix field on this quick add-a-brand form — derived from
- * the name instead, falling back to a fixed default when nothing usable
- * survives the strip (e.g. a name that's all punctuation or non-Latin). */
+/** No dedicated prefix field on this quick setup form — derived from the name
+ * instead, falling back to a fixed default when nothing usable survives the
+ * strip (e.g. a name that's all punctuation or non-Latin). */
 function invoicePrefixFrom(legalName: string): string {
   const derived = legalName
     .replace(/[^A-Za-z0-9]/g, '')
@@ -25,59 +26,77 @@ function invoicePrefixFrom(legalName: string): string {
 }
 
 /**
- * Adds one brand and returns to this same page so the running list reflects
- * it — no client-side list state to keep in sync, just a fresh server
- * render. Deliberately lighter than the Company Details form: no address,
- * tax id, or logo fields, since a multi-brand merchant is expected to visit
- * each brand's own settings later to fill those in.
+ * FR-ONB step 3 (multi-brand): creates every named brand, then finishes
+ * onboarding and lands on the dashboard.
+ *
+ * Names and logos arrive as parallel repeated fields, so they zip by index —
+ * every row renders both inputs, including an empty file, which is what keeps
+ * the two lists aligned when a middle row is left blank.
+ *
+ * Brands are created in order and a failure stops there rather than rolling
+ * back: brands already created are real and useful, and the merchant can add
+ * the rest from the dashboard. Silently discarding successful work to make the
+ * call atomic would be the worse outcome.
  */
-export async function addBrandAction(
-  _prevState: AddBrandState,
+export async function createBrandsAction(
+  _prevState: CreateBrandsState,
   formData: FormData,
-): Promise<AddBrandState> {
-  const legalName = emptyToNull(formData.get('legalName'));
-  if (!legalName) return { error: 'Brand name is required.' };
+): Promise<CreateBrandsState> {
+  const names = formData.getAll('brandName').map((v) => String(v).trim());
+  const logos = formData.getAll('brandLogo');
 
-  const input: BrandFormInput & { invoicePrefix: string } = {
-    legalName,
-    displayName: legalName,
-    businessType: 'LLC',
-    salesPersonName: null,
-    phone: emptyToNull(formData.get('phone')),
-    email: emptyToNull(formData.get('email')),
-    mailingAddress: null,
-    billingAddress: null,
-    taxId: null,
-    currency: 'USD',
-    timezone: 'America/New_York',
-    themeColor: '#2D6A6A',
-    invoicePrefix: invoicePrefixFrom(legalName),
-  };
+  const entries = names
+    .map((name, index) => ({ name, logo: logos[index] }))
+    .filter((entry) => entry.name.length > 0);
 
-  try {
-    await createBrand(input);
-  } catch (error) {
-    if (error instanceof ApiError) return { error: error.message };
-    return { error: error instanceof Error ? error.message : 'Could not add this brand.' };
+  if (entries.length === 0) return { error: 'Give at least one brand a name.' };
+
+  for (const entry of entries) {
+    // invoicePrefix is create-only, which is why it sits outside BrandFormInput.
+    const input: BrandFormInput & { invoicePrefix: string } = {
+      legalName: entry.name,
+      displayName: entry.name,
+      businessType: 'LLC',
+      salesPersonName: null,
+      phone: null,
+      email: null,
+      mailingAddress: null,
+      billingAddress: null,
+      taxId: null,
+      currency: 'USD',
+      timezone: 'America/New_York',
+      themeColor: '#2D6A6A',
+      invoicePrefix: invoicePrefixFrom(entry.name),
+    };
+
+    let brandId: string;
+    try {
+      brandId = (await createBrand(input)).id;
+    } catch (error) {
+      return { error: describeActionError(error, `Could not create "${entry.name}".`) };
+    }
+
+    // The logo is uploaded after creation because its storage key is
+    // namespaced by brand id — there is nothing to upload to until the brand
+    // exists. A failure here is not worth losing the brand over; it can be
+    // set later from brand settings.
+    if (entry.logo instanceof File && entry.logo.size > 0) {
+      try {
+        await uploadBrandLogo(brandId, entry.logo);
+      } catch {
+        // Intentionally ignored — see above.
+      }
+    }
   }
 
-  redirect('/brands/multi');
-}
-
-export interface FinishSetupState {
-  readonly error?: string;
-}
-
-export async function finishMultiBrandSetupAction(
-  _prevState: FinishSetupState,
-  _formData: FormData,
-): Promise<FinishSetupState> {
   try {
     await completeMultiBrandOnboarding();
   } catch (error) {
     if (error instanceof ApiError) return { error: error.message };
-    return { error: error instanceof Error ? error.message : 'Could not finish setup.' };
+    return { error: describeActionError(error, 'Could not finish setup.') };
   }
 
+  // Outside the try/catch on purpose: redirect() signals by throwing, and
+  // catching it here would turn a successful setup into an error message.
   redirect('/');
 }
