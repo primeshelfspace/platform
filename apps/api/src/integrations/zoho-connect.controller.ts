@@ -180,7 +180,9 @@ export class ZohoConnectController {
       const organizations = await this.zoho.listOrganizations(tokens.accessToken, tokens.apiDomain);
 
       if (organizations.length === 0) {
-        response.redirect(`${adminUrl}/settings/integrations?brandId=${brandId}&error=no_organizations`);
+        response.redirect(
+          `${adminUrl}/settings/integrations?brandId=${brandId}&error=no_organizations`,
+        );
         return;
       }
       // More than one organization on the authorizing account picks the

@@ -268,6 +268,7 @@ export function uploadBrandLogo(brandId: string, file: File): Promise<{ logoUrl:
  * because no Brand may exist yet when this is collected. */
 export interface CompanyDetails {
   legalName: string;
+  dba: string | null;
   businessType: string;
   phone: string | null;
   email: string | null;
@@ -295,6 +296,7 @@ export function getMerchantOnboarding(): Promise<MerchantOnboardingState> {
 
 export interface CompanyDetailsFormInput {
   legalName: string;
+  dba: string | null;
   businessType: 'SOLE_PROPRIETORSHIP' | 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'NONPROFIT';
   phone: string | null;
   email: string | null;

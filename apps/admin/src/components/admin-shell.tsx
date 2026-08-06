@@ -41,7 +41,11 @@ const MAIN_NAV: readonly NavItem[] = [
 // settings landing page in this app yet, and Payment Methods is the closest
 // thing to one. Worth a real /settings page later — until then this and
 // "Payment Methods" will both show active when either is open.
-const SETTINGS_NAV: NavItem = { href: '/settings/payment-methods', label: 'Settings', icon: Settings };
+const SETTINGS_NAV: NavItem = {
+  href: '/settings/payment-methods',
+  label: 'Settings',
+  icon: Settings,
+};
 
 /** Closes a panel on an outside click or Escape, and hands focus back to
  * whatever opened it — the one bit of behaviour every dropdown here needs. */

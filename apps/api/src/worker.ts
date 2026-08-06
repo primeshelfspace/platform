@@ -77,8 +77,7 @@ async function bootstrap(): Promise<void> {
       );
       const now = Date.now();
       const due = connections.filter(
-        (c) =>
-          !c.lastPulledAt || now - c.lastPulledAt.getTime() >= c.pullFrequencyMinutes * 60_000,
+        (c) => !c.lastPulledAt || now - c.lastPulledAt.getTime() >= c.pullFrequencyMinutes * 60_000,
       );
       await Promise.all(
         due.map(({ brandId }) => queue.enqueue('sync', 'zoho-pull-brand', { brandId })),
