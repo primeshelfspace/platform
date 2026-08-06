@@ -30,3 +30,31 @@ body {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+
+/* Drives the top navigation progress bar (components/top-progress.tsx).
+   Eases quickly to most of the width, then crawls — the real duration is
+   unknown, so it must never look finished while the page is still loading. */
+@keyframes top-progress {
+  0% {
+    transform: scaleX(0.02);
+  }
+  40% {
+    transform: scaleX(0.55);
+  }
+  75% {
+    transform: scaleX(0.8);
+  }
+  100% {
+    transform: scaleX(0.94);
+  }
+}
+
+/* A moving bar is motion; respect a request for less of it and simply show
+   the track as a static indicator instead. */
+@media (prefers-reduced-motion: reduce) {
+  [role='progressbar'] > * {
+    animation: none !important;
+    transform: scaleX(1);
+    opacity: 0.5;
+  }
+}

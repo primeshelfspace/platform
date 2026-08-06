@@ -1,6 +1,7 @@
 'use client';
 
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { TopProgress } from './top-progress';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -318,6 +319,7 @@ export function AdminShell({
 
   return (
     <div className="min-h-screen lg:flex lg:h-screen">
+      <TopProgress />
       {/* Mobile top bar: the sidebar is off-canvas below lg (1024px) — no
           collapse breakpoint was established elsewhere in this app, so this
           follows Tailwind's own default lg cut-off. */}
