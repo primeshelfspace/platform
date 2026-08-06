@@ -1,5 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { AccountingConnection, Scope } from '@fenwick/shared';
 import { decryptCredential, encryptCredential } from '../common/credential-encryption.js';
 import { ENV, type Env } from '../config/env.js';
@@ -35,11 +35,28 @@ export interface ZohoConnectionStatus {
   readonly lastSyncAt: Date | null;
   readonly lastPulledAt: Date | null;
   readonly health: string | null;
+  readonly pullFrequencyMinutes: number;
+  readonly customerSyncEnabled: boolean;
+  readonly invoiceSyncEnabled: boolean;
 }
+
+export interface ZohoSyncFlags {
+  readonly customerSyncEnabled: boolean;
+  readonly invoiceSyncEnabled: boolean;
+}
+
+/** Matches the column defaults exactly — what a brand that has never
+ * configured these settings is actually running under. */
+const DEFAULT_SYNC_SETTINGS = {
+  pullFrequencyMinutes: 15,
+  customerSyncEnabled: true,
+  invoiceSyncEnabled: true,
+} as const;
 
 export interface ZohoActivityEntry {
   readonly direction: 'PUSH' | 'PULL';
   readonly objectType: string;
+  readonly objectId: string | null;
   readonly status: string;
   readonly errorClass: string | null;
   readonly lastError: string | null;
@@ -105,6 +122,7 @@ export class IntegrationConnectionService {
         lastSyncAt: null,
         lastPulledAt: null,
         health: null,
+        ...DEFAULT_SYNC_SETTINGS,
       };
     }
     const config = row.config as unknown as ZohoConnectionConfig | null;
@@ -117,7 +135,71 @@ export class IntegrationConnectionService {
       lastSyncAt: row.lastSyncAt,
       lastPulledAt: row.lastPulledAt,
       health: row.health,
+      pullFrequencyMinutes: row.pullFrequencyMinutes,
+      customerSyncEnabled: row.customerSyncEnabled,
+      invoiceSyncEnabled: row.invoiceSyncEnabled,
     };
+  }
+
+  /**
+   * FR-ZHO-030's settings panel: every field optional and applied the moment
+   * it changes (see zohoSyncSettingsSchema) — there is no separate save step
+   * for the caller to batch into. NotFoundException rather than a silent
+   * upsert: these settings modify a connection, and a brand with no Zoho
+   * connection yet has nothing here to configure.
+   */
+  async updateSyncSettings(
+    scope: Scope,
+    brandId: string,
+    patch: {
+      readonly pullFrequencyMinutes?: number;
+      readonly customerSyncEnabled?: boolean;
+      readonly invoiceSyncEnabled?: boolean;
+    },
+  ): Promise<ZohoConnectionStatus> {
+    const result = await this.prisma.withScope(scope, (tx) =>
+      tx.integrationConnection.updateMany({
+        where: { brandId, provider: 'ZOHO_BOOKS' },
+        data: patch,
+      }),
+    );
+    if (result.count === 0) throw new NotFoundException('brand is not connected to Zoho');
+    return this.getStatus(scope, brandId);
+  }
+
+  /**
+   * Zoho, unlike Stripe, has no adapter-level revoke call today — there is no
+   * refresh-token revocation endpoint wired up (TDD-001 leaves this as a
+   * known gap). This still fully disconnects on this platform's side: the
+   * credentials are gone and nothing pushes or pulls for this brand again.
+   * A user who wants Zoho itself to forget this platform can revoke it from
+   * their own Zoho account's connected-apps settings.
+   */
+  async disconnectZoho(scope: Scope, brandId: string): Promise<void> {
+    await this.prisma.withScope(scope, (tx) =>
+      tx.integrationConnection.updateMany({
+        where: { brandId, provider: 'ZOHO_BOOKS' },
+        data: {
+          status: 'DISCONNECTED',
+          encryptedCredentials: null,
+          config: Prisma.DbNull,
+          health: 'Disconnected',
+        },
+      }),
+    );
+  }
+
+  /** The one thing ZohoSyncService's push methods need to decide whether to
+   * run at all — kept separate from buildAccountingConnection so a caller
+   * that only needs the gate doesn't also pay for a token refresh. */
+  async getSyncFlags(scope: Scope, brandId: string): Promise<ZohoSyncFlags | null> {
+    const row = await this.prisma.withScope(scope, (tx) =>
+      tx.integrationConnection.findUnique({
+        where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } },
+        select: { customerSyncEnabled: true, invoiceSyncEnabled: true },
+      }),
+    );
+    return row;
   }
 
   /** Null means "never pulled" — the caller treats that as "fetch everything". */
@@ -216,6 +298,7 @@ export class IntegrationConnectionService {
     return rows.map((row) => ({
       direction: row.direction,
       objectType: row.objectType,
+      objectId: row.objectId,
       status: row.status,
       errorClass: row.errorClass,
       lastError: row.lastError,

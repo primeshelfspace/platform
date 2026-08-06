@@ -56,13 +56,14 @@ async function bootstrap(): Promise<void> {
   };
 
   // The 'scheduled-sync' repeatable job (queues.ts, registered by the API
-  // process via QueueService.registerScheduledJobs) fires every 15 minutes.
-  // Its only job here is fan-out: find every brand with a live Zoho
-  // connection and enqueue one pull job each onto the sync queue, where the
-  // existing per-job concurrency and retry/backoff already apply.
+  // process via QueueService.registerScheduledJobs) ticks every minute — that
+  // is just this handler's own resolution, not any one brand's cadence. Each
+  // tick lists every live Zoho connection and enqueues a pull only for the
+  // brands actually due, per their own pullFrequencyMinutes (FR-ZHO-030); a
+  // brand configured for "Daily" is skipped on the other 1,439 ticks.
   handlers.scheduled = {
     'scheduled-sync': async () => {
-      const connectedBrandIds = await prisma.withoutScope(
+      const connections = await prisma.withoutScope(
         'scheduled-sync: listing brands with a live Zoho connection',
         (client) =>
           client.integrationConnection.findMany({
@@ -71,15 +72,18 @@ async function bootstrap(): Promise<void> {
               status: 'CONNECTED',
               encryptedCredentials: { not: null },
             },
-            select: { brandId: true },
+            select: { brandId: true, lastPulledAt: true, pullFrequencyMinutes: true },
           }),
       );
-      await Promise.all(
-        connectedBrandIds.map(({ brandId }) =>
-          queue.enqueue('sync', 'zoho-pull-brand', { brandId }),
-        ),
+      const now = Date.now();
+      const due = connections.filter(
+        (c) =>
+          !c.lastPulledAt || now - c.lastPulledAt.getTime() >= c.pullFrequencyMinutes * 60_000,
       );
-      return { brandsEnqueued: connectedBrandIds.length };
+      await Promise.all(
+        due.map(({ brandId }) => queue.enqueue('sync', 'zoho-pull-brand', { brandId })),
+      );
+      return { brandsConnected: connections.length, brandsEnqueued: due.length };
     },
   };
 

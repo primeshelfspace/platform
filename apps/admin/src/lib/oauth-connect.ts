@@ -28,13 +28,18 @@ export async function startProviderConnect(
      * panel is one section of the payment-methods screen and namespaces its
      * own as `stripeError`. */
     readonly errorParam?: string;
+    /** Extra query params merged into every redirect back to settingsPath —
+     * e.g. `{ tab: 'payments' }` so a failure lands on the right tab of a
+     * page with more than one, without settingsPath itself carrying a `?`
+     * that params.toString() would then double up. */
+    readonly extraParams?: Record<string, string>;
   },
 ): Promise<NextResponse> {
-  const { provider, settingsPath, errorParam = 'error' } = options;
+  const { provider, settingsPath, errorParam = 'error', extraParams = {} } = options;
   const brandId = request.nextUrl.searchParams.get('brandId');
 
   const failure = (reason: string, withBrand = true) => {
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(extraParams);
     if (withBrand && brandId) params.set('brandId', brandId);
     params.set(errorParam, reason);
     return NextResponse.redirect(new URL(`${settingsPath}?${params}`, request.url));

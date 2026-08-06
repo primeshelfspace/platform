@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type { Brand } from '@prisma/client';
+import { Prisma, type Brand } from '@prisma/client';
 import type { BrandInput, Scope, StoragePort } from '@fenwick/shared';
 import { isPublicScope, storageKeys, STORAGE_PORT } from '@fenwick/shared';
 import {
@@ -80,6 +80,43 @@ export class BrandsService {
           timezone: brandFields.timezone,
           themeColor: brandFields.themeColor,
           settings: { create: { invoicePrefix } },
+        },
+      }),
+    );
+  }
+
+  /**
+   * Brand Setup's "Brand Details" tab. Same full-object shape as create() —
+   * see the controller's note on why a partial-patch schema isn't used here.
+   *
+   * mailingAddress/billingAddress use Prisma.DbNull rather than a bare
+   * `undefined` fallback: unlike create() (where the column simply keeps its
+   * schema default), `undefined` in an update's `data` means "leave whatever
+   * is already stored alone" — clearing an address back to null needs an
+   * explicit DbNull, or the old value would silently survive the "clear".
+   */
+  async update(scope: Scope, brandId: string, input: BrandInput): Promise<Brand> {
+    const existing = await this.prisma.withScope(scope, (tx) =>
+      tx.brand.findUnique({ where: { id: brandId } }),
+    );
+    if (!existing) throw new NotFoundException('brand not found');
+
+    return this.prisma.withScope(scope, (tx) =>
+      tx.brand.update({
+        where: { id: brandId },
+        data: {
+          legalName: input.legalName,
+          displayName: input.displayName,
+          businessType: input.businessType,
+          salesPerson: input.salesPersonName,
+          phone: input.phone,
+          email: input.email,
+          mailingAddress: input.mailingAddress ?? Prisma.DbNull,
+          billingAddress: input.billingAddress ?? Prisma.DbNull,
+          taxId: input.taxId,
+          currency: input.currency,
+          timezone: input.timezone,
+          themeColor: input.themeColor,
         },
       }),
     );

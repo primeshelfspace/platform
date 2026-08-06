@@ -6,6 +6,6 @@ import { startProviderConnect } from '@/lib/oauth-connect';
 export function GET(request: NextRequest): Promise<NextResponse> {
   return startProviderConnect(request, {
     provider: 'zoho',
-    settingsPath: '/settings/zoho',
+    settingsPath: '/settings/integrations',
   });
 }

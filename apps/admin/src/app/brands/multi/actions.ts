@@ -38,7 +38,7 @@ export async function addBrandAction(
   const legalName = emptyToNull(formData.get('legalName'));
   if (!legalName) return { error: 'Brand name is required.' };
 
-  const input: BrandFormInput = {
+  const input: BrandFormInput & { invoicePrefix: string } = {
     legalName,
     displayName: legalName,
     businessType: 'LLC',

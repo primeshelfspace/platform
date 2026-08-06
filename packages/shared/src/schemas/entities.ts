@@ -171,6 +171,31 @@ export type PaymentMethodSettingsInput = z.infer<typeof paymentMethodSettingsSch
 // no request body to validate. The resulting account id is read from Stripe's
 // OAuth response, never from a client.
 
+/** FR-ZHO-030: the only frequencies the 'scheduled-sync' cron actually
+ * understands. Minutes, so the worker's due-check (`now - lastPulledAt >=
+ * frequency * 60_000`) needs no unit conversion at the call site. */
+export const ZOHO_SYNC_FREQUENCIES = [1, 15, 60, 1440] as const;
+export const zohoSyncFrequencySchema = z.union([
+  z.literal(1),
+  z.literal(15),
+  z.literal(60),
+  z.literal(1440),
+]);
+export type ZohoSyncFrequency = z.infer<typeof zohoSyncFrequencySchema>;
+
+/** Every field optional and a live PATCH, not a form submit — the settings
+ * panel saves each control the moment it changes, matching FR-ZHO-030's
+ * "no separate Save button" requirement. At least one field is still
+ * required so a client cannot send a body that changes nothing. */
+export const zohoSyncSettingsSchema = z
+  .object({
+    pullFrequencyMinutes: zohoSyncFrequencySchema.optional(),
+    customerSyncEnabled: z.boolean().optional(),
+    invoiceSyncEnabled: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'nothing to update' });
+export type ZohoSyncSettingsInput = z.infer<typeof zohoSyncSettingsSchema>;
+
 // --- Customer --------------------------------------------------------------
 
 export const customerTypeSchema = z.enum(['BUSINESS', 'INDIVIDUAL']);

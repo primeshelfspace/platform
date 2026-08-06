@@ -70,12 +70,13 @@ export class StripeAccountController {
     @Query('error') error: string | undefined,
     @Res() response: Response,
   ): Promise<void> {
-    // The Stripe panel lives on the payment-methods screen; there is no
-    // standalone /settings/stripe page to land on.
-    const settingsUrl = `${this.env.ADMIN_PUBLIC_URL}/settings/payment-methods`;
+    // The Stripe panel lives on the Payment Gateways tab of
+    // /settings/integrations — there is no standalone /settings/stripe page.
+    const settingsUrl = `${this.env.ADMIN_PUBLIC_URL}/settings/integrations`;
+    const tab = 'tab=payments';
 
     if (error) {
-      response.redirect(`${settingsUrl}?stripeError=${encodeURIComponent(error)}`);
+      response.redirect(`${settingsUrl}?${tab}&stripeError=${encodeURIComponent(error)}`);
       return;
     }
     if (!code || !state) {
@@ -84,14 +85,14 @@ export class StripeAccountController {
 
     const verified = this.stripeAccounts.verifyCallbackState(state);
     if (!verified) {
-      response.redirect(`${settingsUrl}?stripeError=invalid_or_expired_state`);
+      response.redirect(`${settingsUrl}?${tab}&stripeError=invalid_or_expired_state`);
       return;
     }
     const { brandId } = verified;
 
     const scope = await this.systemScope.forBrand(brandId, 'stripe-oauth-callback');
     if (!scope) {
-      response.redirect(`${settingsUrl}?stripeError=unknown_brand`);
+      response.redirect(`${settingsUrl}?${tab}&stripeError=unknown_brand`);
       return;
     }
 
@@ -100,12 +101,12 @@ export class StripeAccountController {
     } catch (cause) {
       const message = cause instanceof IntegrationError ? cause.message : 'connection_failed';
       response.redirect(
-        `${settingsUrl}?brandId=${brandId}&stripeError=${encodeURIComponent(message)}`,
+        `${settingsUrl}?${tab}&brandId=${brandId}&stripeError=${encodeURIComponent(message)}`,
       );
       return;
     }
 
-    response.redirect(`${settingsUrl}?brandId=${brandId}&stripeConnected=1`);
+    response.redirect(`${settingsUrl}?${tab}&brandId=${brandId}&stripeConnected=1`);
   }
 
   @Post('brands/:brandId/integrations/stripe/disconnect')

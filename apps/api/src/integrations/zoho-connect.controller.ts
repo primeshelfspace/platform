@@ -1,17 +1,25 @@
 import {
   BadGatewayException,
   BadRequestException,
+  Body,
   Controller,
   Get,
   Inject,
   Logger,
   Param,
+  Patch,
   Post,
   Query,
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { IntegrationError, idSchema, type Scope } from '@fenwick/shared';
+import {
+  IntegrationError,
+  idSchema,
+  zohoSyncSettingsSchema,
+  type Scope,
+  type ZohoSyncSettingsInput,
+} from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { ENV, type Env } from '../config/env.js';
 import { ZohoBooksAdapter } from '../adapters/accounting/zoho-books.adapter.js';
@@ -89,9 +97,9 @@ export class ZohoConnectController {
    * FR-ZHO-030. Enqueues rather than pulling inline — a full pull can
    * paginate through hundreds of records across three entity types plus a
    * detail fetch per record, which comfortably exceeds a sane HTTP timeout
-   * for a large account. This also runs automatically every 15 minutes
-   * (worker.ts's 'scheduled-sync' handler); this endpoint just lets it be
-   * triggered on demand instead of waiting for the next tick.
+   * for a large account. This also runs automatically at the brand's own
+   * configured frequency (worker.ts's 'scheduled-sync' handler); this
+   * endpoint just lets it be triggered on demand instead of waiting.
    */
   @Post('brands/:brandId/integrations/zoho/pull')
   @RequirePermission('INTEGRATIONS', 'WRITE')
@@ -100,6 +108,31 @@ export class ZohoConnectController {
   ): Promise<{ queued: boolean }> {
     await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId });
     return { queued: true };
+  }
+
+  /**
+   * FR-ZHO-030's settings panel. NotFoundException from the service surfaces
+   * as 404 here rather than a silent no-op — configuring a connection that
+   * does not exist is a real error, not a valid empty state.
+   */
+  @Patch('brands/:brandId/integrations/zoho/settings')
+  @RequirePermission('INTEGRATIONS', 'WRITE')
+  updateSettings(
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Body(zodPipe(zohoSyncSettingsSchema)) body: ZohoSyncSettingsInput,
+    @CurrentScope() scope: Scope,
+  ): Promise<ZohoConnectionStatus> {
+    return this.connections.updateSyncSettings(scope, brandId, body);
+  }
+
+  @Post('brands/:brandId/integrations/zoho/disconnect')
+  @RequirePermission('INTEGRATIONS', 'WRITE')
+  async disconnect(
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @CurrentScope() scope: Scope,
+  ): Promise<{ ok: true }> {
+    await this.connections.disconnectZoho(scope, brandId);
+    return { ok: true };
   }
 
   @Get('brands/:brandId/integrations/zoho/connect')
@@ -128,7 +161,7 @@ export class ZohoConnectController {
     const adminUrl = this.env.ADMIN_PUBLIC_URL;
 
     if (error) {
-      response.redirect(`${adminUrl}/settings/zoho?error=${encodeURIComponent(error)}`);
+      response.redirect(`${adminUrl}/settings/integrations?error=${encodeURIComponent(error)}`);
       return;
     }
     if (!code || !state) {
@@ -137,7 +170,7 @@ export class ZohoConnectController {
 
     const verified = verifyOAuthState(state, 'zoho', this.env.SESSION_SECRET);
     if (!verified) {
-      response.redirect(`${adminUrl}/settings/zoho?error=invalid_or_expired_state`);
+      response.redirect(`${adminUrl}/settings/integrations?error=invalid_or_expired_state`);
       return;
     }
     const { brandId } = verified;
@@ -147,7 +180,7 @@ export class ZohoConnectController {
       const organizations = await this.zoho.listOrganizations(tokens.accessToken, tokens.apiDomain);
 
       if (organizations.length === 0) {
-        response.redirect(`${adminUrl}/settings/zoho?brandId=${brandId}&error=no_organizations`);
+        response.redirect(`${adminUrl}/settings/integrations?brandId=${brandId}&error=no_organizations`);
         return;
       }
       // More than one organization on the authorizing account picks the
@@ -157,7 +190,7 @@ export class ZohoConnectController {
 
       const scope = await this.systemScope.forBrand(brandId, 'zoho-oauth-callback');
       if (!scope) {
-        response.redirect(`${adminUrl}/settings/zoho?error=unknown_brand`);
+        response.redirect(`${adminUrl}/settings/integrations?error=unknown_brand`);
         return;
       }
 
@@ -181,11 +214,11 @@ export class ZohoConnectController {
         );
       }
 
-      response.redirect(`${adminUrl}/settings/zoho?brandId=${brandId}&connected=1`);
+      response.redirect(`${adminUrl}/settings/integrations?brandId=${brandId}&connected=1`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       response.redirect(
-        `${adminUrl}/settings/zoho?brandId=${brandId}&error=${encodeURIComponent(message)}`,
+        `${adminUrl}/settings/integrations?brandId=${brandId}&error=${encodeURIComponent(message)}`,
       );
     }
   }

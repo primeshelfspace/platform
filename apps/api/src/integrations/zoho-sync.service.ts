@@ -169,11 +169,30 @@ export class ZohoSyncService {
     return counts;
   }
 
-  async pushCustomer(brandId: string, customerId: string): Promise<void> {
+  /**
+   * `viaCascade` distinguishes two different callers with genuinely
+   * different rules: a standalone push (backfill, or a customer created
+   * while connected) honours customerSyncEnabled, since that toggle exists
+   * to mean "don't mirror my customer list." An invoice or payment push
+   * calling this to satisfy its own hard prerequisite — Zoho cannot hold an
+   * invoice with no contact behind it — is not that; disabling customer
+   * sync must not silently turn every invoice push into a guaranteed
+   * "customer push did not yield a Zoho contact id" failure while invoice
+   * sync is nominally still on.
+   */
+  async pushCustomer(
+    brandId: string,
+    customerId: string,
+    opts?: { readonly viaCascade?: boolean },
+  ): Promise<void> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-sync');
     if (!scope) return;
     const connection = await this.connections.buildAccountingConnection(scope, brandId);
     if (!connection) return;
+    if (!opts?.viaCascade) {
+      const flags = await this.connections.getSyncFlags(scope, brandId);
+      if (flags && !flags.customerSyncEnabled) return;
+    }
 
     await this.runJob(brandId, 'CUSTOMER', customerId, async () => {
       const customer = await this.prisma.withScope(scope, (tx) =>
@@ -210,6 +229,8 @@ export class ZohoSyncService {
     if (!scope) return;
     const connection = await this.connections.buildAccountingConnection(scope, brandId);
     if (!connection) return;
+    const flags = await this.connections.getSyncFlags(scope, brandId);
+    if (flags && !flags.invoiceSyncEnabled) return;
 
     await this.runJob(brandId, 'INVOICE', invoiceId, async () => {
       const invoice = await this.prisma.withScope(scope, (tx) =>
@@ -220,7 +241,7 @@ export class ZohoSyncService {
       );
 
       if (!invoice.customer.zohoContactId) {
-        await this.pushCustomer(brandId, invoice.customerId);
+        await this.pushCustomer(brandId, invoice.customerId, { viaCascade: true });
       }
       const customerRemoteId = (
         await this.prisma.withScope(scope, (tx) =>
@@ -271,11 +292,17 @@ export class ZohoSyncService {
     });
   }
 
+  // No separate "Payment Synchronization" toggle exists (or would mean much):
+  // a payment cannot be pushed without the invoice it settles already
+  // existing in Zoho, so payment push rides on invoiceSyncEnabled rather
+  // than a third, functionally-identical flag.
   async pushPayment(brandId: string, paymentId: string): Promise<void> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-sync');
     if (!scope) return;
     const connection = await this.connections.buildAccountingConnection(scope, brandId);
     if (!connection) return;
+    const flags = await this.connections.getSyncFlags(scope, brandId);
+    if (flags && !flags.invoiceSyncEnabled) return;
 
     await this.runJob(brandId, 'PAYMENT', paymentId, async () => {
       const payment = await this.prisma.withScope(scope, (tx) =>

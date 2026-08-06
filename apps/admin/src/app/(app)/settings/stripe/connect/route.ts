@@ -3,12 +3,14 @@ import { startProviderConnect } from '@/lib/oauth-connect';
 
 /**
  * Begins the Stripe Connect handshake. The Stripe panel lives on the
- * payment-methods screen, so that is where a failure returns to.
+ * Payment Gateways tab of /settings/integrations, so that is where a
+ * failure returns to.
  */
 export function GET(request: NextRequest): Promise<NextResponse> {
   return startProviderConnect(request, {
     provider: 'stripe',
-    settingsPath: '/settings/payment-methods',
+    settingsPath: '/settings/integrations',
     errorParam: 'stripeError',
+    extraParams: { tab: 'payments' },
   });
 }

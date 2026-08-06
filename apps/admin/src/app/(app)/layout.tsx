@@ -1,7 +1,13 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { AdminShell } from '@/components/admin-shell';
-import { getCurrentUser, listBrands, type Brand, type CurrentUser } from '@/lib/api';
+import {
+  getCurrentUser,
+  getMerchantOnboarding,
+  listBrands,
+  type Brand,
+  type CurrentUser,
+} from '@/lib/api';
 import { LOGIN_PATH } from '@/lib/session';
 import { resolveOnboardingStep, routeForStep } from '@/lib/onboarding';
 
@@ -45,9 +51,20 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     // §3.3 grants BRANDS READ to Owner and Merchant Admin only) lands here too.
   }
 
+  // The sidebar header names the merchant, not any one brand — falls back to
+  // the product name for the same "role can't reach it" case as brands above,
+  // rather than leaving the header blank.
+  let companyName = 'Fenwick Invoicing';
+  try {
+    const onboarding = await getMerchantOnboarding();
+    if (onboarding.companyDetails?.legalName) companyName = onboarding.companyDetails.legalName;
+  } catch {
+    // Same reasoning as the brands fetch above.
+  }
+
   return (
     <Suspense fallback={null}>
-      <AdminShell brands={brands} user={user}>
+      <AdminShell brands={brands} user={user} companyName={companyName}>
         {children}
       </AdminShell>
     </Suspense>

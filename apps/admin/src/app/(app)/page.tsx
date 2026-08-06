@@ -152,7 +152,7 @@ export default async function DashboardPage({
                 icon={zohoConnected ? CircleCheck : CircleDashed}
                 label="Zoho Books"
                 value={zohoConnected ? 'Connected' : 'Not connected'}
-                href={`/settings/zoho?brandId=${activeBrand!.id}`}
+                href={`/settings/integrations?brandId=${activeBrand!.id}`}
               />
             </div>
 

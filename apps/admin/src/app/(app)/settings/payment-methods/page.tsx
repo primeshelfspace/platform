@@ -1,38 +1,11 @@
 import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
-import {
-  ApiError,
-  getPaymentMethodSettings,
-  getStripeAccountStatus,
-  stripeConnectUrl,
-  type StripeAccountStatus,
-  listBrands,
-  type Brand,
-} from '@/lib/api';
-import { StripeForm } from '../stripe/stripe-form';
+import { ApiError, getPaymentMethodSettings, listBrands, type Brand } from '@/lib/api';
 import { MethodsForm } from './methods-form';
 
 export const dynamic = 'force-dynamic';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
-
-/**
- * The connect flow returns either a short code it minted itself
- * (`missing_brand`) or a sentence forwarded verbatim from the API
- * ("STRIPE_CONNECT_CLIENT_ID is not configured on this deployment"). Only the
- * former wants its underscores turned into spaces — doing it to the latter
- * mangles the environment variable name the reader needs in order to act.
- */
-function describeStripeError(raw: string): string {
-  const KNOWN: Record<string, string> = {
-    missing_brand: 'No brand was selected.',
-    api_unreachable: 'The API could not be reached.',
-    connect_failed: 'Stripe did not return a consent link.',
-    invalid_or_expired_state: 'That connection link expired. Try again.',
-    unknown_brand: 'That brand no longer exists.',
-  };
-  return KNOWN[raw] ?? raw;
-}
 
 export default async function PaymentMethodsPage({
   searchParams,
@@ -40,10 +13,6 @@ export default async function PaymentMethodsPage({
   searchParams: Promise<{
     brandId?: string;
     saved?: string;
-    /** Set by the Stripe Connect callback on the way back from Stripe. */
-    stripeConnected?: string;
-    stripeDisconnected?: string;
-    stripeError?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -66,23 +35,11 @@ export default async function PaymentMethodsPage({
     achEnabled: false,
     checkEnabled: false,
   };
-  let stripeStatusError: string | null = null;
-  let stripeStatus: StripeAccountStatus = {
-    connected: false,
-    accountId: null,
-    displayName: null,
-    chargesEnabled: false,
-  };
   if (activeBrand) {
     try {
       initial = await getPaymentMethodSettings(activeBrand.id);
     } catch (cause) {
       settingsError = cause instanceof ApiError ? cause.message : String(cause);
-    }
-    try {
-      stripeStatus = await getStripeAccountStatus(activeBrand.id);
-    } catch (cause) {
-      stripeStatusError = cause instanceof ApiError ? cause.message : String(cause);
     }
   }
 
@@ -121,21 +78,6 @@ export default async function PaymentMethodsPage({
                 Saved.
               </div>
             )}
-            {params.stripeConnected && (
-              <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
-                Stripe connected.
-              </div>
-            )}
-            {params.stripeDisconnected && (
-              <div className="mb-4 rounded-md bg-surface-muted p-3 text-sm text-ink-muted">
-                Stripe disconnected.
-              </div>
-            )}
-            {params.stripeError && (
-              <div className="mb-4 rounded-md bg-danger-surface p-3 text-sm text-danger">
-                Stripe could not be connected: {describeStripeError(params.stripeError)}
-              </div>
-            )}
 
             {settingsError ? (
               <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
@@ -145,40 +87,20 @@ export default async function PaymentMethodsPage({
               activeBrand && <MethodsForm brandId={activeBrand.id} initial={initial} />
             )}
 
+            {/* Stripe's own connection card lives on the Payment Gateways tab
+                of /settings/integrations now — this page only owns which
+                methods the public payment page offers. */}
             {activeBrand && (
-              <div className="mt-8 rounded-lg border border-border bg-surface p-6 shadow-sm">
-                <div className="mb-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-medium text-ink-strong">Stripe</h2>
-                    <span
-                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                        stripeStatus.connected ? 'bg-success' : 'bg-ink-subtle'
-                      }`}
-                      aria-hidden
-                    />
-                  </div>
-                  <p className="mt-1 text-sm text-ink-muted">
-                    {stripeStatus.connected
-                      ? `Connected${stripeStatus.displayName ? ` — ${stripeStatus.displayName}` : ''}`
-                      : 'Not connected — card payments above will fail until this brand connects its Stripe account.'}
-                  </p>
-                </div>
-
-                {stripeStatusError ? (
-                  <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
-                    Could not load Stripe status: {stripeStatusError}
-                  </div>
-                ) : (
-                  <StripeForm
-                    brandId={activeBrand.id}
-                    connected={stripeStatus.connected}
-                    connectUrl={stripeConnectUrl(activeBrand.id)}
-                    displayName={stripeStatus.displayName}
-                    accountId={stripeStatus.accountId}
-                    chargesEnabled={stripeStatus.chargesEnabled}
-                  />
-                )}
-              </div>
+              <p className="mt-6 text-sm text-ink-muted">
+                Card payments need a connected gateway to actually charge anything — connect one on{' '}
+                <Link
+                  href={`/settings/integrations?tab=payments&brandId=${activeBrand.id}`}
+                  className="font-medium text-ink-strong underline"
+                >
+                  the Payment Gateways tab
+                </Link>
+                .
+              </p>
             )}
           </>
         )}

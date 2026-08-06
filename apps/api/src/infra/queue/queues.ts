@@ -136,7 +136,12 @@ export const SCHEDULED_JOBS = [
   },
   {
     name: 'scheduled-sync',
-    cron: '*/15 * * * *',
+    // The tick itself is just the resolution the per-brand check runs at —
+    // worker.ts's handler only actually enqueues a brand's pull once
+    // `pullFrequencyMinutes` has elapsed since its own lastPulledAt. 1 minute
+    // is the floor a brand can configure ("Realtime"), so the cron cannot
+    // tick any less often than that without silently capping that option.
+    cron: '* * * * *',
     description: "Enqueues per-brand sync at the brand's configured frequency.",
     implemented: true,
   },

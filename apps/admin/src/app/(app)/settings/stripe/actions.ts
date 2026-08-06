@@ -28,5 +28,5 @@ export async function disconnectStripeAction(
     };
   }
 
-  redirect(`/settings/payment-methods?brandId=${brandId}&stripeDisconnected=1`);
+  redirect(`/settings/integrations?tab=payments&brandId=${brandId}&stripeDisconnected=1`);
 }

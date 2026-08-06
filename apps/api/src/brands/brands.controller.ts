@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -12,10 +13,12 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Brand } from '@prisma/client';
 import {
   brandObjectSchema,
+  brandSchema,
   brandSettingsSchema,
   idSchema,
   TAX_ID_FORMAT_MESSAGE,
   taxIdMatchesCountry,
+  type BrandInput,
   type Scope,
 } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
@@ -51,6 +54,22 @@ export class BrandsController {
     @Body(zodPipe(createBrandSchema)) body: CreateBrandInput,
   ): Promise<Brand> {
     return this.brands.create(scope, body);
+  }
+
+  /**
+   * Full replace, the same shape create() takes — no partial-patch schema,
+   * so a field this form doesn't show (taxId, billingAddress, currency,
+   * timezone, businessType) has to come back exactly as it went out, not be
+   * silently reset to a schema default by an incomplete body.
+   */
+  @Patch(':brandId')
+  @RequirePermission('BRAND_CONFIGURATION', 'WRITE')
+  update(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Body(zodPipe(brandSchema)) body: BrandInput,
+  ): Promise<Brand> {
+    return this.brands.update(scope, brandId, body);
   }
 
   @Post(':brandId/logo')

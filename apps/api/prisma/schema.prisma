@@ -571,6 +571,17 @@ model IntegrationConnection {
   /// avoids missing a record that gets modified while that pull is running.
   lastPulledAt         DateTime?           @map("last_pulled_at")
   health               String?
+  /// Minutes between scheduled pulls for this brand (FR-ZHO-030). The
+  /// 'scheduled-sync' cron itself ticks every minute — this is what it checks
+  /// each connected brand against, not a separate per-brand cron registration.
+  /// 1 is the honest floor for "Realtime": pull is inherently polling, since
+  /// Zoho sends no webhooks this adapter listens for.
+  pullFrequencyMinutes Int                 @default(15) @map("pull_frequency_minutes")
+  /// Independent per-object-type push gates (FR-ZHO-011/012). Neither one
+  /// blocks the hard technical prerequisite a disabled type still has to
+  /// satisfy for another — see ZohoSyncService.pushCustomer's `viaCascade`.
+  customerSyncEnabled  Boolean             @default(true) @map("customer_sync_enabled")
+  invoiceSyncEnabled   Boolean             @default(true) @map("invoice_sync_enabled")
   createdAt            DateTime            @default(now()) @map("created_at")
   updatedAt            DateTime            @updatedAt @map("updated_at")
 

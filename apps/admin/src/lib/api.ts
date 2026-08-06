@@ -206,8 +206,16 @@ export interface Brand {
   id: string;
   displayName: string;
   legalName: string;
+  businessType: 'SOLE_PROPRIETORSHIP' | 'LLC' | 'CORPORATION' | 'PARTNERSHIP' | 'NONPROFIT' | null;
+  salesPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  mailingAddress: CustomerAddress | null;
+  billingAddress: CustomerAddress | null;
+  taxId: string | null;
   themeColor: string;
   currency: string;
+  timezone: string;
   status: 'ACTIVE' | 'ARCHIVED';
   /** Signed, time-limited URL; null if this brand has no logo uploaded. */
   logoUrl: string | null;
@@ -217,8 +225,9 @@ export function listBrands(): Promise<Brand[]> {
   return apiFetch<Brand[]>('/brands');
 }
 
-/** Mirrors createBrandSchema (brandSchema + invoicePrefix) in the API
- * exactly — nullable fields must be sent as `null`, not omitted. */
+/** Mirrors brandSchema in the API exactly — nullable fields must be sent as
+ * `null`, not omitted. Shared by create (which adds invoicePrefix, a
+ * BrandSettings field with no meaning outside creation) and update. */
 export interface BrandFormInput {
   legalName: string;
   displayName: string;
@@ -232,11 +241,17 @@ export interface BrandFormInput {
   currency: string;
   timezone: string;
   themeColor: string;
-  invoicePrefix: string;
 }
 
-export function createBrand(input: BrandFormInput): Promise<Brand> {
+export function createBrand(input: BrandFormInput & { invoicePrefix: string }): Promise<Brand> {
   return apiFetch<Brand>('/brands', { method: 'POST', body: JSON.stringify(input) });
+}
+
+/** Brand Setup's "Brand Details" tab. Full replace, same shape as
+ * createBrand minus invoicePrefix — see BrandsService.update for why there
+ * is no partial form. */
+export function updateBrand(brandId: string, input: BrandFormInput): Promise<Brand> {
+  return apiFetch<Brand>(`/brands/${brandId}`, { method: 'PATCH', body: JSON.stringify(input) });
 }
 
 /** Separate from createBrand because the logo's storage key is namespaced by
@@ -559,15 +574,47 @@ export interface ZohoConnectionStatus {
   lastSyncAt: string | null;
   lastPulledAt: string | null;
   health: string | null;
+  pullFrequencyMinutes: number;
+  customerSyncEnabled: boolean;
+  invoiceSyncEnabled: boolean;
 }
 
 export function getZohoStatus(brandId: string): Promise<ZohoConnectionStatus> {
   return apiFetch<ZohoConnectionStatus>(`/brands/${brandId}/integrations/zoho/status`);
 }
 
+/** Mirrors zohoSyncSettingsSchema — every field optional, at least one
+ * required. Applied the moment a control changes; there is no batching
+ * "Save" step for this to accumulate into. */
+export interface ZohoSyncSettingsPatch {
+  pullFrequencyMinutes?: 1 | 15 | 60 | 1440;
+  customerSyncEnabled?: boolean;
+  invoiceSyncEnabled?: boolean;
+}
+
+export function updateZohoSyncSettings(
+  brandId: string,
+  patch: ZohoSyncSettingsPatch,
+): Promise<ZohoConnectionStatus> {
+  return apiFetch<ZohoConnectionStatus>(`/brands/${brandId}/integrations/zoho/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Local-only: Zoho has no adapter-level revoke call (see
+ * IntegrationConnectionService.disconnectZoho) — this clears the stored
+ * credentials so nothing pushes or pulls for this brand again. */
+export function disconnectZoho(brandId: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/zoho/disconnect`, {
+    method: 'POST',
+  });
+}
+
 export interface ZohoActivityEntry {
   direction: 'PUSH' | 'PULL';
   objectType: string;
+  objectId: string | null;
   status: string;
   errorClass: string | null;
   lastError: string | null;
