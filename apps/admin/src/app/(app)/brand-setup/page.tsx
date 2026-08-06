@@ -1,5 +1,6 @@
 import { listBrands } from '@/lib/api';
 import { BrandDetailsForm } from './brand-details-form';
+import { PageContainer } from '@/components/page-container';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export default async function BrandSetupPage({
   const brand = brands.find((b) => b.id === brandId) ?? brands[0];
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-10 sm:px-10">
+    <PageContainer>
       <h1 className="text-2xl font-bold text-ink-strong">Brand Setup</h1>
       <p className="mt-1 text-sm text-ink-muted">
         Configure your brand&rsquo;s identity, invoice templates, and customer-facing payment
@@ -35,10 +36,8 @@ export default async function BrandSetupPage({
           <BrandDetailsForm brand={brand} />
         </div>
       ) : (
-        <p className="mt-8 text-sm text-ink-muted">
-          No brand exists to configure yet.
-        </p>
+        <p className="mt-8 text-sm text-ink-muted">No brand exists to configure yet.</p>
       )}
-    </main>
+    </PageContainer>
   );
 }

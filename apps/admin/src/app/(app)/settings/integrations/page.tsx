@@ -13,6 +13,7 @@ import {
 } from '@/lib/api';
 import { StripeForm } from '../stripe/stripe-form';
 import { ZohoPanel } from './zoho-panel';
+import { PageContainer } from '@/components/page-container';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,10 +90,12 @@ export default async function IntegrationsPage({
     }
   }
 
-  const zohoErrorMessage = params.error ? (ZOHO_ERROR_MESSAGES[params.error] ?? params.error) : null;
+  const zohoErrorMessage = params.error
+    ? (ZOHO_ERROR_MESSAGES[params.error] ?? params.error)
+    : null;
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-10 sm:px-10">
+    <PageContainer>
       <h1 className="text-[32px] font-bold leading-tight text-ink-strong">Integrations</h1>
       <p className="mt-1 text-base text-ink-muted">
         Every brand connects to its own integrations, and payment gateways.
@@ -222,6 +225,6 @@ export default async function IntegrationsPage({
           </>
         )}
       </div>
-    </main>
+    </PageContainer>
   );
 }

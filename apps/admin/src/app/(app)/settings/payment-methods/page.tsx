@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
 import { ApiError, getPaymentMethodSettings, listBrands, type Brand } from '@/lib/api';
 import { MethodsForm } from './methods-form';
+import { PageContainer } from '@/components/page-container';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,7 @@ export default async function PaymentMethodsPage({
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
-      <main className="mx-auto max-w-2xl px-6 py-12">
+      <PageContainer>
         <header className="mb-8">
           <p className="text-sm uppercase tracking-widest text-ink-subtle">
             {activeBrand ? activeBrand.displayName : 'Fenwick Holdings Inc.'}
@@ -104,7 +105,7 @@ export default async function PaymentMethodsPage({
             )}
           </>
         )}
-      </main>
+      </PageContainer>
     </BrandTheme>
   );
 }

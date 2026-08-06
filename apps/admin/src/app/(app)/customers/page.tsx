@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Plus, Search, Users } from 'lucide-react';
 import { BrandTheme } from '@/components/brand-theme';
 import { ApiError, listBrands, listCustomers, type Brand, type Customer } from '@/lib/api';
+import { PageContainer } from '@/components/page-container';
 
 /** INK — used only when no brand exists yet, so bg-brand still resolves. */
 const FALLBACK_THEME_COLOUR = '#16261F';
@@ -45,7 +46,7 @@ export default async function CustomersPage({
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
-      <main className="mx-auto max-w-5xl px-6 py-12">
+      <PageContainer>
         <header className="mb-8 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm uppercase tracking-widest text-ink-subtle">
@@ -178,7 +179,7 @@ export default async function CustomersPage({
             )}
           </>
         )}
-      </main>
+      </PageContainer>
     </BrandTheme>
   );
 }

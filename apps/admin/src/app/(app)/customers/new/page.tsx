@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
 import { ApiError, listBrands } from '@/lib/api';
 import { CustomerForm } from './customer-form';
+import { PageContainer } from '@/components/page-container';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
 
@@ -16,7 +17,7 @@ export default async function NewCustomerPage({
 
   if (!brandId) {
     return (
-      <main className="mx-auto max-w-2xl px-6 py-12">
+      <PageContainer narrow>
         <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
           <p className="font-medium">No brand selected.</p>
           <p className="mt-1">
@@ -27,7 +28,7 @@ export default async function NewCustomerPage({
             and choose a brand first.
           </p>
         </div>
-      </main>
+      </PageContainer>
     );
   }
 
@@ -48,13 +49,13 @@ export default async function NewCustomerPage({
 
   return (
     <BrandTheme brandColour={themeColour}>
-      <main className="mx-auto max-w-2xl px-6 py-12">
+      <PageContainer narrow>
         <header className="mb-8">
           <p className="text-sm uppercase tracking-widest text-ink-subtle">{brandName}</p>
           <h1 className="mt-1 text-2xl font-semibold text-ink-strong">Add customer</h1>
         </header>
         <CustomerForm brandId={brandId} />
-      </main>
+      </PageContainer>
     </BrandTheme>
   );
 }

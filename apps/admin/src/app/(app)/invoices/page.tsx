@@ -4,6 +4,7 @@ import { formatMinorForDisplay } from '@fenwick/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
 import { ApiError, listBrands, listInvoices, type Brand, type Invoice } from '@/lib/api';
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoice-presentation';
+import { PageContainer } from '@/components/page-container';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,7 @@ export default async function InvoicesPage({
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
-      <main className="mx-auto max-w-5xl px-6 py-12">
+      <PageContainer>
         <header className="mb-8 flex items-start justify-between gap-4">
           <div>
             <p className="text-sm uppercase tracking-widest text-ink-subtle">
@@ -144,7 +145,7 @@ export default async function InvoicesPage({
             </section>
           </>
         )}
-      </main>
+      </PageContainer>
     </BrandTheme>
   );
 }

@@ -8,7 +8,8 @@ import {
 } from '@/lib/api';
 import { describeActionError } from '@/lib/form';
 
-export type ActionResult<T> = { readonly ok: true; readonly data: T } | { readonly ok: false; readonly error: string };
+export type ActionResult<T> =
+  { readonly ok: true; readonly data: T } | { readonly ok: false; readonly error: string };
 
 /**
  * Called directly from the client panel's onChange handlers, not bound to a

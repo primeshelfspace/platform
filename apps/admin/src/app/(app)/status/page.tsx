@@ -2,6 +2,7 @@ import { Activity, CircleCheck, CircleX, Plug } from 'lucide-react';
 import { BRAND_COLOUR_PRESETS, assessBrandColour } from '@fenwick/shared/tokens';
 import { BrandTheme } from '@/components/brand-theme';
 import { API_URL, getHealth, type HealthResponse } from '@/lib/api';
+import { PageContainer } from '@/components/page-container';
 
 // The status of live dependencies is never cached.
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,7 @@ export default async function StatusPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
+    <PageContainer>
       <header className="mb-10">
         <p className="text-sm uppercase tracking-widest text-ink-subtle">Fenwick Holdings Inc.</p>
         <h1 className="mt-1 text-2xl font-semibold text-ink-strong">System status</h1>
@@ -111,6 +112,6 @@ export default async function StatusPage() {
           })}
         </div>
       </section>
-    </main>
+    </PageContainer>
   );
 }

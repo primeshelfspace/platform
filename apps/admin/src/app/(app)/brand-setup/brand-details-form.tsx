@@ -36,12 +36,7 @@ function Field({
   return (
     <label className="block">
       <span className={labelClass}>{label}</span>
-      <input
-        name={name}
-        defaultValue={defaultValue}
-        className={inputClass}
-        {...rest}
-      />
+      <input name={name} defaultValue={defaultValue} className={inputClass} {...rest} />
     </label>
   );
 }
@@ -136,7 +131,11 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
 
         <div className="mt-5">
           <span className={labelClass}>Brand Color</span>
-          <div className="flex flex-wrap items-center gap-3" role="radiogroup" aria-label="Brand colour">
+          <div
+            className="flex flex-wrap items-center gap-3"
+            role="radiogroup"
+            aria-label="Brand colour"
+          >
             {SWATCHES.map((swatch) => {
               const selected = swatch.toLowerCase() === themeColor.toLowerCase();
               return (
@@ -245,7 +244,11 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
               className={inputClass}
             />
             {regions ? (
-              <Select name="mailingRegion" defaultValue={brand.mailingAddress?.region ?? ''} placeholder="State/Province">
+              <Select
+                name="mailingRegion"
+                defaultValue={brand.mailingAddress?.region ?? ''}
+                placeholder="State/Province"
+              >
                 {regions.map((region) => (
                   <option key={region.code} value={region.code}>
                     {region.name}
