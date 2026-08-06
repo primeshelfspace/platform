@@ -27,12 +27,22 @@ export class SmtpMailAdapter implements MailPort {
   private readonly seen = new Set<string>();
 
   constructor(@Inject(ENV) private readonly env: Env) {
+    // Implicit TLS on 465, STARTTLS on 587 and 25. Derived from the port when
+    // SMTP_SECURE is unset, because getting this wrong fails as a connection
+    // timeout rather than anything that names TLS.
+    const secure = env.SMTP_SECURE ?? env.SMTP_PORT === 465;
+
     this.transporter = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
-      // The local sink speaks plaintext SMTP on 1025 and offers no STARTTLS.
-      secure: false,
-      ignoreTLS: env.APP_ENV === 'local',
+      secure,
+      // Keyed off whether credentials exist, NOT off APP_ENV. The in-repo sink
+      // speaks plaintext and needs no auth, so skipping STARTTLS is right for
+      // it — but pointing a local APP_ENV at a real provider is a normal thing
+      // to do while testing, and Gmail and friends refuse plaintext on 587.
+      // Tying this to APP_ENV made that combination fail with a bare
+      // "SMTP send failed" while a plain nodemailer verify() succeeded.
+      ignoreTLS: !secure && !env.SMTP_USER,
       auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASSWORD ?? '' } : undefined,
     });
   }
@@ -65,8 +75,10 @@ export class SmtpMailAdapter implements MailPort {
           content: a.content,
         })),
         headers: {
-          'X-Fenwick-Brand': input.messageTag.brandId,
           'X-Fenwick-Template': input.messageTag.templateKey,
+          // Both omitted rather than sent empty when absent: platform-level
+          // mail (a set-password link) predates any brand or invoice.
+          ...(input.messageTag.brandId ? { 'X-Fenwick-Brand': input.messageTag.brandId } : {}),
           ...(input.messageTag.invoiceId
             ? { 'X-Fenwick-Invoice': input.messageTag.invoiceId }
             : {}),

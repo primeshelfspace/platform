@@ -1,9 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import type { RequestScope, Role } from '@fenwick/shared';
+import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import type { RegisterInput, RequestScope, Role } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { SessionService } from './session.service.js';
+import { PasswordResetService } from './password-reset.service.js';
+import { AuthMailService } from './auth-mail.service.js';
 
 /**
  * Sign-in (FR-AUTH-001..004, FR-AUTH-010).
@@ -26,6 +28,7 @@ const LOCKOUT_MINUTES = 30;
 export const AUDIT_LOGIN = 'AUTH_LOGIN';
 export const AUDIT_LOGOUT = 'AUTH_LOGOUT';
 export const AUDIT_PASSWORD_SET = 'AUTH_PASSWORD_SET';
+export const AUDIT_REGISTER = 'AUTH_REGISTER';
 
 export interface LoginAttempt {
   readonly email: string;
@@ -75,6 +78,8 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sessions: SessionService,
+    private readonly passwordResets: PasswordResetService,
+    private readonly mail: AuthMailService,
   ) {}
 
   async login(attempt: LoginAttempt): Promise<LoginResult> {
@@ -165,6 +170,124 @@ export class AuthService {
         name: row.name,
         role: row.role,
         mustResetPassword: row.status === 'INVITED',
+      },
+    };
+  }
+
+  /**
+   * FR-ONB: self-serve signup. Creates the tenant and its first owner, then
+   * emails a set-password link.
+   *
+   * No session is issued here and no password is chosen yet: proving control
+   * of the address is what the emailed link is for. Until it is followed the
+   * account exists but is unreachable — its password hash is random and nobody
+   * holds the input to it.
+   *
+   * Unscoped for the same reason login is: there is no tenant yet to scope to
+   * — this call is what creates one.
+   */
+  async register(input: RegisterInput, context: AttemptContext): Promise<void> {
+    const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
+
+    const created = await this.prisma.withoutScope(
+      'creating a merchant and its first owner during signup (no tenant exists yet)',
+      async (client) => {
+        // Signup refuses an address already in use anywhere. The schema allows
+        // the same address under two merchants — the same person may hold
+        // accounts at two client organisations — but that is for an
+        // administrator inviting them, not for self-serve, where it would
+        // silently create a second tenant the user cannot tell apart from the
+        // first at the sign-in prompt.
+        const existing = await client.user.findFirst({
+          where: { email: input.email },
+          select: { id: true },
+        });
+        if (existing) return null;
+
+        return client.user.create({
+          data: {
+            email: input.email,
+            name: input.fullName,
+            passwordHash,
+            role: 'MERCHANT_OWNER',
+            status: 'INVITED',
+            merchant: {
+              create: {
+                // A placeholder until the company-details step collects the
+                // real legal name; Merchant.name is NOT NULL and something has
+                // to identify the tenant in the interim.
+                name: input.fullName,
+                contactEmail: input.email,
+              },
+            },
+          },
+        });
+      },
+    );
+
+    if (!created) {
+      throw new ConflictException('an account with this email address already exists');
+    }
+
+    const { token } = await this.passwordResets.issue(created.id);
+    // Awaited, not queued: this message is the flow. See AuthMailService.
+    await this.mail.sendSetPasswordLink({
+      to: created.email,
+      name: created.name,
+      token,
+      isNewAccount: true,
+    });
+
+    await this.record(created.merchantId, created.id, 'SUCCESS', null, context, AUDIT_REGISTER);
+  }
+
+  /**
+   * FR-AUTH-006: setting a password from an emailed link, with no session.
+   *
+   * The token is the credential and is spent atomically before anything else
+   * happens, so a link cannot be replayed. Clearing INVITED here is what makes
+   * the account reachable at all — and a session is issued so the new owner
+   * continues straight into onboarding rather than being asked to sign in with
+   * the password they typed ten seconds ago.
+   *
+   * Every other session for the user is revoked: whoever followed this link is
+   * now the only holder of the password, and anything already signed in
+   * predates that proof.
+   */
+  async setPasswordWithToken(
+    token: string,
+    newPassword: string,
+    context: AttemptContext,
+  ): Promise<LoginResult> {
+    const claim = await this.passwordResets.consume(token);
+    if (!claim) {
+      throw new UnauthorizedException('this link is no longer valid');
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    const user = await this.prisma.withoutScope(
+      'setting a password from an emailed token (no session exists until it succeeds)',
+      (client) =>
+        client.user.update({
+          where: { id: claim.userId },
+          data: { passwordHash, status: 'ACTIVE', failedLogins: 0, lockedUntil: null },
+        }),
+    );
+
+    await this.sessions.revokeAllForUser(user.id);
+    const { token: sessionToken, expiresAt } = await this.sessions.issue(user.id, context);
+    await this.record(user.merchantId, user.id, 'SUCCESS', null, context, AUDIT_PASSWORD_SET);
+
+    return {
+      token: sessionToken,
+      expiresAt,
+      user: {
+        id: user.id,
+        merchantId: user.merchantId,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        mustResetPassword: false,
       },
     };
   }

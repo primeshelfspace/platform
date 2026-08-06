@@ -42,6 +42,10 @@ const envSchema = z
 
     SMTP_HOST: z.string().default('localhost'),
     SMTP_PORT: z.coerce.number().int().default(1025),
+    /** Implicit TLS from the first byte, which is what port 465 expects. Port
+     * 587 uses STARTTLS instead and must leave this false. Defaults from the
+     * port so the common cases need no thought. */
+    SMTP_SECURE: booleanish.optional(),
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
     MAIL_FROM: z.string().default('Fenwick Invoicing <billing@localhost>'),
@@ -128,8 +132,18 @@ const envSchema = z
     if (env.STORAGE_DRIVER === 's3') {
       require(env.S3_BUCKET, 'S3_BUCKET', 'when STORAGE_DRIVER=s3');
     }
+    // MAIL_DRIVER=postmark has no adapter bound (see MailModule). Left in the
+    // enum so the intended provider stays visible, but refused here rather
+    // than allowed to fall through to the console mailer — which in
+    // production would boot happily and silently discard every message.
     if (env.MAIL_DRIVER === 'postmark') {
-      require(env.POSTMARK_SERVER_TOKEN, 'POSTMARK_SERVER_TOKEN', 'when MAIL_DRIVER=postmark');
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['MAIL_DRIVER'],
+        message:
+          'the Postmark adapter is not implemented yet — use MAIL_DRIVER=smtp, which speaks to ' +
+          "Postmark, SES, Resend and any other provider's SMTP endpoint",
+      });
     }
 
     // A fake adapter in production would silently swallow real money and real

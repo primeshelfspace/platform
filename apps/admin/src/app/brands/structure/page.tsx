@@ -1,3 +1,4 @@
+import { OnboardingSteps } from '@/components/onboarding-steps';
 import { requireOnboardingStep } from '@/lib/onboarding';
 import { StructureForm } from './structure-form';
 
@@ -9,6 +10,8 @@ export default async function BrandStructurePage() {
   return (
     <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
       <div className="mx-auto w-full max-w-[1000px]">
+        <OnboardingSteps current="Structure" />
+
         <div className="mb-10 text-center">
           <h1 className="text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
             Brand Structure

@@ -2,45 +2,10 @@
 
 import { useActionState, useState } from 'react';
 import type { PaymentMethodSettings } from '@/lib/api';
+import { Toggle } from '@/components/ui/toggle';
 import { updatePaymentMethodsAction, type ToggleMethodsState } from './actions';
 
 const initialState: ToggleMethodsState = {};
-
-function Toggle({
-  name,
-  label,
-  hint,
-  checked,
-  onChange,
-}: {
-  name: string;
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <label className="flex items-start justify-between gap-4 border-b border-border py-3 last:border-0">
-      <span>
-        <span className="block text-sm font-medium text-ink-strong">{label}</span>
-        {hint && <span className="mt-0.5 block text-xs text-ink-muted">{hint}</span>}
-      </span>
-      <span className="flex shrink-0 items-center pt-0.5">
-        {/* No hidden fallback needed: an unchecked box is simply absent from
-            FormData, and the action reads that absence as false directly —
-            adding one under the same name would only risk shadowing the
-            checked value ahead of it in DOM order. */}
-        <input
-          type="checkbox"
-          name={name}
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className="h-5 w-9 cursor-pointer appearance-none rounded-full bg-surface-muted checked:bg-brand relative before:absolute before:left-0.5 before:top-0.5 before:h-4 before:w-4 before:rounded-full before:bg-white before:transition-transform checked:before:translate-x-4"
-        />
-      </span>
-    </label>
-  );
-}
 
 export function MethodsForm({
   brandId,
@@ -64,6 +29,7 @@ export function MethodsForm({
 
       <div className="rounded-lg border border-border bg-surface p-6 shadow-sm">
         <Toggle
+          layout="row"
           name="cardEnabled"
           label="Credit & debit card"
           hint="Processed by Stripe when PAYMENT_GATEWAY_DRIVER=stripe (real card charges, test mode with test keys); Numbers Gateway remains blocked pending DEP-01; FakeGateway is the local no-driver-set default."
@@ -71,6 +37,7 @@ export function MethodsForm({
           onChange={(v) => set('cardEnabled', v)}
         />
         <Toggle
+          layout="row"
           name="applePayEnabled"
           label="Apple Pay"
           hint="Also needs Apple domain verification and a merchant identity certificate — turning this on alone does not make the real button appear yet."
@@ -78,6 +45,7 @@ export function MethodsForm({
           onChange={(v) => set('applePayEnabled', v)}
         />
         <Toggle
+          layout="row"
           name="googlePayEnabled"
           label="Google Pay"
           hint="Also needs a registered Google Pay merchant ID — same caveat as Apple Pay."
@@ -85,6 +53,7 @@ export function MethodsForm({
           onChange={(v) => set('googlePayEnabled', v)}
         />
         <Toggle
+          layout="row"
           name="achEnabled"
           label="Bank transfer (ACH)"
           hint="No card fee applies to this method."
@@ -92,6 +61,7 @@ export function MethodsForm({
           onChange={(v) => set('achEnabled', v)}
         />
         <Toggle
+          layout="row"
           name="checkEnabled"
           label="Manual check upload"
           hint="Not wired up in the payment app yet — enabling this has no visible effect today."

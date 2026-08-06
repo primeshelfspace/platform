@@ -30,7 +30,9 @@ export interface SendMailInput {
    * metadata field and echoed on webhooks.
    */
   readonly messageTag: {
-    readonly brandId: string;
+    /** Absent for platform-level mail that predates any brand — a set-password
+     * link is sent before the recipient's organisation has one. */
+    readonly brandId?: string;
     readonly invoiceId?: string;
     readonly templateKey: string;
   };

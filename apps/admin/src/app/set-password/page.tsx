@@ -15,12 +15,17 @@ export const dynamic = 'force-dynamic';
 export default async function SetPasswordPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; token?: string }>;
 }) {
   const params = await searchParams;
   const returnTo = safeReturnPath(params.next);
+  const token = params.token;
 
-  if (!(await readSessionToken())) {
+  // Two legitimate ways in. An emailed link carries a one-time token and is
+  // the whole point of the signup flow, so it must work with no session at
+  // all; a signed-in user changing their password carries a session and no
+  // token. Only someone with neither is sent to sign in.
+  if (!token && !(await readSessionToken())) {
     redirect(`${LOGIN_PATH}?next=${encodeURIComponent('/set-password')}`);
   }
 
@@ -37,7 +42,7 @@ export default async function SetPasswordPage({
           </p>
         </div>
 
-        <SetPasswordForm returnTo={returnTo} />
+        <SetPasswordForm returnTo={returnTo} token={token} />
       </div>
     </main>
   );

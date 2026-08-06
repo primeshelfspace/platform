@@ -156,6 +156,32 @@ export function login(email: string, password: string): Promise<LoginResponse> {
   });
 }
 
+/**
+ * Self-serve signup. Returns only an acknowledgement — the account is not
+ * usable until the emailed set-password link is followed, so there is no
+ * session to hand back. `token: null` because none exists yet.
+ */
+export function register(fullName: string, email: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ fullName, email }),
+    token: null,
+  });
+}
+
+/**
+ * Sets the password from an emailed link. Returns a session, so the new owner
+ * continues straight into onboarding rather than being sent back to /login to
+ * type the password they just chose.
+ */
+export function setPasswordWithToken(token: string, newPassword: string): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>('/auth/set-password/token', {
+    method: 'POST',
+    body: JSON.stringify({ token, newPassword }),
+    token: null,
+  });
+}
+
 export function logout(): Promise<void> {
   return apiFetch<void>('/auth/logout', { method: 'POST' });
 }
@@ -505,12 +531,17 @@ export function getStripeAccountStatus(brandId: string): Promise<StripeAccountSt
 }
 
 /**
- * Where to send the browser to start the Connect handshake. A full-page
- * navigation to the API, not a fetch: the API answers with a redirect to
- * Stripe's consent screen, which the browser must follow itself.
+ * Where to send the browser to start the Connect handshake.
+ *
+ * A route on THIS origin, deliberately — not the API. The API's connect
+ * endpoint is authenticated, and a top-level browser navigation carries no
+ * Authorization header; in this BFF the browser holds no API session at all,
+ * since the token lives in an httpOnly cookie here and is only ever replayed
+ * server-side. Linking straight at the API arrives unauthenticated and 401s.
+ * The route handler attaches the token and forwards the redirect to Stripe.
  */
 export function stripeConnectUrl(brandId: string): string {
-  return `${API_URL}/brands/${brandId}/integrations/stripe/connect`;
+  return `/settings/stripe/connect?brandId=${encodeURIComponent(brandId)}`;
 }
 
 /** Revokes the platform's authorisation at Stripe and clears the connection. */

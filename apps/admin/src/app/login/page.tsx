@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getCurrentUser } from '@/lib/api';
 import { readSessionToken, safeReturnPath } from '@/lib/session';
@@ -52,6 +53,13 @@ export default async function LoginPage({
         )}
 
         <LoginForm returnTo={returnTo} />
+
+        <p className="mt-8 text-center text-sm text-[#64748B]">
+          Don&rsquo;t have an account?{' '}
+          <Link href="/signup" className="font-semibold text-[#0F172A] underline">
+            Create one
+          </Link>
+        </p>
       </div>
     </main>
   );

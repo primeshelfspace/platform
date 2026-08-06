@@ -16,6 +16,24 @@ export const dynamic = 'force-dynamic';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
 
+/**
+ * The connect flow returns either a short code it minted itself
+ * (`missing_brand`) or a sentence forwarded verbatim from the API
+ * ("STRIPE_CONNECT_CLIENT_ID is not configured on this deployment"). Only the
+ * former wants its underscores turned into spaces — doing it to the latter
+ * mangles the environment variable name the reader needs in order to act.
+ */
+function describeStripeError(raw: string): string {
+  const KNOWN: Record<string, string> = {
+    missing_brand: 'No brand was selected.',
+    api_unreachable: 'The API could not be reached.',
+    connect_failed: 'Stripe did not return a consent link.',
+    invalid_or_expired_state: 'That connection link expired. Try again.',
+    unknown_brand: 'That brand no longer exists.',
+  };
+  return KNOWN[raw] ?? raw;
+}
+
 export default async function PaymentMethodsPage({
   searchParams,
 }: {
@@ -115,7 +133,7 @@ export default async function PaymentMethodsPage({
             )}
             {params.stripeError && (
               <div className="mb-4 rounded-md bg-danger-surface p-3 text-sm text-danger">
-                Stripe could not be connected: {params.stripeError.replace(/_/g, ' ')}
+                Stripe could not be connected: {describeStripeError(params.stripeError)}
               </div>
             )}
 

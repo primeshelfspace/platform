@@ -30,6 +30,21 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/**
+ * Self-serve signup. Deliberately only a name and an email — no password.
+ *
+ * The account is created in the INVITED state with an unusable password hash,
+ * and registration issues a session directly, so the very next thing the new
+ * owner does is choose their own password through the existing forced-reset
+ * step (FR-AUTH-007/021). That means no temporary password is ever minted,
+ * transmitted, or left sitting in an inbox.
+ */
+export const registerSchema = z.object({
+  fullName: z.string().trim().min(1, 'your name is required').max(120),
+  email: emailSchema,
+});
+export type RegisterInput = z.infer<typeof registerSchema>;
+
 /** NFR-SEC: length over composition rules. */
 export const passwordSchema = z
   .string()
@@ -44,6 +59,15 @@ export const setPasswordSchema = z.object({
   newPassword: passwordSchema,
 });
 export type SetPasswordInput = z.infer<typeof setPasswordSchema>;
+
+/** Setting a password from an emailed link, with no session yet. The token is
+ * the credential, so it is validated for shape here and verified for real
+ * against its stored digest in PasswordResetService. */
+export const setPasswordWithTokenSchema = z.object({
+  token: z.string().regex(/^[0-9a-f]{64}$/, 'malformed token'),
+  newPassword: passwordSchema,
+});
+export type SetPasswordWithTokenInput = z.infer<typeof setPasswordWithTokenSchema>;
 
 // --- Brand -----------------------------------------------------------------
 

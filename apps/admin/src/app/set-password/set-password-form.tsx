@@ -84,7 +84,15 @@ function PasswordField({
   );
 }
 
-export function SetPasswordForm({ returnTo }: { returnTo: string }) {
+export function SetPasswordForm({
+  returnTo,
+  token,
+}: {
+  returnTo: string;
+  /** Present when arriving from an emailed link; absent for a signed-in user
+   * changing their own password. The action branches on it. */
+  token?: string;
+}) {
   const [state, formAction, pending] = useActionState(setPasswordAction, initialState);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -122,6 +130,7 @@ export function SetPasswordForm({ returnTo }: { returnTo: string }) {
   return (
     <form action={formAction} onSubmit={handleSubmit} noValidate className="space-y-5">
       <input type="hidden" name="next" value={returnTo} />
+      {token && <input type="hidden" name="token" value={token} />}
 
       <PasswordField
         id={newPasswordId}

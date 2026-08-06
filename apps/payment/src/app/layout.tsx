@@ -24,7 +24,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
-      <body className="min-h-full">{children}</body>
+      {/* See apps/admin/src/app/layout.tsx for why this is on <body>: browser
+       * extensions inject attributes here before React hydrates, and the
+       * server HTML cannot contain them. Scoped to this element's own
+       * attributes, so a genuine mismatch inside the payment flow is still
+       * reported — which matters more here than anywhere else in the system. */}
+      <body className="min-h-full" suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

@@ -14,7 +14,18 @@ import { NextResponse, type NextRequest } from 'next/server';
  * spends a server round trip discovering it should not have.
  */
 const SESSION_COOKIE = 'fenwick_admin_session';
-const PUBLIC_PATHS = ['/login'];
+/**
+ * Reachable with no session at all.
+ *
+ * `/welcome` is the public marketing page — without it here an anonymous
+ * visitor is bounced to /login and the product has no front door.
+ *
+ * `/set-password` is here because the emailed signup link carries a one-time
+ * token instead of a session; the page itself still turns away anyone arriving
+ * with neither. Bouncing it to /login would make the link useless — the
+ * recipient has no password yet, which is the entire reason they are here.
+ */
+const PUBLIC_PATHS = ['/login', '/signup', '/check-inbox', '/set-password', '/welcome'];
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl;

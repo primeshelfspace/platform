@@ -2,10 +2,14 @@ import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common'
 import type { Request, Response } from 'express';
 import {
   loginSchema,
+  registerSchema,
   setPasswordSchema,
+  setPasswordWithTokenSchema,
   type LoginInput,
+  type RegisterInput,
   type RequestScope,
   type SetPasswordInput,
+  type SetPasswordWithTokenInput,
 } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisation.js';
@@ -56,6 +60,62 @@ export class AuthController {
     // cookie issued on this origin cannot be read there, and SameSite=None
     // would need HTTPS to work at all in local development. The token is only
     // ever handled server-side by that app — it never reaches its browser.
+    return {
+      token: result.token,
+      expiresAt: result.expiresAt.toISOString(),
+      user: result.user,
+    };
+  }
+
+  /**
+   * FR-ONB: self-serve signup. Public, and the only write in this API that
+   * creates a tenant.
+   *
+   * Answers with nothing but an acknowledgement: the account is not usable
+   * until the emailed link is followed, so there is no session to hand back
+   * and nothing about the new account worth returning.
+   */
+  @Post('register')
+  @Public()
+  @HttpCode(202)
+  async register(
+    @Body(zodPipe(registerSchema)) body: RegisterInput,
+    @Req() request: Request,
+  ): Promise<{ ok: true }> {
+    await this.auth.register(body, {
+      sourceIp: request.ip ?? null,
+      userAgent: request.headers['user-agent'] ?? null,
+    });
+    return { ok: true };
+  }
+
+  /**
+   * FR-AUTH-006. Public because the emailed token IS the credential — the
+   * whole point is that the caller has no session yet. Answers in the shape of
+   * a sign-in, because it is one: the link is followed once and the new owner
+   * continues into onboarding without a second trip through /login.
+   */
+  @Post('set-password/token')
+  @Public()
+  @HttpCode(200)
+  async setPasswordWithToken(
+    @Body(zodPipe(setPasswordWithTokenSchema)) body: SetPasswordWithTokenInput,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<{ token: string; expiresAt: string; user: AuthenticatedUser }> {
+    const result = await this.auth.setPasswordWithToken(body.token, body.newPassword, {
+      sourceIp: request.ip ?? null,
+      userAgent: request.headers['user-agent'] ?? null,
+    });
+
+    response.cookie(SESSION_COOKIE, result.token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: request.secure,
+      expires: result.expiresAt,
+      path: '/',
+    });
+
     return {
       token: result.token,
       expiresAt: result.expiresAt.toISOString(),

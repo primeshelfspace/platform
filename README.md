@@ -12,6 +12,9 @@ pnpm setup:local     # services, migrations, seed, browser binaries
 pnpm dev
 ```
 
+Ports come from `.env` (`ADMIN_PORT`, `PAYMENT_PORT`, `API_PORT`) — the URLs
+below assume the defaults, so substitute your own if you have changed them.
+
 | Surface     | URL                          | Notes                                   |
 | ----------- | ---------------------------- | --------------------------------------- |
 | Admin app   | http://localhost:3000        | Sign-in required — see below            |
@@ -20,9 +23,12 @@ pnpm dev
 | Mail        | http://localhost:1080        | Every outbound message is captured here |
 
 **Signing in.** Every page of `apps/admin` is behind `/login` (FR-AUTH-001).
-Use any seeded address with the password `db:seed` prints — `pnpm db:seed`
-creates one user per role, so signing in as each is how you exercise the
-permission matrix:
+`pnpm db:seed` creates one user per role, all sharing the same development
+password, so signing in as each is how you exercise the permission matrix:
+
+```
+password: fenwick-dev-password
+```
 
 | Email                            | Role           | Brands                     |
 | -------------------------------- | -------------- | -------------------------- |
@@ -43,20 +49,23 @@ To call the API directly, the seed also writes a long-lived session:
 curl -H "Authorization: Bearer <token printed by db:seed>" http://localhost:4000/health
 ```
 
-Five failed sign-ins within fifteen minutes lock an account for thirty
-(FR-AUTH-002). To clear a lock while developing, re-run `pnpm db:seed`.
+Five _consecutive_ failed sign-ins within fifteen minutes lock an account for
+thirty (FR-AUTH-002); a successful sign-in resets the run. To clear a lock
+while developing, re-run `pnpm db:seed`.
 
-**If a port is already taken** by something else on your machine, override it
-rather than fighting the other process:
+**If a port is already taken** by something else on your machine, change it in
+`.env` and restart:
 
 ```bash
-ADMIN_PORT=3002 API_PORT=4001 pnpm dev
+ADMIN_PORT=3002
+API_PORT=4001
+NEXT_PUBLIC_API_URL=http://localhost:4001   # must match API_PORT
 ```
 
-and update `NEXT_PUBLIC_API_URL` in `.env` to match the new API port — admin's
-server-side fetches read that value at process start, not from the shell, so
-it needs to be in the file. Restart `pnpm dev` after editing `.env`; it is not
-picked up live.
+`.env` is the single source of truth for all three ports. Change
+`NEXT_PUBLIC_API_URL` alongside `API_PORT` — admin's server-side fetches read it
+at process start. Restart `pnpm dev` after editing `.env`; it is not picked up
+live.
 
 **Docker is the documented path** for local services (`docker-compose.yml`). If
 Docker is absent, `pnpm services:up` falls back to Homebrew-managed PostgreSQL

@@ -1,5 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import { evaluateTransition, formatQuantity, type PublicScope } from '@fenwick/shared';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  evaluateTransition,
+  formatQuantity,
+  STORAGE_PORT,
+  type PublicScope,
+  type StoragePort,
+} from '@fenwick/shared';
+import { LOGO_URL_TTL_SECONDS } from '../common/logo-upload.js';
 import { StripeAccountService } from '../integrations/stripe-account.service.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 
@@ -53,6 +60,7 @@ export class PublicInvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stripeAccounts: StripeAccountService,
+    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
   ) {}
 
   /** Null covers both "no such token" and "deactivated" — deliberately
@@ -123,6 +131,17 @@ export class PublicInvoicesService {
         }
       }
 
+      // Signed per request rather than stored: bucket objects are private and
+      // the URL is short-lived. The page is server-rendered on every visit, so
+      // a fresh one is always in hand — nothing cached can go stale.
+      const logoUrl = invoice.brand.logoKey
+        ? await this.storage
+            .getSignedUrl(invoice.brand.logoKey, { expiresInSeconds: LOGO_URL_TTL_SECONDS })
+            // A missing or unreadable object must not take down the payment
+            // page: the customer still needs to pay, branded or not.
+            .catch(() => null)
+        : null;
+
       const stripeAccountId = await this.stripeAccounts.getAccountIdForBrand(invoice.brandId);
       const stripePublishableKey = this.stripeAccounts.platformPublishableKey();
 
@@ -136,7 +155,7 @@ export class PublicInvoicesService {
         brand: {
           displayName: invoice.brand.displayName,
           themeColor: invoice.brand.themeColor,
-          logoUrl: null, // no asset pipeline wired up yet — logoKey exists, signed URLs do not
+          logoUrl,
         },
         lines: invoice.lineItems.map((l) => ({
           itemName: l.itemName,

@@ -208,9 +208,10 @@ model User {
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  merchant    Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  assignments UserBrandAssignment[]
-  sessions    Session[]
+  merchant       Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  assignments    UserBrandAssignment[]
+  sessions       Session[]
+  passwordTokens PasswordResetToken[]
 
   /// Email is unique within a merchant, not globally: the same person may hold
   /// accounts at two client organisations.
@@ -249,6 +250,33 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@map("session")
+}
+
+/// FR-AUTH-005/006 and FR-ONB: the emailed link that lets a brand-new owner —
+/// or anyone who has forgotten their password — set one without already
+/// holding a session.
+///
+/// Only the SHA-256 digest is stored, exactly like `session.token_hash`: the
+/// raw token exists in the recipient's inbox and nowhere else, so a database
+/// disclosure yields no usable links. Single use (`used_at`) and short-lived
+/// (`expires_at`), because a set-password link is a bearer credential for the
+/// whole account.
+///
+/// Outside row-level security for the same reason `session` is: it is consulted
+/// to establish who someone is, so it cannot itself be scoped by that answer.
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_token")
 }
 
 // ---------------------------------------------------------------------------

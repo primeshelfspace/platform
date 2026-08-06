@@ -181,10 +181,15 @@ function escapeHtml(s) {
   );
 }
 
-smtp.listen(SMTP_PORT, '127.0.0.1', () =>
-  process.stdout.write(`[mail-sink] SMTP on 127.0.0.1:${SMTP_PORT}\n`),
+// Bound to ::1 AND 127.0.0.1 rather than IPv4 alone. `localhost` resolves to
+// ::1 first on macOS and modern Linux, so an IPv4-only bind means anything
+// configured with SMTP_HOST=localhost — which .env.example is — fails to
+// connect with ECONNREFUSED while the sink sits there looking healthy.
+// Listening on the loopback interface generally keeps it local-only.
+smtp.listen(SMTP_PORT, '::', () =>
+  process.stdout.write(`[mail-sink] SMTP on localhost:${SMTP_PORT} (IPv4 + IPv6)\n`),
 );
-ui.listen(UI_PORT, '127.0.0.1', () =>
+ui.listen(UI_PORT, '::', () =>
   process.stdout.write(`[mail-sink] UI on http://localhost:${UI_PORT}\n`),
 );
 

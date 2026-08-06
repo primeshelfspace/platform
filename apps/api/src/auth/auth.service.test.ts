@@ -11,6 +11,8 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RequestScope } from '@fenwick/shared';
 import type { PrismaService } from '../infra/prisma/prisma.service.js';
 import { AuthService } from './auth.service.js';
+import type { AuthMailService } from './auth-mail.service.js';
+import type { PasswordResetService } from './password-reset.service.js';
 import { hashPassword, verifyPassword } from './password.js';
 import type { SessionService } from './session.service.js';
 
@@ -102,6 +104,27 @@ function fakeSessions(issued: string[]) {
   } as unknown as SessionService;
 }
 
+/** login never touches either of these — they exist so the constructor is
+ * satisfied, and a call would be a bug this stub makes loud. */
+function fakeResets() {
+  return {
+    issue: () => {
+      throw new Error('login must not issue a set-password token');
+    },
+    consume: () => {
+      throw new Error('login must not consume a set-password token');
+    },
+  } as unknown as PasswordResetService;
+}
+
+function fakeMail() {
+  return {
+    sendSetPasswordLink: () => {
+      throw new Error('login must not send mail');
+    },
+  } as unknown as AuthMailService;
+}
+
 function makeUser(overrides: Partial<UserRow> & { passwordHash: string }): UserRow {
   return {
     id: 'user-1',
@@ -141,7 +164,12 @@ describe('AuthService.login', () => {
     users = [makeUser({ passwordHash: hash })];
     audit = [];
     issued = [];
-    auth = new AuthService(fakePrisma(users, audit), fakeSessions(issued));
+    auth = new AuthService(
+      fakePrisma(users, audit),
+      fakeSessions(issued),
+      fakeResets(),
+      fakeMail(),
+    );
   });
 
   it('issues a session and clears the failure counter on a correct password', async () => {
@@ -324,7 +352,7 @@ describe('AuthService.logout', () => {
       },
     } as unknown as SessionService;
 
-    const auth = new AuthService(fakePrisma([], audit), sessions);
+    const auth = new AuthService(fakePrisma([], audit), sessions, fakeResets(), fakeMail());
     const scope: RequestScope = {
       merchantId: 'merchant-1',
       userId: 'user-1',
@@ -354,7 +382,12 @@ describe('AuthService.setPassword', () => {
   it('hashes the new password, flips status to ACTIVE, and records an audit row', async () => {
     const users = [makeUser({ passwordHash: await hashPassword(PASSWORD), status: 'INVITED' })];
     const audit: AuditRow[] = [];
-    const auth = new AuthService(fakePrisma(users, audit), fakeSessions([]));
+    const auth = new AuthService(
+      fakePrisma(users, audit),
+      fakeSessions([]),
+      fakeResets(),
+      fakeMail(),
+    );
 
     await auth.setPassword(scope, 'a-brand-new-password');
 
@@ -368,7 +401,7 @@ describe('AuthService.setPassword', () => {
 
   it('leaves an already-ACTIVE user ACTIVE', async () => {
     const users = [makeUser({ passwordHash: await hashPassword(PASSWORD), status: 'ACTIVE' })];
-    const auth = new AuthService(fakePrisma(users, []), fakeSessions([]));
+    const auth = new AuthService(fakePrisma(users, []), fakeSessions([]), fakeResets(), fakeMail());
 
     await auth.setPassword(scope, 'a-brand-new-password');
 

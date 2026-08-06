@@ -1,4 +1,5 @@
 import { listBrands } from '@/lib/api';
+import { OnboardingSteps } from '@/components/onboarding-steps';
 import { requireOnboardingStep } from '@/lib/onboarding';
 import { AddBrandForm } from './add-brand-form';
 import { FinishSetupForm } from './finish-setup-form';
@@ -19,6 +20,8 @@ export default async function MultiBrandSetupPage() {
   return (
     <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
       <div className="mx-auto w-full max-w-[720px]">
+        <OnboardingSteps current="Brand" />
+
         <div className="mb-10 text-center">
           <h1 className="text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
             Add Your Brands

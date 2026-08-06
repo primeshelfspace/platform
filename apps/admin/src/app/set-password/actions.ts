@@ -2,9 +2,9 @@
 
 import { redirect } from 'next/navigation';
 import { setPasswordSchema } from '@fenwick/shared';
-import { ApiError, getCurrentUser, setPassword } from '@/lib/api';
+import { ApiError, getCurrentUser, setPassword, setPasswordWithToken } from '@/lib/api';
 import { resolveOnboardingStep, routeForStep } from '@/lib/onboarding';
-import { safeReturnPath } from '@/lib/session';
+import { safeReturnPath, writeSessionToken } from '@/lib/session';
 
 export interface SetPasswordState {
   readonly error?: string;
@@ -31,10 +31,26 @@ export async function setPasswordAction(
     return { error: parsed.error.issues[0]?.message ?? 'Enter a valid password.' };
   }
 
+  // Two ways to reach this screen, and they authenticate differently: an
+  // emailed link carries a one-time token and no session, while a signed-in
+  // user carries a session and no token. The token path also mints the session
+  // that the rest of onboarding then runs on.
+  const token = String(formData.get('token') ?? '');
+
   try {
-    await setPassword(newPassword);
+    if (token) {
+      const result = await setPasswordWithToken(token, newPassword);
+      await writeSessionToken(result.token, new Date(result.expiresAt));
+    } else {
+      await setPassword(newPassword);
+    }
   } catch (error) {
     if (error instanceof ApiError) {
+      if (token && error.status === 401) {
+        return {
+          error: 'This link has expired or has already been used. Request a new one.',
+        };
+      }
       return { error: error.status === 401 ? 'Your session ended. Sign in again.' : error.message };
     }
     return { error: 'Could not reach the server. Try again.' };

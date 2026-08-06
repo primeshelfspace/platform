@@ -168,7 +168,7 @@ function AddressFields({
   );
 }
 
-export function BrandForm() {
+export function CompanyDetailsForm() {
   const [state, formAction, pending] = useActionState(saveCompanyDetailsAction, initialState);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
@@ -210,7 +210,7 @@ export function BrandForm() {
     const errors: FieldErrors = {};
     const get = (key: string) => String(formData.get(key) ?? '').trim();
 
-    if (!get('legalName')) errors.legalName = 'Brand name is required.';
+    if (!get('legalName')) errors.legalName = 'Legal business name is required.';
 
     const email = get('email');
     if (!email) errors.email = 'Brand email is required.';
@@ -258,7 +258,7 @@ export function BrandForm() {
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          aria-label="Upload brand logo"
+          aria-label="Upload business logo"
           className="flex h-[100px] w-[100px] items-center justify-center overflow-hidden rounded-full bg-[#F1F5F9]
                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
         >
@@ -285,7 +285,7 @@ export function BrandForm() {
                      text-[#0F172A] transition-colors hover:bg-slate-50 focus-visible:outline-none
                      focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
         >
-          Upload Brand Logo
+          Upload Business Logo
         </button>
         {logoError && (
           <p role="alert" className="mt-2 text-sm text-red-600">
@@ -296,10 +296,10 @@ export function BrandForm() {
 
       <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
         <Field
-          label="Brand Name"
+          label="Legal Business Name"
           name="legalName"
           required
-          placeholder="Enter brand name"
+          placeholder="Enter legal business name"
           error={fieldErrors.legalName}
           errorId={legalNameErrorId}
         />
@@ -308,7 +308,7 @@ export function BrandForm() {
           name="email"
           type="email"
           required
-          placeholder="Enter brand email"
+          placeholder="Enter business email"
           error={fieldErrors.email}
           errorId={emailErrorId}
         />
