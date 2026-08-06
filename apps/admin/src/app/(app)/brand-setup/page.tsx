@@ -1,6 +1,7 @@
 import { listBrands } from '@/lib/api';
-import { BrandDetailsForm } from './brand-details-form';
 import { PageContainer } from '@/components/page-container';
+import { BrandDetailsForm } from './brand-details-form';
+import { BrandSetupTabs, NotBuiltYet, isBrandSetupTab, type BrandSetupTab } from './tabs';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,19 +10,20 @@ export const dynamic = 'force-dynamic';
  * sidebar's brandId query param currently points at — the same convention
  * every other brand-scoped page in this app already follows.
  *
- * Only the "Brand Details" content exists today. The reference design this
- * was built from also shows Invoice PDF, Email Template and Payment Page as
- * sibling tabs; those pages don't exist yet, so no tab bar is rendered
- * rather than one that would point at broken links.
+ * All four designed sections appear as tabs. Only Brand Details is built; the
+ * other three say so in plain words rather than being hidden. Hiding them made
+ * the page look finished when it is not, and a tab that explains itself costs
+ * a reader less than a section that silently does not exist.
  */
 export default async function BrandSetupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brandId?: string }>;
+  searchParams: Promise<{ brandId?: string; tab?: string }>;
 }) {
-  const { brandId } = await searchParams;
+  const params = await searchParams;
   const brands = await listBrands();
-  const brand = brands.find((b) => b.id === brandId) ?? brands[0];
+  const brand = brands.find((b) => b.id === params.brandId) ?? brands[0];
+  const active: BrandSetupTab = isBrandSetupTab(params.tab) ? params.tab : 'details';
 
   return (
     <PageContainer>
@@ -31,12 +33,16 @@ export default async function BrandSetupPage({
         experience.
       </p>
 
-      {brand ? (
+      <BrandSetupTabs active={active} brandId={brand?.id} />
+
+      {!brand ? (
+        <p className="mt-8 text-sm text-ink-muted">No brand exists to configure yet.</p>
+      ) : active === 'details' ? (
         <div className="mt-8">
           <BrandDetailsForm brand={brand} />
         </div>
       ) : (
-        <p className="mt-8 text-sm text-ink-muted">No brand exists to configure yet.</p>
+        <NotBuiltYet tab={active} />
       )}
     </PageContainer>
   );
