@@ -30,14 +30,12 @@ export default async function SignupPage() {
   return (
     <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
       <div className="mx-auto w-full max-w-[600px]">
-        <div className="mb-8 text-center">
-          <LogoMark size={56} />
-          <h1 className="mt-6 text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
+        <div className="mb-10 text-center">
+          <LogoMark size={96} />
+          <h1 className="mt-6 text-[32px] font-bold tracking-tight text-[#0F172A] sm:text-[40px]">
             Create Your Account
           </h1>
-          <p className="mt-2 text-base text-[#64748B] sm:text-[17px]">
-            Create your account to get started.
-          </p>
+          <p className="mt-3 text-[17px] text-[#64748B]">Create your account to get started.</p>
         </div>
 
         <SignupForm />

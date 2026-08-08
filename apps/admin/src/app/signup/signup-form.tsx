@@ -14,7 +14,7 @@ const inputClass =
   'focus-visible:ring-offset-1 transition-colors';
 const validBorder = 'border-[#D1D5DB] focus:border-slate-900 focus-visible:ring-slate-900';
 const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-red-500';
-const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
+const labelClass = 'mb-2.5 block text-base font-bold text-[#0F172A]';
 
 interface FieldErrors {
   fullName?: string;
@@ -51,63 +51,65 @@ export function SignupForm() {
   }
 
   return (
-    <form action={formAction} onSubmit={handleSubmit} noValidate className="space-y-5">
-      <label className="block" htmlFor={nameId}>
-        <span className={labelClass}>Full Name</span>
-        <input
-          id={nameId}
-          name="fullName"
-          type="text"
-          autoComplete="name"
-          autoFocus
-          required
-          defaultValue={state.fullName ?? ''}
-          aria-invalid={Boolean(fieldErrors.fullName)}
-          aria-describedby={fieldErrors.fullName ? nameErrorId : undefined}
-          className={`${inputClass} ${fieldErrors.fullName ? invalidBorder : validBorder}`}
-          placeholder="Enter your full name"
-        />
-        {fieldErrors.fullName && (
-          <p id={nameErrorId} role="alert" className="mt-1.5 text-sm text-red-600">
-            {fieldErrors.fullName}
+    <form action={formAction} onSubmit={handleSubmit} noValidate>
+      <div className="space-y-6">
+        <label className="block" htmlFor={nameId}>
+          <span className={labelClass}>Full Name</span>
+          <input
+            id={nameId}
+            name="fullName"
+            type="text"
+            autoComplete="name"
+            autoFocus
+            required
+            defaultValue={state.fullName ?? ''}
+            aria-invalid={Boolean(fieldErrors.fullName)}
+            aria-describedby={fieldErrors.fullName ? nameErrorId : undefined}
+            className={`${inputClass} ${fieldErrors.fullName ? invalidBorder : validBorder}`}
+            placeholder="Enter your full name"
+          />
+          {fieldErrors.fullName && (
+            <p id={nameErrorId} role="alert" className="mt-1.5 text-sm text-red-600">
+              {fieldErrors.fullName}
+            </p>
+          )}
+        </label>
+
+        <label className="block" htmlFor={emailId}>
+          <span className={labelClass}>Email Address</span>
+          <input
+            id={emailId}
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            defaultValue={state.email ?? ''}
+            aria-invalid={Boolean(fieldErrors.email)}
+            aria-describedby={fieldErrors.email ? emailErrorId : undefined}
+            className={`${inputClass} ${fieldErrors.email ? invalidBorder : validBorder}`}
+            placeholder="Enter email address"
+          />
+          {fieldErrors.email && (
+            <p id={emailErrorId} role="alert" className="mt-1.5 text-sm text-red-600">
+              {fieldErrors.email}
+            </p>
+          )}
+        </label>
+
+        {state.error && (
+          <p
+            role="alert"
+            className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            {state.error}
           </p>
         )}
-      </label>
-
-      <label className="block" htmlFor={emailId}>
-        <span className={labelClass}>Email Address</span>
-        <input
-          id={emailId}
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          defaultValue={state.email ?? ''}
-          aria-invalid={Boolean(fieldErrors.email)}
-          aria-describedby={fieldErrors.email ? emailErrorId : undefined}
-          className={`${inputClass} ${fieldErrors.email ? invalidBorder : validBorder}`}
-          placeholder="Enter email address"
-        />
-        {fieldErrors.email && (
-          <p id={emailErrorId} role="alert" className="mt-1.5 text-sm text-red-600">
-            {fieldErrors.email}
-          </p>
-        )}
-      </label>
-
-      {state.error && (
-        <p
-          role="alert"
-          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {state.error}
-        </p>
-      )}
+      </div>
 
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-[10px] bg-black px-4 py-3.5 text-base font-bold text-white
+        className="mt-9 w-full rounded-[10px] bg-black px-4 py-3.5 text-[17px] font-bold text-white
                    transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB]
                    disabled:text-[#94A3B8] focus-visible:outline-none focus-visible:ring-2
                    focus-visible:ring-black focus-visible:ring-offset-2"
@@ -115,7 +117,7 @@ export function SignupForm() {
         {pending ? 'Creating your account…' : 'Create Account'}
       </button>
 
-      <p className="text-center text-sm text-[#64748B]">
+      <p className="mt-5 text-center text-[15px] text-[#64748B]">
         By creating an account, you agree to our{' '}
         <Link href="/terms" className="font-medium text-[#0F172A] underline">
           terms

@@ -35,7 +35,7 @@ function BrandRow({
   row,
   index,
   showDelete,
-  invalid,
+  errorMessage,
   onChangeName,
   onPickLogo,
   onRemove,
@@ -43,14 +43,16 @@ function BrandRow({
   row: Row;
   index: number;
   showDelete: boolean;
-  invalid: boolean;
+  errorMessage?: string;
   onChangeName: (value: string) => void;
   onPickLogo: (file: File | null) => void;
   onRemove: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const nameId = useId();
+  const errorId = useId();
   const trimmed = row.name.trim();
+  const invalid = Boolean(errorMessage);
 
   // Created once per file and revoked when it changes or the row unmounts.
   // Calling createObjectURL in the render body instead would mint a new blob
@@ -67,57 +69,65 @@ function BrandRow({
   }, [row.logo]);
 
   return (
-    <div className="flex items-end gap-3 rounded-[10px] bg-[#F8FAFC] p-3">
-      {/* Upload happens after the brand exists — its storage key is namespaced
-          by brand id — so this only stages the file and previews it. */}
-      <button
-        type="button"
-        onClick={() => fileRef.current?.click()}
-        aria-label={`Upload logo for brand ${index + 1}`}
-        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold text-white"
-        style={{ backgroundColor: trimmed ? avatarColour(trimmed) : '#E2E8F0' }}
-      >
-        {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt="" className="h-full w-full object-cover" />
-        ) : trimmed ? (
-          trimmed.charAt(0).toUpperCase()
-        ) : (
-          <ImageIcon className="h-5 w-5 text-[#94A3B8]" aria-hidden />
-        )}
-      </button>
-      <input
-        ref={fileRef}
-        type="file"
-        name="brandLogo"
-        accept="image/jpeg,image/png,image/svg+xml"
-        onChange={(e) => onPickLogo(e.target.files?.[0] ?? null)}
-        className="sr-only"
-      />
-
-      <label className="min-w-0 flex-1" htmlFor={nameId}>
-        <span className="mb-1 block text-xs font-semibold text-[#0F172A]">Brand Name</span>
-        <input
-          id={nameId}
-          name="brandName"
-          type="text"
-          value={row.name}
-          onChange={(e) => onChangeName(e.target.value)}
-          placeholder="Enter brand name"
-          aria-invalid={invalid}
-          className={`${inputClass} ${invalid ? invalidBorder : validBorder}`}
-        />
-      </label>
-
-      {showDelete && (
+    <div>
+      <div className="flex items-end gap-3 rounded-[10px] bg-[#F8FAFC] p-3">
+        {/* Upload happens after the brand exists — its storage key is namespaced
+            by brand id — so this only stages the file and previews it. */}
         <button
           type="button"
-          onClick={onRemove}
-          aria-label={`Remove brand ${index + 1}`}
-          className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EF4444] text-white transition-colors hover:bg-[#DC2626]"
+          onClick={() => fileRef.current?.click()}
+          aria-label={`Upload logo for brand ${index + 1}`}
+          className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold text-white"
+          style={{ backgroundColor: trimmed ? avatarColour(trimmed) : '#E2E8F0' }}
         >
-          <Trash2 className="h-4 w-4" aria-hidden />
+          {preview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={preview} alt="" className="h-full w-full object-cover" />
+          ) : trimmed ? (
+            trimmed.charAt(0).toUpperCase()
+          ) : (
+            <ImageIcon className="h-5 w-5 text-[#94A3B8]" aria-hidden />
+          )}
         </button>
+        <input
+          ref={fileRef}
+          type="file"
+          name="brandLogo"
+          accept="image/jpeg,image/png,image/svg+xml"
+          onChange={(e) => onPickLogo(e.target.files?.[0] ?? null)}
+          className="sr-only"
+        />
+
+        <label className="min-w-0 flex-1" htmlFor={nameId}>
+          <span className="mb-1 block text-xs font-semibold text-[#0F172A]">Brand Name</span>
+          <input
+            id={nameId}
+            name="brandName"
+            type="text"
+            value={row.name}
+            onChange={(e) => onChangeName(e.target.value)}
+            placeholder="Enter brand name"
+            aria-invalid={invalid}
+            aria-describedby={invalid ? errorId : undefined}
+            className={`${inputClass} ${invalid ? invalidBorder : validBorder}`}
+          />
+        </label>
+
+        {showDelete && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove brand ${index + 1}`}
+            className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#EF4444] text-white transition-colors hover:bg-[#DC2626]"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden />
+          </button>
+        )}
+      </div>
+      {errorMessage && (
+        <p id={errorId} role="alert" className="mt-1.5 pl-[56px] text-sm text-red-600">
+          {errorMessage}
+        </p>
       )}
     </div>
   );
@@ -138,10 +148,35 @@ export function BrandsForm() {
   const nextKey = useRef(1);
 
   const named = rows.filter((r) => r.name.trim().length > 0);
-  const canSubmit = named.length > 0 && !pending;
+
+  // Every row sharing a (case-insensitive, trimmed) name is flagged, not just
+  // the second one onward — with two duplicates on screen, marking only the
+  // later one reads as "this row is wrong" rather than "these two collide".
+  const nameCounts = new Map<string, number>();
+  for (const row of rows) {
+    const key = row.name.trim().toLowerCase();
+    if (key) nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+  }
+  const duplicateKeys = new Set(
+    rows.filter((row) => (nameCounts.get(row.name.trim().toLowerCase()) ?? 0) > 1).map((r) => r.key),
+  );
+  const hasDuplicates = duplicateKeys.size > 0;
+  const canSubmit = named.length > 0 && !hasDuplicates && !pending;
 
   function update(key: number, patch: Partial<Row>) {
     setRows((current) => current.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  function errorFor(row: Row): string | undefined {
+    // Shown immediately, not gated behind a submit attempt: a duplicate
+    // disables the submit button on its own (see canSubmit above), and a
+    // disabled button can never be clicked to reveal why — so the explanation
+    // has to appear the moment the collision exists, not after a submit that
+    // can no longer happen.
+    if (duplicateKeys.has(row.key)) return 'This brand name is already used above.';
+    if (!showErrors) return undefined;
+    if (row.name.trim().length === 0) return 'Brand name is required.';
+    return undefined;
   }
 
   return (
@@ -149,7 +184,7 @@ export function BrandsForm() {
       action={formAction}
       onSubmit={(event) => {
         setShowErrors(true);
-        if (named.length === 0) event.preventDefault();
+        if (named.length === 0 || hasDuplicates) event.preventDefault();
       }}
       className="space-y-3"
     >
@@ -159,7 +194,7 @@ export function BrandsForm() {
           row={row}
           index={index}
           showDelete={rows.length > 1}
-          invalid={showErrors && row.name.trim().length === 0}
+          errorMessage={errorFor(row)}
           onChangeName={(name) => update(row.key, { name })}
           onPickLogo={(logo) => update(row.key, { logo })}
           onRemove={() => setRows((current) => current.filter((r) => r.key !== row.key))}
@@ -194,7 +229,7 @@ export function BrandsForm() {
                    disabled:bg-[#E5E7EB] disabled:text-[#94A3B8] focus-visible:outline-none
                    focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
       >
-        {pending ? 'Creating your brands…' : 'Create & Go to Dashboard'}
+        {pending ? 'Creating Brands…' : 'Create Brands'}
       </button>
     </form>
   );

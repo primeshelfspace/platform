@@ -24,8 +24,19 @@ const SESSION_COOKIE = 'fenwick_admin_session';
  * token instead of a session; the page itself still turns away anyone arriving
  * with neither. Bouncing it to /login would make the link useless — the
  * recipient has no password yet, which is the entire reason they are here.
+ *
+ * `/terms` and `/privacy` are linked from the sign-up form, which by
+ * definition is filled out by someone with no session yet.
  */
-const PUBLIC_PATHS = ['/login', '/signup', '/check-inbox', '/set-password', '/welcome'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/signup',
+  '/check-inbox',
+  '/set-password',
+  '/welcome',
+  '/terms',
+  '/privacy',
+];
 
 export function middleware(request: NextRequest): NextResponse {
   const { pathname, search } = request.nextUrl;

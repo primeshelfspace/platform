@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import { LogoMark } from '@/components/logo-mark';
 import { LOGIN_PATH, readSessionToken, safeReturnPath } from '@/lib/session';
 import { SetPasswordForm } from './set-password-form';
 
@@ -33,7 +34,8 @@ export default async function SetPasswordPage({
     <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
       <div className="mx-auto w-full max-w-[600px]">
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
+          <LogoMark size={56} />
+          <h1 className="mt-6 text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
             Set Your Password
           </h1>
           <p className="mt-2 text-base text-[#64748B] sm:text-[17px]">
