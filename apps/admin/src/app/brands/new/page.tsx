@@ -1,4 +1,4 @@
-import { OnboardingSteps } from '@/components/onboarding-steps';
+import { OnboardingHeader } from '@/components/onboarding-header';
 import { requireOnboardingStep } from '@/lib/onboarding';
 import { CompanyDetailsForm } from './company-details-form';
 
@@ -20,21 +20,22 @@ export default async function CompanyDetailsPage() {
   await requireOnboardingStep('company-details');
 
   return (
-    <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
-      <div className="mx-auto w-full max-w-[1000px]">
-        <OnboardingSteps current="Company" />
+    <>
+      <OnboardingHeader current="Company" />
+      <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
+        <div className="mx-auto w-full max-w-[1000px]">
+          <div className="mb-10 text-center">
+            <h1 className="text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
+              Company Details
+            </h1>
+            <p className="mt-2 text-base text-[#64748B] sm:text-[17px]">
+              Tell us about your business. This information appears across your invoices.
+            </p>
+          </div>
 
-        <div className="mb-10 text-center">
-          <h1 className="text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
-            Company Details
-          </h1>
-          <p className="mt-2 text-base text-[#64748B] sm:text-[17px]">
-            Tell us about your business. This information appears across your invoices.
-          </p>
+          <CompanyDetailsForm />
         </div>
-
-        <CompanyDetailsForm />
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

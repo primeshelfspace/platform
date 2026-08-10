@@ -35,22 +35,34 @@ export async function signupAction(
     return { error: 'Enter a valid email address.', fullName, email };
   }
 
-  try {
-    await register(fullName, email);
-  } catch (error) {
-    if (error instanceof ApiError) {
-      // 409 is the one failure worth naming: the address is already taken, and
-      // the useful next step is signing in rather than trying again.
-      if (error.status === 409) {
-        return {
-          error: 'An account with this email already exists. Sign in instead.',
-          fullName,
-          email,
-        };
+  // A second attempt guards against a one-off network-level drop (a dev-server
+  // recompile interrupting the in-flight request, a brief connection reset)
+  // rather than the service actually being unreachable. Retrying is safe:
+  // register() is keyed by email and answers 409 if the first attempt already
+  // landed server-side, so a retry after a lost response degrades to the
+  // "already exists" message below instead of a duplicate account.
+  const MAX_ATTEMPTS = 2;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await register(fullName, email);
+      break;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        // 409 is the one failure worth naming: the address is already taken, and
+        // the useful next step is signing in rather than trying again.
+        if (error.status === 409) {
+          return {
+            error: 'An account with this email already exists. Sign in instead.',
+            fullName,
+            email,
+          };
+        }
+        return { error: error.message, fullName, email };
       }
-      return { error: error.message, fullName, email };
+      if (attempt === MAX_ATTEMPTS) {
+        return { error: 'Could not reach the sign-up service.', fullName, email };
+      }
     }
-    return { error: 'Could not reach the sign-up service.', fullName, email };
   }
 
   // Outside the try/catch on purpose: redirect() signals by throwing, and

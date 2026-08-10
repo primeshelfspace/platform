@@ -1,4 +1,4 @@
-import { OnboardingSteps } from '@/components/onboarding-steps';
+import { OnboardingHeader } from '@/components/onboarding-header';
 import { requireOnboardingStep } from '@/lib/onboarding';
 import { BrandsForm } from './brands-form';
 
@@ -13,21 +13,22 @@ export default async function MultiBrandSetupPage() {
   await requireOnboardingStep('multi-brand-setup');
 
   return (
-    <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
-      <div className="mx-auto w-full max-w-[560px]">
-        <OnboardingSteps current="Brand" />
+    <>
+      <OnboardingHeader current="Brand" />
+      <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
+        <div className="mx-auto w-full max-w-[560px]">
+          <div className="mb-8 text-center">
+            <h1 className="text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
+              Set Up Your Brands
+            </h1>
+            <p className="mt-2 text-base text-[#64748B] sm:text-[17px]">
+              Give each brand a name. You can always add more later.
+            </p>
+          </div>
 
-        <div className="mb-8 text-center">
-          <h1 className="text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">
-            Set Up Your Brands
-          </h1>
-          <p className="mt-2 text-base text-[#64748B] sm:text-[17px]">
-            Give each brand a name. You can always add more later.
-          </p>
+          <BrandsForm />
         </div>
-
-        <BrandsForm />
-      </div>
-    </main>
+      </main>
+    </>
   );
 }

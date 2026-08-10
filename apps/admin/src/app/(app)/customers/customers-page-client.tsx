@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Plus, Search, Settings, Users } from 'lucide-react';
+import { Plus, Search, Users } from 'lucide-react';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { Toggle } from '@/components/ui/toggle';
 import type { Brand, Customer, CustomerListRow } from '@/lib/api';
@@ -16,7 +16,6 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export function CustomersPageClient({
   brand,
-  userInitial,
   customers,
   total,
   search,
@@ -26,7 +25,6 @@ export function CustomersPageClient({
   customersError,
 }: {
   brand: Brand | null;
-  userInitial: string;
   customers: CustomerListRow[];
   total: number;
   search: string;
@@ -92,37 +90,6 @@ export function CustomersPageClient({
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-4">
-        <div className="relative max-w-sm flex-1">
-          <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]"
-            aria-hidden
-          />
-          <input
-            type="search"
-            aria-label="Search"
-            placeholder="Search"
-            className="h-10 w-full rounded-lg border border-transparent bg-[#EFF3FB] pl-9 pr-3 text-sm text-[#0F172A]
-                       placeholder:text-[#94A3B8] focus-visible:outline-none focus-visible:ring-2
-                       focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-          />
-        </div>
-        <Link
-          href={brand ? `/settings/payment-methods?brandId=${brand.id}` : '/settings/payment-methods'}
-          aria-label="Settings"
-          className="rounded-md p-2 text-[#64748B] hover:bg-slate-100 focus-visible:outline-none
-                     focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-        >
-          <Settings className="h-5 w-5" aria-hidden />
-        </Link>
-        <span
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#8B5CF6] text-sm font-bold text-white"
-          aria-hidden
-        >
-          {userInitial}
-        </span>
-      </div>
-
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-[28px] font-bold text-[#0F172A]">Customers</h1>

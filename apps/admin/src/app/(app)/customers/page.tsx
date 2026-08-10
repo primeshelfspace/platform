@@ -1,11 +1,9 @@
 import { BrandTheme } from '@/components/brand-theme';
 import {
   ApiError,
-  getCurrentUser,
   listBrands,
   listCustomers,
   type Brand,
-  type CurrentUser,
   type CustomerListRow,
 } from '@/lib/api';
 import { PageContainer } from '@/components/page-container';
@@ -34,14 +32,6 @@ export default async function CustomersPage({
 
   const activeBrand = brands.find((b) => b.id === params.brandId) ?? brands[0] ?? null;
 
-  let user: CurrentUser | null = null;
-  try {
-    user = await getCurrentUser();
-  } catch {
-    // The page still works with no avatar initials — worst case the top bar
-    // shows a placeholder rather than losing the whole page.
-  }
-
   let customers: CustomerListRow[] = [];
   let total = 0;
   let customersError: string | null = null;
@@ -63,7 +53,6 @@ export default async function CustomersPage({
       <PageContainer>
         <CustomersPageClient
           brand={activeBrand}
-          userInitial={(user?.name || user?.email || '?').trim().charAt(0).toUpperCase()}
           customers={customers}
           total={total}
           search={params.search ?? ''}
