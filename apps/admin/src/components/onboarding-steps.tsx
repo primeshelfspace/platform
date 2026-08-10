@@ -1,3 +1,5 @@
+import { Check } from 'lucide-react';
+
 /**
  * The Company → Structure → Brand progress indicator shown across onboarding.
  *
@@ -24,10 +26,14 @@ export function OnboardingSteps({ current }: { current: OnboardingStepLabel }) {
               <span
                 aria-current={active ? 'step' : undefined}
                 className={`flex h-7 w-7 items-center justify-center rounded-full text-[13px] font-semibold ${
-                  done || active ? 'bg-[#0F172A] text-white' : 'bg-[#E2E8F0] text-[#94A3B8]'
+                  done
+                    ? 'bg-emerald-500 text-white'
+                    : active
+                      ? 'bg-[#0F172A] text-white'
+                      : 'bg-[#E2E8F0] text-[#94A3B8]'
                 }`}
               >
-                {index + 1}
+                {done ? <Check className="h-4 w-4" aria-hidden /> : index + 1}
               </span>
               <span
                 className={`text-[11px] font-medium ${
@@ -40,7 +46,7 @@ export function OnboardingSteps({ current }: { current: OnboardingStepLabel }) {
             {index < STEPS.length - 1 && (
               <span
                 aria-hidden
-                className={`mb-5 h-px w-10 sm:w-16 ${done ? 'bg-[#0F172A]' : 'bg-[#E2E8F0]'}`}
+                className={`mb-5 h-px w-10 sm:w-16 ${done ? 'bg-emerald-500' : 'bg-[#E2E8F0]'}`}
               />
             )}
           </li>
