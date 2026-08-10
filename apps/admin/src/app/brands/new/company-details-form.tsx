@@ -2,7 +2,14 @@
 
 import { useActionState, useId, useRef, useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
-import { COUNTRIES, regionsFor } from '@fenwick/shared';
+import {
+  COUNTRIES,
+  regionsFor,
+  normalizeUsPhone,
+  isValidUsZip,
+  normalizeWebsiteDomain,
+  checkBusinessEmail,
+} from '@fenwick/shared';
 
 import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@fenwick/shared';
 import { Select } from '@/components/ui/select';
@@ -28,6 +35,7 @@ interface FieldErrors {
   legalName?: string;
   email?: string;
   phone?: string;
+  website?: string;
   taxId?: string;
   mailingLine1?: string;
   mailingCity?: string;
@@ -188,6 +196,7 @@ export function CompanyDetailsForm() {
   const legalNameErrorId = useId();
   const businessTypeErrorId = useId();
   const taxIdErrorId = useId();
+  const websiteErrorId = useId();
 
   function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -217,11 +226,32 @@ export function CompanyDetailsForm() {
     if (!get('legalName')) errors.legalName = 'Legal business name is required.';
     if (!get('businessType')) errors.businessType = 'Select a business type.';
 
+    const website = get('website');
+    const websiteDomain = website ? normalizeWebsiteDomain(website) : null;
+    if (website && !websiteDomain) {
+      errors.website = 'Enter a valid company website, e.g. acme.com.';
+    }
+
     const email = get('email');
     if (!email) errors.email = 'Brand email is required.';
     else if (!EMAIL_PATTERN.test(email)) errors.email = 'Enter a valid email address.';
+    else {
+      const businessEmail = checkBusinessEmail(email, websiteDomain);
+      if (!businessEmail.ok) {
+        errors.email =
+          businessEmail.reason === 'DOMAIN_MISMATCH'
+            ? "This email doesn't match your company website's domain."
+            : businessEmail.reason === 'FREE_PROVIDER'
+              ? 'Use your company email address, not a personal email provider.'
+              : 'Enter a valid email address.';
+      }
+    }
 
-    if (!get('phone')) errors.phone = 'Brand phone is required.';
+    const phone = get('phone');
+    if (!phone) errors.phone = 'Brand phone is required.';
+    else if (!normalizeUsPhone(phone)) {
+      errors.phone = 'Enter a valid US phone number, e.g. (212) 555-1234.';
+    }
 
     const taxId = get('taxId');
     if (taxId && mailingCountry === 'US' && !EIN_PATTERN.test(taxId)) {
@@ -231,13 +261,21 @@ export function CompanyDetailsForm() {
     if (!get('mailingLine1')) errors.mailingLine1 = 'Address line 1 is required.';
     if (!get('mailingCity')) errors.mailingCity = 'City is required.';
     if (!get('mailingRegion')) errors.mailingRegion = 'State/Province is required.';
-    if (!get('mailingPostalCode')) errors.mailingPostalCode = 'Zip/Postal code is required.';
+    const mailingPostalCode = get('mailingPostalCode');
+    if (!mailingPostalCode) errors.mailingPostalCode = 'Zip/Postal code is required.';
+    else if (mailingCountry === 'US' && !isValidUsZip(mailingPostalCode)) {
+      errors.mailingPostalCode = 'Enter a valid ZIP code, e.g. 12345 or 12345-6789.';
+    }
 
     if (!sameAsMailing) {
       if (!get('billingLine1')) errors.billingLine1 = 'Address line 1 is required.';
       if (!get('billingCity')) errors.billingCity = 'City is required.';
       if (!get('billingRegion')) errors.billingRegion = 'State/Province is required.';
-      if (!get('billingPostalCode')) errors.billingPostalCode = 'Zip/Postal code is required.';
+      const billingPostalCode = get('billingPostalCode');
+      if (!billingPostalCode) errors.billingPostalCode = 'Zip/Postal code is required.';
+      else if (billingCountry === 'US' && !isValidUsZip(billingPostalCode)) {
+        errors.billingPostalCode = 'Enter a valid ZIP code, e.g. 12345 or 12345-6789.';
+      }
     }
 
     return errors;
@@ -344,13 +382,22 @@ export function CompanyDetailsForm() {
           name="phone"
           type="tel"
           required
-          placeholder="Enter phone number"
+          placeholder="(212) 555-1234"
           error={fieldErrors.phone}
           errorId={phoneErrorId}
         />
         <Field
+          label="Company Website"
+          name="website"
+          hint="(optional)"
+          placeholder="acme.com"
+          error={fieldErrors.website}
+          errorId={websiteErrorId}
+        />
+        <Field
           label="Tax ID / EIN"
           name="taxId"
+          hint="(optional)"
           placeholder="Enter Tax ID/EID"
           error={fieldErrors.taxId}
           errorId={taxIdErrorId}

@@ -10,6 +10,7 @@ export interface CompanyDetailsView {
   readonly businessType: string;
   readonly phone: string | null;
   readonly email: string | null;
+  readonly website: string | null;
   readonly mailingAddress: unknown;
   readonly billingAddress: unknown;
   readonly taxId: string | null;
@@ -59,6 +60,7 @@ export class MerchantService {
             businessType: merchant.companyBusinessType ?? '',
             phone: merchant.companyPhone,
             email: merchant.companyEmail,
+            website: merchant.companyWebsite,
             mailingAddress: merchant.companyMailingAddress,
             billingAddress: merchant.companyBillingAddress,
             taxId: merchant.companyTaxId,
@@ -81,6 +83,7 @@ export class MerchantService {
           companyBusinessType: input.businessType,
           companyPhone: input.phone,
           companyEmail: input.email,
+          companyWebsite: input.website,
           companyMailingAddress: input.mailingAddress ?? undefined,
           companyBillingAddress: input.billingAddress ?? undefined,
           companyTaxId: input.taxId,

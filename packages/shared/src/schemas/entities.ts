@@ -3,6 +3,7 @@ import { ROLES } from '../domain/roles.js';
 import { BUSINESS_TYPES } from '../domain/business-type.js';
 import { INVOICE_STATUSES } from '../domain/invoice-status.js';
 import { PAYMENT_METHODS } from '../money/calculation.js';
+import { normalizeWebsiteDomain, checkBusinessEmail } from '../domain/company-domain.js';
 import {
   addressSchema,
   basisPointsSchema,
@@ -16,6 +17,7 @@ import {
   phoneSchema,
   quantityStringSchema,
   timezoneSchema,
+  usPhoneSchema,
 } from './common.js';
 
 // --- Authentication --------------------------------------------------------
@@ -104,6 +106,35 @@ export const brandObjectSchema = z.object({
 
 // --- Onboarding (FR-ONB) -----------------------------------------------------
 
+/** Company website — normalized to a bare domain (`acme.com`) regardless of
+ * scheme, `www.`, casing or a trailing slash, so it compares cleanly against
+ * the business email's domain. */
+export const websiteSchema = z
+  .string()
+  .trim()
+  .max(253)
+  .nullable()
+  .refine((v) => v === null || normalizeWebsiteDomain(v) !== null, {
+    message: 'enter a valid company website, e.g. acme.com',
+  })
+  .transform((v) => (v === null ? null : normalizeWebsiteDomain(v)));
+
+/** Exported so callers building on companyDetailsObjectSchema can apply the
+ * identical check after extending it — see taxIdMatchesCountry above for why
+ * a `.refine()`'d schema needs this rather than an inherited `.extend()`. */
+export function businessEmailMatchesWebsite(v: {
+  readonly email: string | null;
+  readonly website: string | null;
+}): boolean {
+  if (!v.email) return true;
+  return checkBusinessEmail(v.email, v.website).ok;
+}
+
+const BUSINESS_EMAIL_MESSAGES: Record<string, string> = {
+  FREE_PROVIDER: 'use your company email address rather than a personal email provider',
+  DOMAIN_MISMATCH: "this email doesn't match your company website's domain",
+};
+
 /** Staged on Merchant before any Brand exists — same fields as brandObjectSchema
  * minus the settings a Brand needs but a company doesn't have yet (currency,
  * timezone, invoice prefix, theme colour, display name). */
@@ -112,16 +143,26 @@ export const companyDetailsObjectSchema = z.object({
   /** Trading name, where it differs from the legal one. */
   dba: z.string().trim().max(200).nullable(),
   businessType: businessTypeSchema,
-  phone: phoneSchema.nullable(),
+  /** US-only — see usPhoneSchema. */
+  phone: usPhoneSchema.nullable(),
   email: emailSchema.nullable(),
+  website: websiteSchema,
   mailingAddress: addressSchema.nullable(),
   billingAddress: addressSchema.nullable(),
   taxId: z.string().trim().max(64).nullable(),
 });
-export const companyDetailsSchema = companyDetailsObjectSchema.refine(taxIdMatchesCountry, {
-  message: TAX_ID_FORMAT_MESSAGE,
-  path: ['taxId'],
-});
+export const companyDetailsSchema = companyDetailsObjectSchema
+  .refine(taxIdMatchesCountry, {
+    message: TAX_ID_FORMAT_MESSAGE,
+    path: ['taxId'],
+  })
+  .refine(businessEmailMatchesWebsite, (v) => ({
+    message: v.email
+      ? (BUSINESS_EMAIL_MESSAGES[checkBusinessEmail(v.email, v.website).reason ?? ''] ??
+        'enter a valid business email address')
+      : 'enter a valid business email address',
+    path: ['email'],
+  }));
 export type CompanyDetailsInput = z.infer<typeof companyDetailsObjectSchema>;
 
 export const BRAND_STRUCTURES = ['SINGLE', 'MULTI'] as const;

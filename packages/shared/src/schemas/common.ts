@@ -7,6 +7,8 @@
 
 import { z } from 'zod';
 import { SUPPORTED_CURRENCIES } from '../money/money.js';
+import { isValidUsZip } from '../domain/us-postal-code.js';
+import { normalizeUsPhone } from '../domain/us-phone.js';
 
 export const idSchema = z.string().uuid();
 
@@ -40,19 +42,36 @@ export const phoneSchema = z
   .max(32)
   .regex(/^[+()\-.\s\d]*$/, 'phone may contain digits and + ( ) - . only');
 
-export const addressSchema = z.object({
-  line1: z.string().trim().max(200).nullable(),
-  line2: z.string().trim().max(200).nullable(),
-  city: z.string().trim().max(120).nullable(),
-  region: z.string().trim().max(120).nullable(),
-  postalCode: z.string().trim().max(32).nullable(),
-  country: z
-    .string()
-    .trim()
-    .length(2, 'country is an ISO 3166-1 alpha-2 code')
-    .toUpperCase()
-    .nullable(),
-});
+/** US-only phone field — Company Details (FR-ONB) is scoped to US companies,
+ * unlike the general `phoneSchema` above shared with Brand and Customer.
+ * Normalizes to E.164 (`+1XXXXXXXXXX`) so every stored number has one shape
+ * regardless of how it was typed. */
+export const usPhoneSchema = z
+  .string()
+  .trim()
+  .refine((v) => normalizeUsPhone(v) !== null, {
+    message: 'enter a valid US phone number, e.g. (212) 555-1234',
+  })
+  .transform((v) => normalizeUsPhone(v) as string);
+
+export const addressSchema = z
+  .object({
+    line1: z.string().trim().max(200).nullable(),
+    line2: z.string().trim().max(200).nullable(),
+    city: z.string().trim().max(120).nullable(),
+    region: z.string().trim().max(120).nullable(),
+    postalCode: z.string().trim().max(32).nullable(),
+    country: z
+      .string()
+      .trim()
+      .length(2, 'country is an ISO 3166-1 alpha-2 code')
+      .toUpperCase()
+      .nullable(),
+  })
+  .refine((v) => v.country !== 'US' || !v.postalCode || isValidUsZip(v.postalCode), {
+    message: 'enter a valid US ZIP code, e.g. 12345 or 12345-6789',
+    path: ['postalCode'],
+  });
 export type AddressInput = z.infer<typeof addressSchema>;
 
 /** IANA zone. Explicit everywhere; never inferred from the browser (NFR-LOC-002). */

@@ -273,6 +273,7 @@ export interface CompanyDetails {
   businessType: BusinessType | null;
   phone: string | null;
   email: string | null;
+  website: string | null;
   mailingAddress: CustomerAddress | null;
   billingAddress: CustomerAddress | null;
   taxId: string | null;
@@ -301,6 +302,7 @@ export interface CompanyDetailsFormInput {
   businessType: BusinessType;
   phone: string | null;
   email: string | null;
+  website: string | null;
   mailingAddress: CustomerAddress | null;
   billingAddress: CustomerAddress | null;
   taxId: string | null;

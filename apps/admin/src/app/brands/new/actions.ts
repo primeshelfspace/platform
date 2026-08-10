@@ -44,6 +44,7 @@ export async function saveCompanyDetailsAction(
     businessType,
     phone: emptyToNull(formData.get('phone')),
     email: emptyToNull(formData.get('email')),
+    website: emptyToNull(formData.get('website')),
     mailingAddress,
     billingAddress,
     taxId: emptyToNull(formData.get('taxId')),

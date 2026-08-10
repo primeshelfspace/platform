@@ -179,6 +179,9 @@ model Merchant {
   companyBusinessType  BusinessType?    @map("company_business_type")
   companyPhone         String?          @map("company_phone")
   companyEmail         String?          @map("company_email")
+  /// Normalized bare domain (e.g. "acme.com") — used to verify companyEmail
+  /// belongs to the business rather than a personal provider.
+  companyWebsite       String?          @map("company_website")
   companyMailingAddress Json?           @map("company_mailing_address")
   companyBillingAddress Json?           @map("company_billing_address")
   companyTaxId         String?          @map("company_tax_id")
