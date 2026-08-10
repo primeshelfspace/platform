@@ -6,15 +6,28 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Customer } from '@prisma/client';
 import type { CustomerInput, CustomerListQuery, Scope } from '@fenwick/shared';
-import { PrismaService } from '../infra/prisma/prisma.service.js';
+import { PrismaService, type ScopedClient } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
 
+/** A row's outstanding balance, invoice count and settled-payment count — the
+ * three figures the listing table shows per customer (FR-CUS list view). */
+export interface CustomerListRow extends Customer {
+  readonly outstandingMinor: number;
+  readonly invoiceCount: number;
+  readonly paymentCount: number;
+}
+
 export interface CustomerListResult {
-  readonly data: Customer[];
+  readonly data: CustomerListRow[];
   readonly page: number;
   readonly pageSize: number;
   readonly total: number;
 }
+
+/** Payment statuses that count as "collected" for the list view's Payments
+ * column — mirrors the settled/terminal split invoices.service.ts already
+ * draws between OPEN_INVOICE_STATUSES and the rest. */
+const COLLECTED_PAYMENT_STATUSES = ['SETTLED'] as const;
 
 /**
  * Customers (FR-CUS). Every method runs inside PrismaService.withScope, which
@@ -71,8 +84,76 @@ export class CustomersService {
         tx.customer.count({ where }),
       ]);
 
-      return { data, page: query.page, pageSize: query.pageSize, total };
+      const enriched = await this.withInvoiceStats(tx, data);
+      return { data: enriched, page: query.page, pageSize: query.pageSize, total };
     });
+  }
+
+  /**
+   * Attaches outstanding balance, invoice count and settled-payment count to
+   * a page of customers — three SUMs the list query itself can't produce
+   * without fanning the row out per invoice. `balanceMinor` is already 0 on
+   * a paid or cancelled invoice (it's stored, not derived — see the Invoice
+   * model), so summing it unconditionally across every invoice is correct
+   * without a status filter.
+   *
+   * Payments have no customerId of their own (only invoiceId), so a second
+   * query maps invoice → customer before the payment counts can be folded in.
+   */
+  private async withInvoiceStats(
+    tx: ScopedClient,
+    customers: Customer[],
+  ): Promise<CustomerListRow[]> {
+    const customerIds = customers.map((c) => c.id);
+    if (customerIds.length === 0) return [];
+
+    const [invoiceAgg, invoices] = await Promise.all([
+      tx.invoice.groupBy({
+        by: ['customerId'],
+        where: { customerId: { in: customerIds } },
+        _count: { _all: true },
+        _sum: { balanceMinor: true },
+      }),
+      tx.invoice.findMany({
+        where: { customerId: { in: customerIds } },
+        select: { id: true, customerId: true },
+      }),
+    ]);
+
+    const invoiceIds = invoices.map((i) => i.id);
+    const paymentAgg = invoiceIds.length
+      ? await tx.payment.groupBy({
+          by: ['invoiceId'],
+          where: {
+            invoiceId: { in: invoiceIds },
+            status: { in: [...COLLECTED_PAYMENT_STATUSES] },
+          },
+          _count: { _all: true },
+        })
+      : [];
+
+    const customerIdByInvoiceId = new Map(invoices.map((i) => [i.id, i.customerId]));
+    const paymentCountByCustomer = new Map<string, number>();
+    for (const row of paymentAgg) {
+      const customerId = customerIdByInvoiceId.get(row.invoiceId);
+      if (!customerId) continue;
+      paymentCountByCustomer.set(
+        customerId,
+        (paymentCountByCustomer.get(customerId) ?? 0) + row._count._all,
+      );
+    }
+
+    const invoiceCountByCustomer = new Map(invoiceAgg.map((r) => [r.customerId, r._count._all]));
+    const outstandingByCustomer = new Map(
+      invoiceAgg.map((r) => [r.customerId, r._sum.balanceMinor ?? 0n]),
+    );
+
+    return customers.map((c) => ({
+      ...c,
+      invoiceCount: invoiceCountByCustomer.get(c.id) ?? 0,
+      paymentCount: paymentCountByCustomer.get(c.id) ?? 0,
+      outstandingMinor: Number(outstandingByCustomer.get(c.id) ?? 0n),
+    }));
   }
 
   async findOne(scope: Scope, brandId: string, id: string): Promise<Customer> {

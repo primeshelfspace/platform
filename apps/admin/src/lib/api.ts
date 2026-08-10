@@ -369,8 +369,16 @@ export interface Customer {
   updatedAt: string;
 }
 
+/** A listing row — Customer plus the three figures the table shows that a
+ * single customer fetch has no need for (FR-CUS list view). */
+export interface CustomerListRow extends Customer {
+  outstandingMinor: number;
+  invoiceCount: number;
+  paymentCount: number;
+}
+
 export interface CustomerListResponse {
-  data: Customer[];
+  data: CustomerListRow[];
   page: number;
   pageSize: number;
   total: number;
@@ -378,10 +386,11 @@ export interface CustomerListResponse {
 
 export function listCustomers(
   brandId: string,
-  params: { search?: string } = {},
+  params: { search?: string; hasOutstanding?: boolean } = {},
 ): Promise<CustomerListResponse> {
   const qs = new URLSearchParams();
   if (params.search) qs.set('search', params.search);
+  if (params.hasOutstanding !== undefined) qs.set('hasOutstanding', String(params.hasOutstanding));
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return apiFetch<CustomerListResponse>(`/brands/${brandId}/customers${suffix}`);
 }
@@ -453,11 +462,12 @@ export interface InvoiceListResponse {
 
 export function listInvoices(
   brandId: string,
-  params: { page?: number; pageSize?: number } = {},
+  params: { page?: number; pageSize?: number; customerId?: string } = {},
 ): Promise<InvoiceListResponse> {
   const qs = new URLSearchParams();
   if (params.page) qs.set('page', String(params.page));
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  if (params.customerId) qs.set('customerId', params.customerId);
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return apiFetch<InvoiceListResponse>(`/brands/${brandId}/invoices${suffix}`);
 }
