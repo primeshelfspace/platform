@@ -46,12 +46,12 @@ export type PaletteToken = keyof typeof palette;
 
 /** Default brand colours offered in the brand editor's swatch picker. */
 export const BRAND_COLOUR_PRESETS = [
-  '#2D6A6A',
-  '#3A6FA8',
-  '#C97A2B',
-  '#8B4A9C',
-  '#1F8B5C',
-  '#C0473D',
+  '#EF4444',
+  '#16A34A',
+  '#3B82F6',
+  '#0EA5E9',
+  '#8B5CF6',
+  '#F97316',
 ] as const;
 
 export const spacing = {

@@ -16,10 +16,10 @@ const ALLOWED_LOGO_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml'];
 const EIN_PATTERN = /^\d{2}-\d{7}$/;
 
 const inputClass =
-  'w-full rounded-[10px] border bg-white px-4 py-3.5 text-base text-slate-900 ' +
-  'placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 ' +
-  'focus-visible:ring-offset-1 transition-colors disabled:bg-slate-50 disabled:text-slate-400';
-const validBorder = 'border-[#D1D5DB] focus:border-slate-900 focus-visible:ring-slate-900';
+  'w-full h-10 rounded-lg border bg-white px-4 text-base text-slate-900 ' +
+  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-slate-400 focus-visible:outline-none ' +
+  'focus-visible:ring-2 focus-visible:ring-offset-1 transition-colors disabled:bg-slate-50 disabled:text-slate-400';
+const validBorder = 'border-[#D4D4D4] focus:border-slate-900 focus-visible:ring-slate-900';
 const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-red-500';
 const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
 

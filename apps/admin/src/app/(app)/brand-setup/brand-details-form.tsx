@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useId, useRef, useState } from 'react';
-import { Check, Image as ImageIcon, Pencil } from 'lucide-react';
+import { Check, Pencil, Upload } from 'lucide-react';
 import { BRAND_COLOUR_PRESETS, COUNTRIES, regionsFor } from '@fenwick/shared';
 import type { Brand } from '@/lib/api';
 import { Select } from '@/components/ui/select';
@@ -13,9 +13,9 @@ const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml'];
 
 const inputClass =
-  'w-full rounded-[10px] border border-[#D1D5DB] bg-white px-4 py-3 text-base text-slate-900 ' +
-  'placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 ' +
-  'focus-visible:ring-slate-900 focus-visible:ring-offset-1 transition-colors';
+  'w-full h-10 rounded-lg border border-[#D4D4D4] bg-white px-4 text-base text-slate-900 ' +
+  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-slate-400 focus-visible:outline-none ' +
+  'focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 transition-colors';
 const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
 
 /** Fixed swatches plus one open slot for any colour a brand already carries
@@ -119,7 +119,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
                        text-[#0F172A] transition-colors hover:bg-slate-50 focus-visible:outline-none
                        focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
           >
-            <ImageIcon className="h-4 w-4" aria-hidden />
+            <Upload className="h-4 w-4" aria-hidden />
             Upload Logo
           </button>
         </div>
@@ -146,7 +146,9 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
                   aria-checked={selected}
                   aria-label={swatch}
                   onClick={() => setThemeColor(swatch)}
-                  className="flex h-9 w-9 items-center justify-center rounded-full transition-transform hover:scale-105
+                  className="flex h-9 w-9 items-center justify-center rounded-lg
+
+               transition-transform hover:scale-105
                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
                   style={{ backgroundColor: swatch }}
                 >
@@ -181,7 +183,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
 
       <section>
         <h2 className="mb-4 text-base font-bold text-[#0F172A]">General Information</h2>
-        <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+        <div className="space-y-5">
           <div id={legalNameId}>
             <Field
               label="Legal Name"
@@ -219,21 +221,19 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
       <section>
         <h2 className="mb-4 text-base font-bold text-[#0F172A]">Mailing Address</h2>
         <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <input
-              name="mailingLine1"
-              placeholder="Address line 1"
-              defaultValue={brand.mailingAddress?.line1 ?? ''}
-              required
-              className={inputClass}
-            />
-            <input
-              name="mailingLine2"
-              placeholder="Address line 2 (optional)"
-              defaultValue={brand.mailingAddress?.line2 ?? ''}
-              className={inputClass}
-            />
-          </div>
+          <input
+            name="mailingLine1"
+            placeholder="Address line 1"
+            defaultValue={brand.mailingAddress?.line1 ?? ''}
+            required
+            className={inputClass}
+          />
+          <input
+            name="mailingLine2"
+            placeholder="Address line 2 (optional)"
+            defaultValue={brand.mailingAddress?.line2 ?? ''}
+            className={inputClass}
+          />
 
           <div className="grid gap-4 sm:grid-cols-3">
             <input

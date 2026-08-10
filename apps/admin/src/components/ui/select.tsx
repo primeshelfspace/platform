@@ -1,9 +1,10 @@
 import { ChevronDown } from 'lucide-react';
 
 const selectClass =
-  'w-full appearance-none rounded-[10px] border bg-white px-4 py-3.5 pr-10 text-base text-slate-900 ' +
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 transition-colors';
-const validBorder = 'border-[#D1D5DB] focus:border-slate-900 focus-visible:ring-slate-900';
+  'w-full h-10 appearance-none rounded-lg border bg-white px-4 pr-10 text-base text-slate-900 ' +
+  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2 ' +
+  'focus-visible:ring-offset-1 transition-colors';
+const validBorder = 'border-[#D4D4D4] focus:border-slate-900 focus-visible:ring-slate-900';
 const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-red-500';
 
 export function Select({

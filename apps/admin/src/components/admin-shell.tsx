@@ -11,6 +11,7 @@ import {
   LogOut,
   Menu,
   Plug,
+  Plus,
   ScrollText,
   Settings,
   Store,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { logoutAction } from '@/lib/logout-action';
 import type { Brand, CurrentUser } from '@/lib/api';
+import { AddBrandModal } from './add-brand-modal';
 
 interface NavItem {
   readonly href: string;
@@ -109,6 +111,7 @@ export function AdminShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [addBrandOpen, setAddBrandOpen] = useState(false);
 
   const brandMenuRef = useDismissablePanel<HTMLDivElement>(brandMenuOpen, () =>
     setBrandMenuOpen(false),
@@ -138,6 +141,18 @@ export function AdminShell({
     params.set('brandId', brandId);
     router.push(`${pathname}?${params.toString()}`);
     setBrandMenuOpen(false);
+  }
+
+  // The brands list is a prop from the (app) layout's server component, so a
+  // push alone would land on the new brand's id before that list has ever
+  // been refetched with it in it — refresh forces the layout to rerun and
+  // pick the new brand up.
+  function onBrandCreated(brandId: string): void {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('brandId', brandId);
+    router.push(`${pathname}?${params.toString()}`);
+    router.refresh();
+    setAddBrandOpen(false);
   }
 
   function NavLink({ href, label, icon: Icon }: NavItem) {
@@ -197,9 +212,8 @@ export function AdminShell({
                 aria-haspopup="menu"
                 aria-expanded={brandMenuOpen}
                 onClick={() => setBrandMenuOpen((open) => !open)}
-                disabled={brands.length < 2}
                 className="flex w-full items-center gap-3 rounded-lg bg-white/10 px-3 py-2 text-left
-                           transition-colors hover:bg-white/15 disabled:cursor-default"
+                           transition-colors hover:bg-white/15"
               >
                 <span
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white"
@@ -211,12 +225,10 @@ export function AdminShell({
                 <span className="flex-1 truncate text-[15px] font-bold text-white">
                   {activeBrand.displayName}
                 </span>
-                {brands.length > 1 && (
-                  <ChevronDown className="h-4 w-4 shrink-0 text-[#D4D4D4]" aria-hidden />
-                )}
+                <ChevronDown className="h-4 w-4 shrink-0 text-[#D4D4D4]" aria-hidden />
               </button>
 
-              {brandMenuOpen && brands.length > 1 && (
+              {brandMenuOpen && (
                 <div
                   role="menu"
                   aria-label="Switch brand"
@@ -242,6 +254,27 @@ export function AdminShell({
                       <span className="truncate">{brand.displayName}</span>
                     </button>
                   ))}
+
+                  <div className="my-1 border-t border-white/10" aria-hidden />
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setBrandMenuOpen(false);
+                      setAddBrandOpen(true);
+                    }}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-[#D4D4D4]
+                               transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed border-[#8C8C8C]"
+                      aria-hidden
+                    >
+                      <Plus className="h-3.5 w-3.5" aria-hidden />
+                    </span>
+                    <span className="truncate font-medium">Add New Brand</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -352,6 +385,13 @@ export function AdminShell({
       </aside>
 
       <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>
+
+      <AddBrandModal
+        open={addBrandOpen}
+        brands={brands}
+        onClose={() => setAddBrandOpen(false)}
+        onCreated={onBrandCreated}
+      />
     </div>
   );
 }
