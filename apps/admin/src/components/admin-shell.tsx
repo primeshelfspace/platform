@@ -5,12 +5,11 @@ import { TopProgress } from './top-progress';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
+  Bell,
   ChevronDown,
-  CreditCard,
   LayoutDashboard,
   LogOut,
   Menu,
-  Plug,
   Plus,
   ScrollText,
   Settings,
@@ -29,21 +28,26 @@ interface NavItem {
   readonly icon: LucideIcon;
 }
 
-const TOP_NAV: readonly NavItem[] = [{ href: '/', label: 'Dashboard', icon: LayoutDashboard }];
+const TOP_NAV: readonly NavItem[] = [
+  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/notifications', label: 'Notifications', icon: Bell },
+];
 
-const BRAND_NAV: readonly NavItem[] = [{ href: '/brand-setup', label: 'Brand Setup', icon: Store }];
+const BRAND_NAV: readonly NavItem[] = [
+  { href: '/brand-settings', label: 'Brand Settings', icon: Store },
+];
 
 const MAIN_NAV: readonly NavItem[] = [
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/invoices', label: 'Invoices', icon: ScrollText },
-  { href: '/settings/integrations', label: 'Integrations', icon: Plug },
-  { href: '/settings/payment-methods', label: 'Payment Methods', icon: CreditCard },
 ];
 
-// Points at the same route as "Payment Methods" above: there is no single
-// settings landing page in this app yet, and Payment Methods is the closest
-// thing to one. Worth a real /settings page later — until then this and
-// "Payment Methods" will both show active when either is open.
+// Integrations and Payment Methods are not separate sidebar destinations —
+// both already live as tabs inside Brand Settings (see tabs.tsx's
+// linkOutTabs), and duplicating them here read as two places for one
+// setting. Settings points at Payment Methods only because there is no
+// single settings landing page in this app yet; it is the closest thing to
+// one. Worth a real /settings page later.
 const SETTINGS_NAV: NavItem = {
   href: '/settings/payment-methods',
   label: 'Settings',
@@ -278,15 +282,14 @@ export function AdminShell({
                 </div>
               )}
             </div>
-
-            {BRAND_NAV.map((item) => (
-              <NavLink key={item.href} {...item} />
-            ))}
           </div>
         )}
 
         <div className="mt-4 space-y-1">
           {MAIN_NAV.map((item) => (
+            <NavLink key={item.href} {...item} />
+          ))}
+          {BRAND_NAV.map((item) => (
             <NavLink key={item.href} {...item} />
           ))}
         </div>

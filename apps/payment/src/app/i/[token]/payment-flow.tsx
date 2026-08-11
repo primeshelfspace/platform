@@ -220,6 +220,7 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
         publishableKey={invoice.stripePublishableKey}
         stripeAccount={invoice.stripeAccountId}
         clientSecret={step.clientSecret}
+        accentColor={invoice.accentColor}
         returnUrl={typeof window !== 'undefined' ? window.location.href : ''}
         onSucceeded={() => setStep({ kind: 'success' })}
         onFailed={(reason) => setStep({ kind: 'failure', reason })}
@@ -243,7 +244,8 @@ export function PaymentFlow({ invoice, token }: { invoice: PublicInvoice; token:
           key={m.id}
           type="button"
           onClick={() => submitPayment(m.apiMethod)}
-          className="flex w-full items-center justify-between rounded-md border border-border bg-surface px-4 py-2.5 text-left text-sm font-medium text-ink-strong hover:bg-surface-muted"
+          style={{ borderColor: invoice.accentColor }}
+          className="flex w-full items-center justify-between rounded-md border-2 bg-surface px-4 py-2.5 text-left text-sm font-medium text-ink-strong hover:bg-surface-muted"
         >
           <span>{m.label}</span>
           <span className="text-ink-muted">

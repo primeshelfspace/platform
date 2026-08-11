@@ -17,6 +17,10 @@ export interface PublicInvoice {
   totalMinor: number;
   balanceMinor: number;
   brand: { displayName: string; themeColor: string; logoUrl: string | null };
+  /** Brand Settings > Branding > Payment Page — drives this page's header
+   * layout and the colour of its actionable elements. */
+  accentColor: string;
+  paymentPageLayout: 'BANNER' | 'CENTERED' | 'SPLIT';
   lines: Array<{
     itemName: string;
     description: string | null;

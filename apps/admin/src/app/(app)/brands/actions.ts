@@ -71,7 +71,7 @@ export async function addBrandAction(
   // The logo is uploaded after creation because its storage key is namespaced
   // by brand id — there is nothing to upload to until the brand exists. A
   // failure here is not worth losing the brand over; it can be set later from
-  // Brand Setup.
+  // Brand Settings.
   const logo = formData.get('brandLogo');
   if (logo instanceof File && logo.size > 0) {
     try {

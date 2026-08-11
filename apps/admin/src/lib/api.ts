@@ -248,7 +248,7 @@ export function createBrand(input: BrandFormInput & { invoicePrefix: string }): 
   return apiFetch<Brand>('/brands', { method: 'POST', body: JSON.stringify(input) });
 }
 
-/** Brand Setup's "Brand Details" tab. Full replace, same shape as
+/** Brand Settings' "Brand Details" tab. Full replace, same shape as
  * createBrand minus invoicePrefix — see BrandsService.update for why there
  * is no partial form. */
 export function updateBrand(brandId: string, input: BrandFormInput): Promise<Brand> {
@@ -538,6 +538,29 @@ export function updatePaymentMethodSettings(
   input: PaymentMethodSettings,
 ): Promise<PaymentMethodSettings> {
   return apiFetch<PaymentMethodSettings>(`/brands/${brandId}/settings/payment-methods`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+// --- Payment page display (Brand Settings > Branding > Payment Page) --------
+
+export type PaymentPageLayout = 'BANNER' | 'CENTERED' | 'SPLIT';
+
+export interface PaymentPageDisplaySettings {
+  accentColor: string;
+  paymentPageLayout: PaymentPageLayout;
+}
+
+export function getPaymentPageDisplaySettings(brandId: string): Promise<PaymentPageDisplaySettings> {
+  return apiFetch<PaymentPageDisplaySettings>(`/brands/${brandId}/settings/payment-page-display`);
+}
+
+export function updatePaymentPageDisplaySettings(
+  brandId: string,
+  input: PaymentPageDisplaySettings,
+): Promise<PaymentPageDisplaySettings> {
+  return apiFetch<PaymentPageDisplaySettings>(`/brands/${brandId}/settings/payment-page-display`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });

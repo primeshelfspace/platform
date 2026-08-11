@@ -16,7 +16,7 @@ const inputClass =
  * The sidebar's "Add New Brand" flow. Deliberately asks for only a name and
  * an optional logo — same scope as the onboarding multi-brand step — since
  * everything else (business type, currency, timezone) is inherited server
- * side and the rest can be filled in from Brand Setup afterwards.
+ * side and the rest can be filled in from Brand Settings afterwards.
  *
  * Stays mounted (rendered, but returning null) even while closed so its
  * useActionState instance survives between opens — the alternative,

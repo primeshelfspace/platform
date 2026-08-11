@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { PaymentMethodSettingsInput, Scope } from '@fenwick/shared';
+import type { PaymentMethodSettingsInput, PaymentPageDisplayInput, Scope } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 
 export interface PaymentMethodSettings {
@@ -8,6 +8,11 @@ export interface PaymentMethodSettings {
   readonly googlePayEnabled: boolean;
   readonly achEnabled: boolean;
   readonly checkEnabled: boolean;
+}
+
+export interface PaymentPageDisplaySettings {
+  readonly accentColor: string;
+  readonly paymentPageLayout: 'BANNER' | 'CENTERED' | 'SPLIT';
 }
 
 /**
@@ -64,6 +69,28 @@ export class BrandSettingsService {
         achEnabled: updated.achEnabled,
         checkEnabled: updated.checkEnabled,
       };
+    });
+  }
+
+  async getPaymentPageDisplay(scope: Scope, brandId: string): Promise<PaymentPageDisplaySettings> {
+    const settings = await this.prisma.withScope(scope, (tx) =>
+      tx.brandSettings.findUnique({ where: { brandId } }),
+    );
+    if (!settings) throw new NotFoundException('brand settings not found');
+    return { accentColor: settings.accentColor, paymentPageLayout: settings.paymentPageLayout };
+  }
+
+  async updatePaymentPageDisplay(
+    scope: Scope,
+    brandId: string,
+    input: PaymentPageDisplayInput,
+  ): Promise<PaymentPageDisplaySettings> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const existing = await tx.brandSettings.findUnique({ where: { brandId } });
+      if (!existing) throw new NotFoundException('brand settings not found');
+
+      const updated = await tx.brandSettings.update({ where: { brandId }, data: input });
+      return { accentColor: updated.accentColor, paymentPageLayout: updated.paymentPageLayout };
     });
   }
 }

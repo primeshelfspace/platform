@@ -209,6 +209,16 @@ export const paymentMethodSettingsSchema = z.object({
 });
 export type PaymentMethodSettingsInput = z.infer<typeof paymentMethodSettingsSchema>;
 
+/** Brand Settings > Branding > Payment Page: how the hosted payment page
+ * displays for this brand's customers. Separate from
+ * paymentMethodSettingsSchema above (that's which methods are offered; this
+ * is how the page around them looks). */
+export const paymentPageDisplaySchema = z.object({
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a hex colour like #171717'),
+  paymentPageLayout: z.enum(['BANNER', 'CENTERED', 'SPLIT']),
+});
+export type PaymentPageDisplayInput = z.infer<typeof paymentPageDisplaySchema>;
+
 // Stripe has no schema here: under Connect a brand authorises the platform on
 // Stripe's own consent screen rather than submitting credentials, so there is
 // no request body to validate. The resulting account id is read from Stripe's

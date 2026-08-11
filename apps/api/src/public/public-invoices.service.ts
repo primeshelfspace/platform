@@ -18,6 +18,12 @@ export interface PublicInvoiceView {
   totalMinor: number;
   balanceMinor: number;
   brand: { displayName: string; themeColor: string; logoUrl: string | null };
+  /** Brand Settings > Branding > Payment Page — how this brand's hosted
+   * payment page arranges itself and colours its actionable elements. Same
+   * settings the admin's Payment Page editor previews; this is what actually
+   * renders it for a real customer. */
+  accentColor: string;
+  paymentPageLayout: 'BANNER' | 'CENTERED' | 'SPLIT';
   lines: Array<{
     itemName: string;
     description: string | null;
@@ -157,6 +163,8 @@ export class PublicInvoicesService {
           themeColor: invoice.brand.themeColor,
           logoUrl,
         },
+        accentColor: invoice.brand.settings?.accentColor ?? '#171717',
+        paymentPageLayout: invoice.brand.settings?.paymentPageLayout ?? 'BANNER',
         lines: invoice.lineItems.map((l) => ({
           itemName: l.itemName,
           description: l.description,

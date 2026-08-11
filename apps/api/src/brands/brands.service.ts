@@ -86,7 +86,7 @@ export class BrandsService {
   }
 
   /**
-   * Brand Setup's "Brand Details" tab. Same full-object shape as create() —
+   * Brand Settings' "Brand Details" tab. Same full-object shape as create() —
    * see the controller's note on why a partial-patch schema isn't used here.
    *
    * mailingAddress/billingAddress use Prisma.DbNull rather than a bare

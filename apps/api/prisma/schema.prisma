@@ -51,6 +51,14 @@ enum BrandStatus {
   ARCHIVED
 }
 
+/// FR-PAY: how the hosted payment page arranges the invoice summary and the
+/// "choose how to pay" form for a brand's customers.
+enum PaymentPageLayout {
+  BANNER
+  CENTERED
+  SPLIT
+}
+
 /// FR-BRD onboarding: legal structure of the business behind a brand.
 enum BusinessType {
   SOLE_PROPRIETORSHIP
@@ -345,6 +353,12 @@ model BrandSettings {
   googlePayEnabled  Boolean @default(false) @map("google_pay_enabled")
   achEnabled        Boolean @default(false) @map("ach_enabled")
   checkEnabled      Boolean @default(false) @map("check_enabled")
+
+  /// FR-PAY: brand-level display of the hosted payment page — Brand Settings
+  /// > Branding > Payment Page. accentColor has no other home; themeColor on
+  /// Brand already covers the primary brand colour used elsewhere.
+  accentColor       String            @default("#171717") @map("accent_color")
+  paymentPageLayout PaymentPageLayout @default(BANNER) @map("payment_page_layout")
 
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")

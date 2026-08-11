@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
+import { foregroundOn } from '@fenwick/shared/tokens';
 
 /**
  * Card data is entered directly into Stripe's own iframe (PaymentElement) and
@@ -21,6 +22,7 @@ export function StripeCardForm({
   publishableKey,
   stripeAccount,
   clientSecret,
+  accentColor,
   returnUrl,
   onSucceeded,
   onFailed,
@@ -29,6 +31,9 @@ export function StripeCardForm({
   publishableKey: string | null;
   stripeAccount: string | null;
   clientSecret: string;
+  /** Brand Settings > Branding > Payment Page's accent colour — colours the
+   * submit button below rather than the generic platform brand colour. */
+  accentColor: string;
   returnUrl: string;
   onSucceeded: () => void;
   onFailed: (reason: string | null) => void;
@@ -53,6 +58,7 @@ export function StripeCardForm({
     <Elements stripe={stripePromise} options={{ clientSecret }}>
       <CardFormInner
         returnUrl={returnUrl}
+        accentColor={accentColor}
         onSucceeded={onSucceeded}
         onFailed={onFailed}
         onCancel={onCancel}
@@ -63,11 +69,13 @@ export function StripeCardForm({
 
 function CardFormInner({
   returnUrl,
+  accentColor,
   onSucceeded,
   onFailed,
   onCancel,
 }: {
   returnUrl: string;
+  accentColor: string;
   onSucceeded: () => void;
   onFailed: (reason: string | null) => void;
   onCancel: () => void;
@@ -117,7 +125,8 @@ function CardFormInner({
       <button
         type="submit"
         disabled={!stripe || submitting}
-        className="mt-4 w-full rounded-md bg-brand px-4 py-2.5 text-sm font-medium text-brand-foreground disabled:opacity-60"
+        style={{ backgroundColor: accentColor, color: foregroundOn(accentColor) }}
+        className="mt-4 w-full rounded-md px-4 py-2.5 text-sm font-medium disabled:opacity-60"
       >
         {submitting ? 'Processing…' : 'Pay'}
       </button>

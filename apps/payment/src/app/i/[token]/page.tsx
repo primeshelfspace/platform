@@ -1,7 +1,7 @@
 import { brandThemeVariables } from '@fenwick/shared/tokens';
-import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { lookupInvoice } from '@/lib/invoice';
 import { PaymentFlow } from './payment-flow';
+import { PaymentPageShell } from './payment-page-shell';
 
 // Never cached, never statically rendered: a balance is not a static value.
 export const dynamic = 'force-dynamic';
@@ -12,6 +12,10 @@ const TERMINAL_STATUSES = new Set(['PAID', 'CANCELLED']);
  * The public invoice page (TDD-001 §12.1). Card, ACH, processing, success,
  * pending and failure all work against FakeGateway; Numbers Gateway itself
  * remains blocked on DEP-01, and check upload and wallets are not built yet.
+ *
+ * Brand chrome (PaymentPageShell) renders whichever of Banner/Centered/Split
+ * this brand picked in Brand Settings > Branding > Payment Page — the same
+ * setting the admin editor previews, actually applied here.
  */
 export default async function InvoicePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -40,40 +44,22 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
   if (TERMINAL_STATUSES.has(invoice.status)) {
     return (
       <div style={theme as React.CSSProperties}>
-        <Shell>
-          <p className="text-sm text-ink-muted">{invoice.brand.displayName}</p>
-          <h1 className="mt-1 text-lg font-medium text-ink-strong">Invoice {invoice.number}</h1>
-          <p className="mt-6 text-sm font-medium text-ink-strong">
+        <PaymentPageShell invoice={invoice}>
+          <p className="text-center text-sm font-medium text-ink-strong">
             {invoice.status === 'PAID'
               ? 'This invoice has been paid.'
               : 'This invoice was cancelled.'}
           </p>
-        </Shell>
+        </PaymentPageShell>
       </div>
     );
   }
 
   return (
     <div style={theme as React.CSSProperties}>
-      <Shell>
-        <p className="text-sm text-ink-muted">{invoice.brand.displayName}</p>
-        <h1 className="mt-1 text-lg font-medium text-ink-strong">Invoice {invoice.number}</h1>
-
-        <dl className="mt-6 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-ink-muted">Amount due</dt>
-            <dd className="font-medium text-ink-strong">
-              {formatMinorForDisplay(invoice.balanceMinor, toCurrencyCode(invoice.currency))}
-            </dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-ink-muted">Due</dt>
-            <dd className="text-ink-strong">{invoice.dueDate}</dd>
-          </div>
-        </dl>
-
+      <PaymentPageShell invoice={invoice}>
         <PaymentFlow invoice={invoice} token={token} />
-      </Shell>
+      </PaymentPageShell>
     </div>
   );
 }
@@ -94,6 +80,8 @@ function Terminal() {
   );
 }
 
+/** Unbranded fallback for the two states above where no brand is known yet
+ * (or ever will be) — PaymentPageShell needs a real invoice to lay out. */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col justify-center px-6 py-16">
