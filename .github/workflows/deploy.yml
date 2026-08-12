@@ -1,0 +1,50 @@
+name: Deploy to staging
+
+# Runs only after CI has actually passed on main — never in parallel with it,
+# and never on a PR. workflow_run (not push) is what enforces that ordering.
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to staging EC2
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ubuntu
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 15m
+          script: |
+            set -e
+            cd ~/Multi-Brand-Invoicing
+
+            # Discards nothing that matters: .env and any other untracked file
+            # (this workflow file's own runtime config included) survive a
+            # reset, since reset --hard only ever touches tracked files.
+            git fetch origin main
+            git reset --hard origin/main
+
+            pnpm install --frozen-lockfile
+            pnpm --filter @fenwick/shared build
+
+            # Reads DIRECT_DATABASE_URL from this box's own .env, same as a
+            # manual run — no DB credential is duplicated into GitHub secrets.
+            pnpm --filter @fenwick/api db:migrate
+
+            pnpm --filter @fenwick/api build
+            pnpm --filter @fenwick/admin build
+            pnpm --filter @fenwick/payment build
+
+            pm2 reload ecosystem.config.cjs --update-env
+            pm2 save
