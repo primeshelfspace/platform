@@ -7,3 +7,4 @@ export * from './regions.js';
 export * from './us-phone.js';
 export * from './us-postal-code.js';
 export * from './company-domain.js';
+export * from './email-receipt-template.js';

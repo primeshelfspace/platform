@@ -128,12 +128,10 @@ export function BrandingSubTabs({
  * looks broken generates a bug report, while one that says what it will do
  * does not. Each names the setting it will own, so the gap is legible.
  */
-export function NotBuiltYet({ tab }: { tab: Exclude<BrandingSubTab, 'payment-page'> }) {
-  const copy: Record<Exclude<BrandingSubTab, 'payment-page'>, string> = {
+export function NotBuiltYet({ tab }: { tab: 'invoice-pdf' }) {
+  const copy: Record<'invoice-pdf', string> = {
     'invoice-pdf':
       'Layout, logo placement and footer text for the PDF your customers receive. Invoices currently render with the platform default.',
-    'email-receipt':
-      'Subject lines and body copy for invoice, reminder and receipt emails, per brand.',
   };
 
   return (

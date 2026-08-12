@@ -59,6 +59,13 @@ enum PaymentPageLayout {
   SPLIT
 }
 
+/// FR-MAIL: how the invoice receipt email is arranged for a brand's customers.
+enum EmailReceiptLayout {
+  CLASSIC
+  HERO
+  MINIMAL
+}
+
 /// FR-BRD onboarding: legal structure of the business behind a brand.
 enum BusinessType {
   SOLE_PROPRIETORSHIP
@@ -359,6 +366,14 @@ model BrandSettings {
   /// Brand already covers the primary brand colour used elsewhere.
   accentColor       String            @default("#171717") @map("accent_color")
   paymentPageLayout PaymentPageLayout @default(BANNER) @map("payment_page_layout")
+
+  /// FR-MAIL: Brand Settings > Branding > Email Receipt — the subject/body
+  /// template and layout for the invoice receipt email a customer gets.
+  /// `{{brand_name}}`, `{{customer_name}}`, `{{invoice_number}}`,
+  /// `{{amount_due}}` and `{{due_date}}` are substituted at send time.
+  emailReceiptLayout  EmailReceiptLayout @default(CLASSIC) @map("email_receipt_layout")
+  emailReceiptSubject String             @default("New invoice from {{brand_name}}") @map("email_receipt_subject")
+  emailReceiptBody    String             @default("Hi {{customer_name}},\n\nThis is an automated message from {{brand_name}} regarding invoice {{invoice_number}}.\n\nAmount due: {{amount_due}}\nDue date: {{due_date}}\n\nPlease click the button below to view and pay your invoice.\n\nThank you for your business.") @map("email_receipt_body")
 
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")

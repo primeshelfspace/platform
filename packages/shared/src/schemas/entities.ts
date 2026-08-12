@@ -219,6 +219,28 @@ export const paymentPageDisplaySchema = z.object({
 });
 export type PaymentPageDisplayInput = z.infer<typeof paymentPageDisplaySchema>;
 
+/** Brand Settings > Branding > Email Receipt: the subject/body template and
+ * layout for the invoice receipt email a customer gets. Variables
+ * (`{{brand_name}}` etc.) are free text here — substituted at send/preview
+ * time, not validated against a fixed list, so a merchant can't be blocked
+ * from saving over a typo'd placeholder. */
+export const emailReceiptSettingsSchema = z.object({
+  emailReceiptLayout: z.enum(['CLASSIC', 'HERO', 'MINIMAL']),
+  emailReceiptSubject: z.string().trim().min(1, 'subject is required').max(200),
+  emailReceiptBody: z.string().trim().min(1, 'body is required').max(5000),
+});
+export type EmailReceiptSettingsInput = z.infer<typeof emailReceiptSettingsSchema>;
+
+/** Brand Settings > Branding > Email Receipt's "Send a test email". Carries
+ * the subject/body straight from the editor rather than reading the brand's
+ * saved settings, so testing a draft never requires saving it first. */
+export const emailReceiptTestSendSchema = z.object({
+  to: emailSchema,
+  emailReceiptSubject: z.string().trim().min(1, 'subject is required').max(200),
+  emailReceiptBody: z.string().trim().min(1, 'body is required').max(5000),
+});
+export type EmailReceiptTestSendInput = z.infer<typeof emailReceiptTestSendSchema>;
+
 // Stripe has no schema here: under Connect a brand authorises the platform on
 // Stripe's own consent screen rather than submitting credentials, so there is
 // no request body to validate. The resulting account id is read from Stripe's

@@ -566,6 +566,43 @@ export function updatePaymentPageDisplaySettings(
   });
 }
 
+// --- Email receipt (Brand Settings > Branding > Email Receipt) --------------
+
+export type EmailReceiptLayout = 'CLASSIC' | 'HERO' | 'MINIMAL';
+
+export interface EmailReceiptSettings {
+  emailReceiptLayout: EmailReceiptLayout;
+  emailReceiptSubject: string;
+  emailReceiptBody: string;
+}
+
+export function getEmailReceiptSettings(brandId: string): Promise<EmailReceiptSettings> {
+  return apiFetch<EmailReceiptSettings>(`/brands/${brandId}/settings/email-receipt`);
+}
+
+export function updateEmailReceiptSettings(
+  brandId: string,
+  input: EmailReceiptSettings,
+): Promise<EmailReceiptSettings> {
+  return apiFetch<EmailReceiptSettings>(`/brands/${brandId}/settings/email-receipt`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+/** Actually sends — see BrandSettingsService.sendEmailReceiptTest. Renders
+ * whatever subject/body is passed in, not the brand's saved settings, so a
+ * draft can be tested before it's saved. */
+export function sendEmailReceiptTest(
+  brandId: string,
+  input: { to: string; emailReceiptSubject: string; emailReceiptBody: string },
+): Promise<{ sent: true }> {
+  return apiFetch<{ sent: true }>(`/brands/${brandId}/settings/email-receipt/test-send`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 // --- Stripe Connect (one connected account per brand) ------------------------
 
 export interface StripeAccountStatus {

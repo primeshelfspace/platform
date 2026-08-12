@@ -110,9 +110,17 @@ export function PaymentPageShell({
             <span className="text-2xl font-bold text-white">{invoice.brand.displayName}</span>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-2 px-6 pt-8">
-            <Avatar brand={invoice.brand} size="lg" fallbackBackground={themeColor} />
-            <span className="text-lg font-bold text-ink-strong">{invoice.brand.displayName}</span>
+          // Centered: a short colour bar behind the logo, overlapping it,
+          // rather than a flat white header — matches the admin editor's
+          // preview of this same layout.
+          <div className="flex flex-col items-center">
+            <div style={{ backgroundColor: themeColor }} className="h-16 w-full" />
+            <div className="-mt-8 rounded-full border-4 border-white shadow-sm">
+              <Avatar brand={invoice.brand} size="lg" fallbackBackground={themeColor} />
+            </div>
+            <span className="mt-2 px-6 text-lg font-bold text-ink-strong">
+              {invoice.brand.displayName}
+            </span>
           </div>
         )}
 

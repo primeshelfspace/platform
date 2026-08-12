@@ -1,7 +1,14 @@
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
-import { getCustomer, getPaymentPageDisplaySettings, listBrands, listInvoices } from '@/lib/api';
+import {
+  getCustomer,
+  getEmailReceiptSettings,
+  getPaymentPageDisplaySettings,
+  listBrands,
+  listInvoices,
+} from '@/lib/api';
 import { PageContainer } from '@/components/page-container';
 import { BrandDetailsForm } from './brand-details-form';
+import { EmailReceiptEditor } from './email-receipt-editor';
 import { PaymentPageEditor, type PaymentPagePreviewInvoice } from './payment-page-editor';
 import {
   BrandSettingsTabs,
@@ -88,11 +95,8 @@ export default async function BrandSettingsPage({
 
   return (
     <PageContainer>
-      <h1 className="text-2xl font-bold text-ink-strong">Brand Settings</h1>
-      <p className="mt-1 text-sm text-ink-muted">
-        Configure your brand&rsquo;s identity, invoice templates, and customer-facing payment
-        experience.
-      </p>
+      {brand && <p className="text-sm text-ink-muted">{brand.displayName}</p>}
+      <h1 className="mt-1 text-2xl font-bold text-ink-strong">Brand Settings</h1>
 
       <BrandSettingsTabs active={activeTab} brandId={brand?.id} />
 
@@ -104,11 +108,24 @@ export default async function BrandSettingsPage({
         </div>
       ) : (
         <>
-          <BrandingSubTabs active={activeSub} brandId={brand.id} />
+          {/* Right-aligned to sit above the preview column, not the settings
+              column — matches the reference design; the empty left cell uses
+              the same grid/gap as PaymentPageEditor's below so the two line up. */}
+          <div className="grid gap-10 lg:grid-cols-2">
+            <div aria-hidden />
+            <BrandingSubTabs active={activeSub} brandId={brand.id} />
+          </div>
           {activeSub === 'payment-page' ? (
             <PaymentPageEditor
               brand={brand}
               display={await getPaymentPageDisplaySettings(brand.id)}
+              previewInvoice={await loadPreviewInvoice(brand.id)}
+            />
+          ) : activeSub === 'email-receipt' ? (
+            <EmailReceiptEditor
+              brand={brand}
+              settings={await getEmailReceiptSettings(brand.id)}
+              accentColor={(await getPaymentPageDisplaySettings(brand.id)).accentColor}
               previewInvoice={await loadPreviewInvoice(brand.id)}
             />
           ) : (

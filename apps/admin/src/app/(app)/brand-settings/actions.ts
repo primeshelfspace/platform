@@ -2,11 +2,15 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  getPaymentPageDisplaySettings,
+  sendEmailReceiptTest,
   updateBrand,
+  updateEmailReceiptSettings,
   updatePaymentPageDisplaySettings,
   uploadBrandLogo,
   type Brand,
   type BrandFormInput,
+  type EmailReceiptLayout,
   type PaymentPageDisplaySettings,
   type PaymentPageLayout,
 } from '@/lib/api';
@@ -135,5 +139,109 @@ export async function savePaymentPageDisplayAction(
   }
 
   revalidatePath('/brand-settings');
+  return { success: true };
+}
+
+export interface EmailReceiptState {
+  readonly error?: string;
+  readonly success?: boolean;
+}
+
+const EMAIL_RECEIPT_LAYOUTS: readonly EmailReceiptLayout[] = ['CLASSIC', 'HERO', 'MINIMAL'];
+
+/**
+ * Brand Settings > Branding > Email Receipt. Brand colour and accent colour
+ * are the same two fields Payment Page edits — there is only one of each per
+ * brand — so accent colour is read-then-written against Payment Page's own
+ * settings to avoid silently reverting its layout choice to the default.
+ */
+export async function saveEmailReceiptSettingsAction(
+  brand: Brand,
+  _prevState: EmailReceiptState,
+  formData: FormData,
+): Promise<EmailReceiptState> {
+  const themeColor = emptyToNull(formData.get('themeColor')) ?? brand.themeColor;
+  const accentColor = emptyToNull(formData.get('accentColor')) ?? '#171717';
+  const layoutRaw = emptyToNull(formData.get('emailReceiptLayout'));
+  const emailReceiptLayout = EMAIL_RECEIPT_LAYOUTS.find((l) => l === layoutRaw) ?? 'CLASSIC';
+  const emailReceiptSubject = emptyToNull(formData.get('emailReceiptSubject'));
+  const emailReceiptBody = emptyToNull(formData.get('emailReceiptBody'));
+
+  if (!emailReceiptSubject) return { error: 'Subject is required.' };
+  if (!emailReceiptBody) return { error: 'Body is required.' };
+
+  try {
+    if (themeColor !== brand.themeColor) {
+      const input: BrandFormInput = {
+        legalName: brand.legalName,
+        displayName: brand.displayName,
+        businessType: brand.businessType ?? 'LLC',
+        salesPersonName: brand.salesPerson,
+        phone: brand.phone,
+        email: brand.email,
+        mailingAddress: brand.mailingAddress,
+        billingAddress: brand.billingAddress,
+        taxId: brand.taxId,
+        currency: brand.currency,
+        timezone: brand.timezone,
+        themeColor,
+      };
+      await updateBrand(brand.id, input);
+    }
+
+    const currentDisplay = await getPaymentPageDisplaySettings(brand.id);
+    if (accentColor !== currentDisplay.accentColor) {
+      await updatePaymentPageDisplaySettings(brand.id, { ...currentDisplay, accentColor });
+    }
+
+    await updateEmailReceiptSettings(brand.id, {
+      emailReceiptLayout,
+      emailReceiptSubject,
+      emailReceiptBody,
+    });
+  } catch (error) {
+    return { error: describeActionError(error, 'Could not save the email receipt settings.') };
+  }
+
+  const logo = formData.get('logo');
+  if (logo instanceof File && logo.size > 0) {
+    try {
+      await uploadBrandLogo(brand.id, logo);
+    } catch {
+      // Intentionally ignored — see the same convention above.
+    }
+  }
+
+  revalidatePath('/brand-settings');
+  return { success: true };
+}
+
+export interface SendTestEmailState {
+  readonly error?: string;
+  readonly success?: boolean;
+}
+
+/** Sends whatever subject/body is currently in the form — not what's saved —
+ * so a draft can be tested before committing to it. */
+export async function sendTestEmailAction(
+  brand: Brand,
+  _prevState: SendTestEmailState,
+  formData: FormData,
+): Promise<SendTestEmailState> {
+  const to = emptyToNull(formData.get('to'));
+  const emailReceiptSubject = emptyToNull(formData.get('emailReceiptSubject'));
+  const emailReceiptBody = emptyToNull(formData.get('emailReceiptBody'));
+
+  if (!to) return { error: 'Enter an email address.' };
+  if (!emailReceiptSubject || !emailReceiptBody) {
+    return { error: 'Subject and body are required.' };
+  }
+
+  try {
+    await sendEmailReceiptTest(brand.id, { to, emailReceiptSubject, emailReceiptBody });
+  } catch (error) {
+    return { error: describeActionError(error, 'Could not send the test email.') };
+  }
+
   return { success: true };
 }

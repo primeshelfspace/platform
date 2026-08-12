@@ -12,6 +12,7 @@ import {
   Menu,
   Plus,
   ScrollText,
+  Search,
   Settings,
   Store,
   Users,
@@ -115,13 +116,18 @@ export function AdminShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [addBrandOpen, setAddBrandOpen] = useState(false);
+  const [headerSearch, setHeaderSearch] = useState('');
 
   const brandMenuRef = useDismissablePanel<HTMLDivElement>(brandMenuOpen, () =>
     setBrandMenuOpen(false),
   );
   const accountMenuRef = useDismissablePanel<HTMLDivElement>(accountMenuOpen, () =>
     setAccountMenuOpen(false),
+  );
+  const headerMenuRef = useDismissablePanel<HTMLDivElement>(headerMenuOpen, () =>
+    setHeaderMenuOpen(false),
   );
 
   // A route change (including a brand switch, which pushes a new URL) closes
@@ -130,7 +136,19 @@ export function AdminShell({
     setMobileOpen(false);
     setBrandMenuOpen(false);
     setAccountMenuOpen(false);
+    setHeaderMenuOpen(false);
   }, [pathname, activeBrandId]);
+
+  // Reuses Customers' own search (FR-CUS) rather than inventing a separate
+  // global index — this box searches the one thing this app can actually
+  // search by name or email today.
+  function onHeaderSearchSubmit(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const query = new URLSearchParams();
+    if (headerSearch.trim()) query.set('search', headerSearch.trim());
+    if (activeBrandId) query.set('brandId', activeBrandId);
+    router.push(`/customers?${query.toString()}`);
+  }
 
   function hrefFor(path: string): string {
     return activeBrandId ? `${path}?brandId=${activeBrandId}` : path;
@@ -387,7 +405,95 @@ export function AdminShell({
         {sidebar}
       </aside>
 
-      <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Desktop-only header: the mobile top bar above already covers
+            navigation below lg, and there is nowhere on a phone screen to
+            put a search box that isn't in the way. */}
+        <header className="hidden shrink-0 items-center gap-4 border-b border-border bg-surface px-6 py-3 lg:flex">
+          <form onSubmit={onHeaderSearchSubmit} className="relative max-w-sm flex-1">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+              aria-hidden
+            />
+            <input
+              type="search"
+              aria-label="Search customers by name or email"
+              value={headerSearch}
+              onChange={(event) => setHeaderSearch(event.target.value)}
+              placeholder="Search"
+              className="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-ink-strong
+                         placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-ink-strong focus-visible:ring-offset-1"
+            />
+          </form>
+
+          {/* ml-auto rather than relying on the search box's own flex-grow to
+              push these right: the search box caps out at max-w-sm, so once
+              the header is wider than that plus these two controls, the
+              leftover space would sit unclaimed after them instead of
+              pinning them to the header's trailing edge. */}
+          <div className="ml-auto flex shrink-0 items-center gap-4">
+            <Link
+              href={hrefFor('/settings/payment-methods')}
+              aria-label="Settings"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted
+                         transition-colors hover:bg-surface-muted hover:text-ink-strong"
+            >
+              <Settings className="h-5 w-5" aria-hidden />
+            </Link>
+
+            <div className="relative shrink-0" ref={headerMenuRef}>
+              <button
+                type="button"
+                aria-haspopup="menu"
+                aria-expanded={headerMenuOpen}
+                onClick={() => setHeaderMenuOpen((open) => !open)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-[#7C3AED] text-sm font-bold
+                           text-white transition-opacity hover:opacity-90"
+              >
+                {initialOf(user.name || user.email)}
+              </button>
+
+              {headerMenuOpen && (
+                <div
+                  role="menu"
+                  aria-label="Account"
+                  className="absolute right-0 z-10 mt-2 w-48 overflow-hidden rounded-lg border border-border
+                             bg-surface py-1 shadow-lg"
+                >
+                  <div className="border-b border-border px-3 py-2">
+                    <p className="truncate text-sm font-semibold text-ink-strong">
+                      {user.name || user.email}
+                    </p>
+                    <p className="truncate text-xs text-ink-subtle">{user.email}</p>
+                  </div>
+                  <Link
+                    role="menuitem"
+                    href="/status"
+                    className="block px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-muted
+                               hover:text-ink-strong"
+                  >
+                    System status
+                  </Link>
+                  <form action={logoutAction}>
+                    <button
+                      type="submit"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-muted
+                                 transition-colors hover:bg-surface-muted hover:text-ink-strong"
+                    >
+                      <LogOut className="h-4 w-4" aria-hidden />
+                      Sign out
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>
+      </div>
 
       <AddBrandModal
         open={addBrandOpen}

@@ -3,6 +3,8 @@
 import { useActionState, useId, useRef, useState } from 'react';
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   CreditCard,
   ExternalLink,
   FileCheck2,
@@ -20,8 +22,9 @@ const initialState: PaymentPageDisplayState = {};
  * What this panel previews. Built server-side in page.tsx from the brand's
  * actual most recent invoice — never invented here — so this settings screen
  * cannot show a number, customer or "paid" state that does not exist. `null`
- * means the brand has no invoices yet; the preview then says so instead of
- * fabricating one.
+ * means the brand has no invoices yet; the preview then falls back to
+ * SAMPLE_PREVIEW below, clearly labelled as a sample, so there is still
+ * something to style-check before a real invoice exists.
  */
 export interface PaymentPagePreviewInvoice {
   number: string;
@@ -35,6 +38,16 @@ export interface PaymentPagePreviewInvoice {
   /** Null when the invoice is still a draft — there is no public link yet. */
   viewUrl: string | null;
 }
+
+/** Shown only when a brand has no invoices yet. Always paired with the
+ * "Sample" badge below, which is what makes reusing the reference mockup's
+ * own numbers safe here — it reads as a styled example, not a real invoice. */
+const SAMPLE_PREVIEW: Omit<PaymentPagePreviewInvoice, 'isSettled' | 'settledLabel' | 'viewUrl'> = {
+  number: 'INV-3021',
+  customerName: 'Harborline Distributors',
+  amountLabel: '$4,820.00',
+  dueDateLabel: 'Aug 26, 2026',
+};
 
 const LAYOUTS: readonly { key: PaymentPageLayout; title: string; description: string }[] = [
   { key: 'BANNER', title: 'Banner', description: 'Full-width brand banner with logo and name' },
@@ -58,6 +71,37 @@ const inputClass =
 
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
+}
+
+/** The circular chevron button that collapses/expands a section — Brand
+ * Elements and Page layout each get one; collapsing only hides the fields,
+ * it never resets or discards whatever was already chosen inside. */
+function CollapseToggle({
+  open,
+  onToggle,
+  label,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted
+                 text-ink-muted transition-colors hover:bg-[#E5E7EB] hover:text-ink-strong
+                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+    >
+      {open ? (
+        <ChevronUp className="h-4 w-4" aria-hidden />
+      ) : (
+        <ChevronDown className="h-4 w-4" aria-hidden />
+      )}
+    </button>
+  );
 }
 
 /** A colour row: swatch + hex value, swatch opens a native colour picker. */
@@ -112,42 +156,49 @@ function InvoiceSummary({
   invoice: PaymentPagePreviewInvoice | null;
   centered?: boolean;
 }) {
-  if (!invoice) {
-    return (
-      <div className={centered ? 'text-center' : ''}>
-        <p className="text-sm text-ink-muted">No invoices yet for this brand</p>
-        <p className="mt-1 text-sm text-ink-subtle">
-          This preview will show your most recent invoice once one exists.
-        </p>
-      </div>
-    );
-  }
+  // No invoice yet: fall back to SAMPLE_PREVIEW so there's still a full page
+  // to style-check, but badge and caption it clearly — this must never read
+  // as a real invoice (see PaymentPagePreviewInvoice's comment).
+  const isSample = !invoice;
+  const data = invoice ?? SAMPLE_PREVIEW;
 
   return (
     <div className={centered ? 'text-center' : ''}>
       <p className="text-sm text-ink-muted">
-        Invoice {invoice.number} &bull; {invoice.customerName}
+        Invoice {data.number} &bull; {data.customerName}
+        {isSample && (
+          <span className="ml-2 rounded-full bg-surface-muted px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">
+            Sample
+          </span>
+        )}
       </p>
-      <p className="mt-1 text-3xl font-bold text-ink-strong">{invoice.amountLabel}</p>
+      <p className="mt-1 text-3xl font-bold text-ink-strong">{data.amountLabel}</p>
       <div
-        className={`mt-2 flex items-center gap-3 text-sm text-ink-muted ${
-          centered ? 'justify-center' : 'justify-between'
+        className={`mt-2 flex gap-3 text-sm text-ink-muted ${
+          centered ? 'flex-col items-center' : 'items-center justify-between'
         }`}
       >
-        <span>Due Date: {invoice.dueDateLabel}</span>
-        {invoice.viewUrl && (
+        <span>
+          Due Date: <span className="font-semibold text-orange-600">{data.dueDateLabel}</span>
+        </span>
+        {invoice?.viewUrl && (
           <a
             href={invoice.viewUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg border border-[#D1D5DB] bg-white px-3 py-1.5
-                       text-xs font-semibold text-ink-strong hover:bg-slate-50"
+            className="inline-flex items-center gap-1 rounded-lg border border-blue-600 bg-white px-3 py-1.5
+                       text-xs font-semibold text-blue-600 hover:bg-blue-50"
           >
             View Invoice
             <ExternalLink className="h-3 w-3" aria-hidden />
           </a>
         )}
       </div>
+      {isSample && (
+        <p className={`mt-2 text-xs text-ink-subtle ${centered ? 'text-center' : ''}`}>
+          Sample data — create an invoice for this brand to preview your real numbers here.
+        </p>
+      )}
     </div>
   );
 }
@@ -276,6 +327,10 @@ function BrandBanner({
   );
 }
 
+/** The "Centered" layout's header: a short colour bar behind the logo, the
+ * logo overlapping its bottom edge, name below on the plain surface — a
+ * cover-photo/profile-picture arrangement, distinct from Banner's full-height
+ * row and from a flat white header. */
 function CenteredHeader({
   brand,
   themeColor,
@@ -286,10 +341,12 @@ function CenteredHeader({
   logoSrc: string | null;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 px-6 pt-8">
+    <div className="flex flex-col items-center">
+      <div style={{ backgroundColor: themeColor }} className="h-16 w-full rounded-t-2xl" />
       <span
         style={{ backgroundColor: logoSrc ? undefined : themeColor }}
-        className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-lg font-bold text-white"
+        className="-mt-8 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full
+                   border-4 border-white text-lg font-bold text-white shadow-sm"
       >
         {logoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -298,7 +355,7 @@ function CenteredHeader({
           initialOf(brand.displayName)
         )}
       </span>
-      <span className="text-lg font-bold text-ink-strong">{brand.displayName}</span>
+      <span className="mt-2 px-6 text-lg font-bold text-ink-strong">{brand.displayName}</span>
     </div>
   );
 }
@@ -343,7 +400,7 @@ function PreviewBody({
             {METHODS.find((m) => m.key === method)?.label}.
           </p>
         )}
-        <PayButton accentColor={accentColor} amountLabel={invoice?.amountLabel ?? '$0.00'} />
+        <PayButton accentColor={accentColor} amountLabel={invoice?.amountLabel ?? SAMPLE_PREVIEW.amountLabel} />
       </>
     );
 
@@ -410,6 +467,11 @@ export function PaymentPageEditor({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoSrc = logoPreview ?? brand.logoUrl;
 
+  // Collapsible sections default open — collapsing just hides the fields,
+  // it never discards a change already made while open.
+  const [brandElementsOpen, setBrandElementsOpen] = useState(true);
+  const [pageLayoutOpen, setPageLayoutOpen] = useState(true);
+
   const layoutGroupId = useId();
 
   function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
@@ -425,74 +487,96 @@ export function PaymentPageEditor({
       <input type="hidden" name="paymentPageLayout" value={layout} />
 
       <section>
-        <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
-        <p className="mt-1 text-sm text-ink-muted">
-          Set default elements that appear across all customer communications.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
+            <p className="mt-1 text-sm text-ink-muted">
+              Set default elements that appear across all customer communications.
+            </p>
+          </div>
+          <CollapseToggle
+            open={brandElementsOpen}
+            onToggle={() => setBrandElementsOpen((open) => !open)}
+            label="Brand Elements"
+          />
+        </div>
 
-        <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
-          <div className="flex items-center justify-between py-3">
-            <span className="text-sm font-medium text-ink-strong">Logo</span>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              aria-label="Upload brand logo"
-              className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
-                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-              style={{ backgroundColor: logoSrc ? undefined : themeColor }}
-            >
-              {logoSrc ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-              ) : (
-                initialOf(brand.displayName)
-              )}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              name="logo"
-              accept="image/jpeg,image/png,image/svg+xml"
-              onChange={handleLogoChange}
-              className="hidden"
+        {brandElementsOpen && (
+          <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
+            <div className="flex items-center justify-between py-3">
+              <span className="text-sm font-medium text-ink-strong">Logo</span>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Upload brand logo"
+                className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                style={{ backgroundColor: logoSrc ? undefined : themeColor }}
+              >
+                {logoSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logoSrc} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  initialOf(brand.displayName)
+                )}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                name="logo"
+                accept="image/jpeg,image/png,image/svg+xml"
+                onChange={handleLogoChange}
+                className="hidden"
+              />
+            </div>
+
+            <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
+            <ColourField label="Accent colour" value={accentColor} onChange={setAccentColor} />
+          </div>
+        )}
+
+        <div className="mt-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-bold text-ink-strong">Page layout</p>
+              <p className="mt-1 text-sm text-ink-muted">
+                Choose how your payment page is presented to customers.
+              </p>
+            </div>
+            <CollapseToggle
+              open={pageLayoutOpen}
+              onToggle={() => setPageLayoutOpen((open) => !open)}
+              label="Page layout"
             />
           </div>
 
-          <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
-          <ColourField label="Accent colour" value={accentColor} onChange={setAccentColor} />
-        </div>
-
-        <div className="mt-6">
-          <p className="text-sm font-bold text-ink-strong">Page layout</p>
-          <p className="mt-1 text-sm text-ink-muted">
-            Choose how your payment page is presented to customers.
-          </p>
-
-          <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
-            {LAYOUTS.map(({ key, title, description }) => {
-              const selected = key === layout;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => setLayout(key)}
-                  className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
-                    selected
-                      ? 'border-ink-strong bg-surface-muted'
-                      : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
-                  }`}
-                >
-                  <span>
-                    <span className="block text-sm font-semibold text-ink-strong">{title}</span>
-                    <span className="block text-xs text-ink-muted">{description}</span>
-                  </span>
-                  {selected && <Check className="h-4 w-4 shrink-0 text-ink-strong" aria-hidden />}
-                </button>
-              );
-            })}
-          </div>
+          {pageLayoutOpen && (
+            <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
+              {LAYOUTS.map(({ key, title, description }) => {
+                const selected = key === layout;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setLayout(key)}
+                    className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                      selected
+                        ? 'border-ink-strong bg-surface-muted'
+                        : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
+                    }`}
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold text-ink-strong">{title}</span>
+                      <span className="block text-xs text-ink-muted">{description}</span>
+                    </span>
+                    {selected && <Check className="h-4 w-4 shrink-0 text-ink-strong" aria-hidden />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {state.error && (

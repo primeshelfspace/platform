@@ -1,8 +1,12 @@
-import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import {
+  emailReceiptSettingsSchema,
+  emailReceiptTestSendSchema,
   idSchema,
   paymentMethodSettingsSchema,
   paymentPageDisplaySchema,
+  type EmailReceiptSettingsInput,
+  type EmailReceiptTestSendInput,
   type PaymentMethodSettingsInput,
   type PaymentPageDisplayInput,
   type Scope,
@@ -11,6 +15,7 @@ import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import {
   BrandSettingsService,
+  type EmailReceiptSettings,
   type PaymentMethodSettings,
   type PaymentPageDisplaySettings,
 } from './brand-settings.service.js';
@@ -55,5 +60,36 @@ export class BrandSettingsController {
     @Body(zodPipe(paymentPageDisplaySchema)) body: PaymentPageDisplayInput,
   ): Promise<PaymentPageDisplaySettings> {
     return this.settings.updatePaymentPageDisplay(scope, brandId, body);
+  }
+
+  @Get('email-receipt')
+  @RequirePermission('BRAND_CONFIGURATION', 'READ')
+  getEmailReceipt(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+  ): Promise<EmailReceiptSettings> {
+    return this.settings.getEmailReceiptSettings(scope, brandId);
+  }
+
+  @Patch('email-receipt')
+  @RequirePermission('BRAND_CONFIGURATION', 'WRITE')
+  updateEmailReceipt(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Body(zodPipe(emailReceiptSettingsSchema)) body: EmailReceiptSettingsInput,
+  ): Promise<EmailReceiptSettings> {
+    return this.settings.updateEmailReceiptSettings(scope, brandId, body);
+  }
+
+  @Post('email-receipt/test-send')
+  @HttpCode(200)
+  @RequirePermission('BRAND_CONFIGURATION', 'WRITE')
+  async sendEmailReceiptTest(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Body(zodPipe(emailReceiptTestSendSchema)) body: EmailReceiptTestSendInput,
+  ): Promise<{ sent: true }> {
+    await this.settings.sendEmailReceiptTest(scope, brandId, body);
+    return { sent: true };
   }
 }
