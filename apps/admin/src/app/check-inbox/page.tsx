@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
  */
 export default function CheckInboxPage() {
   return (
-    <main className="min-h-screen bg-white px-6 py-16 sm:py-24">
+    <main className="flex min-h-screen items-center justify-center bg-white px-6 py-16 sm:py-24">
       <div className="mx-auto w-full max-w-[600px] text-center">
         <LogoMark size={56} />
         <h1 className="mt-6 text-3xl font-extrabold tracking-tight text-[#0F172A] sm:text-4xl">

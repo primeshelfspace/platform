@@ -39,7 +39,7 @@ export default async function LoginPage({
             Welcome Back
           </h1>
           <p className="mt-2 text-base text-[#64748B] sm:text-[17px]">
-            Sign in with the temporary password provided to you.
+            Sign in with the password provided to you.
           </p>
         </div>
 

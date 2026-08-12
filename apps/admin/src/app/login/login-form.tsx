@@ -36,7 +36,7 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
     if (!email) errors.email = 'Email address is required.';
     else if (!EMAIL_PATTERN.test(email)) errors.email = 'Enter a valid email address.';
 
-    if (!password) errors.password = 'Temporary password is required.';
+    if (!password) errors.password = 'Password is required.';
 
     return errors;
   }
@@ -76,7 +76,7 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
       </label>
 
       <label className="block" htmlFor={passwordId}>
-        <span className={labelClass}>Temporary Password</span>
+        <span className={labelClass}>Password</span>
         <input
           id={passwordId}
           name="password"
@@ -86,7 +86,7 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
           aria-invalid={Boolean(fieldErrors.password)}
           aria-describedby={fieldErrors.password ? passwordErrorId : undefined}
           className={`${inputClass} ${fieldErrors.password ? invalidBorder : validBorder}`}
-          placeholder="Enter temporary password"
+          placeholder="Enter password"
         />
         {fieldErrors.password && (
           <p id={passwordErrorId} role="alert" className="mt-1.5 text-sm text-red-600">
