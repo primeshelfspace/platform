@@ -301,7 +301,13 @@ export function AddCustomerModal({
           </button>
         </div>
 
-        <form ref={formRef} action={formAction} onSubmit={handleSubmit} noValidate className="space-y-6">
+        <form
+          ref={formRef}
+          action={formAction}
+          onSubmit={handleSubmit}
+          noValidate
+          className="space-y-6"
+        >
           <input type="hidden" name="sameAsBilling" value={sameAsBilling ? 'on' : ''} />
 
           <div>
@@ -361,7 +367,9 @@ export function AddCustomerModal({
                   name="email"
                   type="email"
                   placeholder={
-                    customerType === 'BUSINESS' ? 'Enter company email address' : 'Enter email address'
+                    customerType === 'BUSINESS'
+                      ? 'Enter company email address'
+                      : 'Enter email address'
                   }
                   error={fieldErrors.email}
                 />
@@ -414,7 +422,10 @@ export function AddCustomerModal({
           </div>
 
           {state.error && (
-            <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
               {state.error}
             </p>
           )}

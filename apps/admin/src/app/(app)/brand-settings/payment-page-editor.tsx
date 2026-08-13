@@ -194,7 +194,9 @@ function InvoiceSummary({
           {sampleBadge}
         </p>
       )}
-      <p className={`${light ? 'mt-2' : 'mt-1'} text-3xl font-bold ${light ? 'text-white' : 'text-ink-strong'}`}>
+      <p
+        className={`${light ? 'mt-2' : 'mt-1'} text-3xl font-bold ${light ? 'text-white' : 'text-ink-strong'}`}
+      >
         {data.amountLabel}
       </p>
       <div
@@ -203,7 +205,10 @@ function InvoiceSummary({
         } ${centered ? 'flex-col items-center' : light ? 'flex-col items-start' : 'items-center justify-between'}`}
       >
         <span>
-          Due Date: <span className={light ? undefined : 'font-semibold text-orange-600'}>{data.dueDateLabel}</span>
+          Due Date:{' '}
+          <span className={light ? undefined : 'font-semibold text-orange-600'}>
+            {data.dueDateLabel}
+          </span>
         </span>
         {invoice?.viewUrl && (
           <a
@@ -222,7 +227,9 @@ function InvoiceSummary({
         )}
       </div>
       {isSample && (
-        <p className={`mt-2 text-xs ${light ? 'text-white/70' : 'text-ink-subtle'} ${centered ? 'text-center' : ''}`}>
+        <p
+          className={`mt-2 text-xs ${light ? 'text-white/70' : 'text-ink-subtle'} ${centered ? 'text-center' : ''}`}
+        >
           Sample data — create an invoice for this brand to preview your real numbers here.
         </p>
       )}
@@ -413,23 +420,25 @@ function PreviewBody({
 }) {
   // A settled (paid/cancelled) invoice, or none at all, gets no payment
   // form — same rule the real hosted payment page enforces server-side.
-  const paymentForm =
-    invoice?.isSettled ? (
-      <SettledNotice label={invoice.settledLabel ?? 'This invoice has been paid.'} />
-    ) : (
-      <>
-        <MethodGrid selected={method} onSelect={onMethodChange} accentColor={accentColor} />
-        {method === 'card' ? (
-          <CardDetailsForm />
-        ) : (
-          <p className="mt-5 rounded-lg border border-dashed border-[#E5E7EB] bg-surface-muted px-4 py-6 text-center text-sm text-ink-muted">
-            You will be redirected to complete payment via{' '}
-            {METHODS.find((m) => m.key === method)?.label}.
-          </p>
-        )}
-        <PayButton accentColor={accentColor} amountLabel={invoice?.amountLabel ?? SAMPLE_PREVIEW.amountLabel} />
-      </>
-    );
+  const paymentForm = invoice?.isSettled ? (
+    <SettledNotice label={invoice.settledLabel ?? 'This invoice has been paid.'} />
+  ) : (
+    <>
+      <MethodGrid selected={method} onSelect={onMethodChange} accentColor={accentColor} />
+      {method === 'card' ? (
+        <CardDetailsForm />
+      ) : (
+        <p className="mt-5 rounded-lg border border-dashed border-[#E5E7EB] bg-surface-muted px-4 py-6 text-center text-sm text-ink-muted">
+          You will be redirected to complete payment via{' '}
+          {METHODS.find((m) => m.key === method)?.label}.
+        </p>
+      )}
+      <PayButton
+        accentColor={accentColor}
+        amountLabel={invoice?.amountLabel ?? SAMPLE_PREVIEW.amountLabel}
+      />
+    </>
+  );
 
   if (layout === 'SPLIT') {
     return (

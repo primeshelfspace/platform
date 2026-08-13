@@ -108,7 +108,11 @@ export function AddBrandModal({
             <div className="flex items-center gap-3">
               {logoPreview ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={logoPreview} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                <img
+                  src={logoPreview}
+                  alt=""
+                  className="h-10 w-10 shrink-0 rounded-lg object-cover"
+                />
               ) : (
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#94A3B8]">
                   <Plus className="h-4 w-4" aria-hidden />

@@ -8,6 +8,15 @@ on:
   push:
     branches: [main]
 
+# No permissions block previously existed, so the default GITHUB_TOKEN never
+# carried pull-requests:read. Harmless on push (the only trigger this repo
+# had exercised until its first PR), fatal for gitleaks-action here: it lists
+# the PR's commits via the API to scan just the diff, and gets a 403 without
+# this scope.
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -101,7 +110,7 @@ jobs:
       DIRECT_DATABASE_URL: postgresql://fenwick:fenwick@localhost:5432/fenwick?schema=public
       REDIS_URL: redis://localhost:6379
       SESSION_SECRET: ci-session-secret-not-used-outside-ci-0000
-      CREDENTIAL_ENCRYPTION_KEY: Y2ktb25seS0zMi1ieXRlLWtleS1mb3ItdGVzdHMhIQ==
+      CREDENTIAL_ENCRYPTION_KEY: Y2ktb25seS0zMi1ieXRlLWtleS1mb3ItdGVzdHMhISE= # gitleaks:allow — fake, CI-only, decodes to plain ASCII, see SESSION_SECRET above for the equivalent
       MAIL_DRIVER: console
       STORAGE_DRIVER: local
       PAYMENT_GATEWAY_DRIVER: fake

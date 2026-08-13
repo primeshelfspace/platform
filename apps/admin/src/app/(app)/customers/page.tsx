@@ -1,11 +1,5 @@
 import { BrandTheme } from '@/components/brand-theme';
-import {
-  ApiError,
-  listBrands,
-  listCustomers,
-  type Brand,
-  type CustomerListRow,
-} from '@/lib/api';
+import { ApiError, listBrands, listCustomers, type Brand, type CustomerListRow } from '@/lib/api';
 import { PageContainer } from '@/components/page-container';
 import { CustomersPageClient } from './customers-page-client';
 

@@ -1,6 +1,11 @@
 'use server';
 
-import { createCustomer, type Customer, type CustomerAddress, type CustomerFormInput } from '@/lib/api';
+import {
+  createCustomer,
+  type Customer,
+  type CustomerAddress,
+  type CustomerFormInput,
+} from '@/lib/api';
 import { addressFromForm, describeActionError, emptyToNull } from '@/lib/form';
 
 export interface CreateCustomerState {
@@ -31,10 +36,7 @@ export async function createCustomerAction(
 
   if (!displayName) {
     return {
-      error:
-        type === 'BUSINESS'
-          ? 'Enter a company name.'
-          : 'Enter a first or last name.',
+      error: type === 'BUSINESS' ? 'Enter a company name.' : 'Enter a first or last name.',
     };
   }
 

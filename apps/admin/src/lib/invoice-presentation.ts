@@ -45,7 +45,10 @@ export function invoiceStatusLabel(status: string): string {
  */
 export type InvoiceListStatus = 'DRAFT' | 'UNPAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 
-export function invoiceListStatus(invoice: { status: string; overdue: boolean }): InvoiceListStatus {
+export function invoiceListStatus(invoice: {
+  status: string;
+  overdue: boolean;
+}): InvoiceListStatus {
   if (invoice.status === 'DRAFT') return 'DRAFT';
   if (invoice.status === 'PAID') return 'PAID';
   if (invoice.status === 'CANCELLED') return 'CANCELLED';

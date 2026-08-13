@@ -41,13 +41,17 @@ function InvoiceSummary({ invoice, centered }: { invoice: PublicInvoice; centere
     <div className={centered ? 'text-center' : ''}>
       <h1 className="text-lg font-medium text-ink-strong">Invoice {invoice.number}</h1>
       <dl className="mt-4 space-y-2 text-sm">
-        <div className={`flex items-baseline gap-2 ${centered ? 'justify-center' : 'justify-between'}`}>
+        <div
+          className={`flex items-baseline gap-2 ${centered ? 'justify-center' : 'justify-between'}`}
+        >
           <dt className="text-ink-muted">Amount due</dt>
           <dd className="font-medium text-ink-strong">
             {formatMinorForDisplay(invoice.balanceMinor, toCurrencyCode(invoice.currency))}
           </dd>
         </div>
-        <div className={`flex items-baseline gap-2 ${centered ? 'justify-center' : 'justify-between'}`}>
+        <div
+          className={`flex items-baseline gap-2 ${centered ? 'justify-center' : 'justify-between'}`}
+        >
           <dt className="text-ink-muted">Due</dt>
           <dd className="text-ink-strong">{invoice.dueDate}</dd>
         </div>
@@ -82,7 +86,11 @@ export function PaymentPageShell({
               className="rounded-xl px-4 py-5 text-center"
             >
               <div className="mx-auto flex justify-center">
-                <Avatar brand={invoice.brand} size="sm" fallbackBackground="rgba(255,255,255,0.2)" />
+                <Avatar
+                  brand={invoice.brand}
+                  size="sm"
+                  fallbackBackground="rgba(255,255,255,0.2)"
+                />
               </div>
               <span className="mt-2 block text-sm font-bold text-white">
                 {invoice.brand.displayName}

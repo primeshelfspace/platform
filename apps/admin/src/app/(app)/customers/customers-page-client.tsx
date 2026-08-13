@@ -59,7 +59,10 @@ export function CustomersPageClient({
   function onSearchChange(value: string) {
     setSearchTerm(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => pushParams({ search: value || null }), SEARCH_DEBOUNCE_MS);
+    debounceRef.current = setTimeout(
+      () => pushParams({ search: value || null }),
+      SEARCH_DEBOUNCE_MS,
+    );
   }
 
   function onOutstandingChange(checked: boolean) {
@@ -191,8 +194,10 @@ export function CustomersPageClient({
             ) : (
               <table className="w-full min-w-[820px] text-sm">
                 <thead>
-                  <tr className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs font-semibold uppercase
-                                  tracking-wide text-[#8C919B]">
+                  <tr
+                    className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs font-semibold uppercase
+                                  tracking-wide text-[#8C919B]"
+                  >
                     <th className="w-10 px-5 py-3">
                       <input
                         type="checkbox"
@@ -254,7 +259,9 @@ export function CustomersPageClient({
           </section>
 
           {total > customers.length && (
-            <p className="mt-3 text-xs text-ink-subtle">Showing {customers.length} of {total}.</p>
+            <p className="mt-3 text-xs text-ink-subtle">
+              Showing {customers.length} of {total}.
+            </p>
           )}
         </>
       )}

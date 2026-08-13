@@ -37,7 +37,12 @@ describe('checkBusinessEmail', () => {
   });
 
   it('rejects free/personal providers when no website is on file', () => {
-    for (const email of ['john@gmail.com', 'john@yahoo.com', 'john@outlook.com', 'john@hotmail.com']) {
+    for (const email of [
+      'john@gmail.com',
+      'john@yahoo.com',
+      'john@outlook.com',
+      'john@hotmail.com',
+    ]) {
       const result = checkBusinessEmail(email, null);
       expect(result.ok).toBe(false);
       expect(result.reason).toBe('FREE_PROVIDER');
