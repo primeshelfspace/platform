@@ -5,7 +5,7 @@ import { getCurrentUser } from '@/lib/api';
 import { readSessionToken, safeReturnPath } from '@/lib/session';
 import { LoginForm } from './login-form';
 
-export const metadata: Metadata = { title: 'Sign in — Fenwick Invoicing' };
+export const metadata: Metadata = { title: 'Sign in — Prime Shelf Space Inc.' };
 export const dynamic = 'force-dynamic';
 
 /**

@@ -48,7 +48,7 @@ const envSchema = z
     SMTP_SECURE: booleanish.optional(),
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
-    MAIL_FROM: z.string().default('Fenwick Invoicing <billing@localhost>'),
+    MAIL_FROM: z.string().default('Prime Shelf Space Inc. <billing@localhost>'),
     POSTMARK_SERVER_TOKEN: z.string().optional(),
 
     STORAGE_LOCAL_PATH: z.string().default('./storage'),

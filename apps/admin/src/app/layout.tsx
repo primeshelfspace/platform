@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Fenwick — Invoicing',
+  title: 'Prime Shelf Space Inc.',
   description: 'Multi-brand invoicing and payment administration.',
 };
 

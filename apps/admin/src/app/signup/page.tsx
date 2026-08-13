@@ -6,7 +6,7 @@ import { getCurrentUser } from '@/lib/api';
 import { readSessionToken } from '@/lib/session';
 import { SignupForm } from './signup-form';
 
-export const metadata: Metadata = { title: 'Create your account — Fenwick Invoicing' };
+export const metadata: Metadata = { title: 'Create your account — Prime Shelf Space Inc.' };
 export const dynamic = 'force-dynamic';
 
 /**

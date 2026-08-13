@@ -155,8 +155,14 @@ export function CustomersPageClient({
             {/* Toggle's 'row' layout gives label-left/switch-right (what the
                 design calls for) but assumes a list context and adds a
                 bottom rule between rows — stripped here since this is the
-                only row in this context, not a list of settings. */}
-            <div className="[&>label]:border-0 [&>label]:py-0">
+                only row in this context, not a list of settings. The pill
+                card look (border/shadow) is applied on this wrapper rather
+                than the shared Toggle component, so other call sites (e.g.
+                payment-methods) keep their own plain-row appearance. */}
+            <div
+              className="flex items-center rounded-lg border border-[#D4D4D4] bg-white px-4 py-2
+                         shadow-[0_1px_1px_rgba(0,0,0,0.05)] [&>label]:border-0 [&>label]:py-0"
+            >
               <Toggle
                 layout="row"
                 checked={outstandingOnly}

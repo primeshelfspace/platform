@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LogoMark } from '@/components/logo-mark';
 
-export const metadata: Metadata = { title: 'Privacy Policy — Fenwick Invoicing' };
+export const metadata: Metadata = { title: 'Privacy Policy — Prime Shelf Space Inc.' };
 export const dynamic = 'force-dynamic';
 
 /**

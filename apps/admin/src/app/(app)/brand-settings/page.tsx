@@ -5,6 +5,8 @@ import {
   getPaymentPageDisplaySettings,
   listBrands,
   listInvoices,
+  type EmailReceiptSettings,
+  type PaymentPageDisplaySettings,
 } from '@/lib/api';
 import { PageContainer } from '@/components/page-container';
 import { BrandDetailsForm } from './brand-details-form';
@@ -93,6 +95,32 @@ export default async function BrandSettingsPage({
   const activeTab: BrandSettingsTab = isBrandSettingsTab(params.tab) ? params.tab : 'details';
   const activeSub: BrandingSubTab = isBrandingSubTab(params.sub) ? params.sub : 'email-receipt';
 
+  // Each sub-tab's data calls are independent of one another (none reads the
+  // others' result) — fetched together so the slowest one sets the wait
+  // instead of the sum of all of them.
+  let paymentPageProps: { display: PaymentPageDisplaySettings; previewInvoice: PaymentPagePreviewInvoice | null } | null = null;
+  let emailReceiptProps: {
+    settings: EmailReceiptSettings;
+    accentColor: string;
+    previewInvoice: PaymentPagePreviewInvoice | null;
+  } | null = null;
+  if (brand && activeTab !== 'details') {
+    if (activeSub === 'payment-page') {
+      const [display, previewInvoice] = await Promise.all([
+        getPaymentPageDisplaySettings(brand.id),
+        loadPreviewInvoice(brand.id),
+      ]);
+      paymentPageProps = { display, previewInvoice };
+    } else if (activeSub === 'email-receipt') {
+      const [settings, display, previewInvoice] = await Promise.all([
+        getEmailReceiptSettings(brand.id),
+        getPaymentPageDisplaySettings(brand.id),
+        loadPreviewInvoice(brand.id),
+      ]);
+      emailReceiptProps = { settings, accentColor: display.accentColor, previewInvoice };
+    }
+  }
+
   return (
     <PageContainer>
       {brand && <p className="text-sm text-ink-muted">{brand.displayName}</p>}
@@ -108,20 +136,25 @@ export default async function BrandSettingsPage({
         </div>
       ) : (
         <>
+          {/* Branches on activeSub itself, exactly as before, so TypeScript
+              still narrows activeSub to 'invoice-pdf' in the fallback below
+              — the props objects are filled in by the identical condition
+              above, so the assertions below just tell TS what's already
+              guaranteed true at runtime. */}
           {activeSub === 'payment-page' ? (
             <PaymentPageEditor
               brand={brand}
               activeSub={activeSub}
-              display={await getPaymentPageDisplaySettings(brand.id)}
-              previewInvoice={await loadPreviewInvoice(brand.id)}
+              display={paymentPageProps!.display}
+              previewInvoice={paymentPageProps!.previewInvoice}
             />
           ) : activeSub === 'email-receipt' ? (
             <EmailReceiptEditor
               brand={brand}
               activeSub={activeSub}
-              settings={await getEmailReceiptSettings(brand.id)}
-              accentColor={(await getPaymentPageDisplaySettings(brand.id)).accentColor}
-              previewInvoice={await loadPreviewInvoice(brand.id)}
+              settings={emailReceiptProps!.settings}
+              accentColor={emailReceiptProps!.accentColor}
+              previewInvoice={emailReceiptProps!.previewInvoice}
             />
           ) : (
             <>

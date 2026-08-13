@@ -23,9 +23,21 @@ import { resolveOnboardingStep, routeForStep } from '@/lib/onboarding';
  * cheap filter; this is the actual gate.
  */
 export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
+  // This layout re-renders on the server on every navigation under it (it
+  // reads cookies(), so it can never be statically cached) — so every one of
+  // its awaits is latency every single click pays. listBrands doesn't depend
+  // on who the user is, so it starts alongside getCurrentUser instead of
+  // after it; a failure here still falls back to "no brands" exactly as
+  // before, it just no longer blocks behind the session check to do so.
   let user: CurrentUser;
+  let brands: Brand[] = [];
   try {
-    user = await getCurrentUser();
+    const [resolvedUser, resolvedBrands] = await Promise.all([
+      getCurrentUser(),
+      listBrands().catch(() => [] as Brand[]),
+    ]);
+    user = resolvedUser;
+    brands = resolvedBrands;
   } catch {
     // Any failure to establish who this is means no access. The cookie is left
     // for /login to clear, so a momentary API outage does not silently sign
@@ -41,20 +53,10 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     redirect(routeForStep(step));
   }
 
-  let brands: Brand[] = [];
-  try {
-    brands = await listBrands();
-  } catch {
-    // The shell renders with no brands rather than crashing the whole app —
-    // every page already has its own "API not reachable" handling for the
-    // data it actually needs. A user whose role cannot list brands (FRS-001
-    // §3.3 grants BRANDS READ to Owner and Merchant Admin only) lands here too.
-  }
-
   // The sidebar header names the merchant, not any one brand — falls back to
   // the product name for the same "role can't reach it" case as brands above,
   // rather than leaving the header blank.
-  let companyName = 'Fenwick Invoicing';
+  let companyName = 'Prime Shelf Space Inc.';
   try {
     const onboarding = await getMerchantOnboarding();
     if (onboarding.companyDetails?.legalName) companyName = onboarding.companyDetails.legalName;

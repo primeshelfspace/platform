@@ -68,21 +68,28 @@ export default async function CustomerDetailPage({
     );
   }
 
+  // Neither call reads the other's result — both only need activeBrand.id and
+  // the id already in the URL — so they run together. If the customer fetch
+  // fails the invoices result is simply discarded below, the one case where
+  // this costs a request the sequential version wouldn't have made.
+  const [customerOutcome, invoicesOutcome] = await Promise.allSettled([
+    getCustomer(activeBrand.id, id),
+    listInvoices(activeBrand.id, { customerId: id }),
+  ]);
+
   let customer: Customer | null = null;
   let loadError: string | null = null;
-  try {
-    customer = await getCustomer(activeBrand.id, id);
-  } catch (cause) {
+  if (customerOutcome.status === 'fulfilled') {
+    customer = customerOutcome.value;
+  } else {
+    const cause = customerOutcome.reason;
     loadError = cause instanceof ApiError ? cause.message : String(cause);
   }
 
   let invoices: Invoice[] = [];
-  if (customer) {
-    try {
-      invoices = (await listInvoices(activeBrand.id, { customerId: id })).data;
-    } catch {
-      // The customer's own details still render without their invoice history.
-    }
+  // The customer's own details still render without their invoice history.
+  if (customer && invoicesOutcome.status === 'fulfilled') {
+    invoices = invoicesOutcome.value.data;
   }
 
   return (

@@ -17,8 +17,12 @@ import { QueueService } from '../infra/queue/queue.service.js';
 
 export type InvoiceWithLines = Invoice & { lineItems: LineItem[] };
 
+/** A listing row — InvoiceWithLines plus the customer name the invoices
+ * table shows that a single invoice fetch has no need for. */
+export type InvoiceListRow = InvoiceWithLines & { customer: { displayName: string } };
+
 export interface InvoiceListResult {
-  readonly data: InvoiceWithLines[];
+  readonly data: InvoiceListRow[];
   readonly page: number;
   readonly pageSize: number;
   readonly total: number;
@@ -73,7 +77,10 @@ export class InvoicesService {
       const [data, total] = await Promise.all([
         tx.invoice.findMany({
           where,
-          include: { lineItems: { orderBy: { position: 'asc' } } },
+          include: {
+            lineItems: { orderBy: { position: 'asc' } },
+            customer: { select: { displayName: true } },
+          },
           orderBy: { createdAt: 'desc' },
           skip: (query.page - 1) * query.pageSize,
           take: query.pageSize,

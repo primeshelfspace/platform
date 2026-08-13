@@ -4,7 +4,7 @@ import { LogoMark } from '@/components/logo-mark';
 import { LOGIN_PATH, readSessionToken, safeReturnPath } from '@/lib/session';
 import { SetPasswordForm } from './set-password-form';
 
-export const metadata: Metadata = { title: 'Set Your Password — Fenwick Invoicing' };
+export const metadata: Metadata = { title: 'Set Your Password — Prime Shelf Space Inc.' };
 export const dynamic = 'force-dynamic';
 
 /**

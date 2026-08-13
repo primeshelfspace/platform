@@ -230,13 +230,13 @@ export class BrandSettingsService {
   }
 }
 
-/** `"Fenwick Invoicing <billing@localhost>"` -> name and address. Mirrors
+/** `"Prime Shelf Space Inc. <billing@localhost>"` -> name and address. Mirrors
  * AuthMailService's own parseFrom — duplicated rather than shared because a
  * third caller isn't due yet and the two are one line each. */
 function parseFrom(value: string): { name: string; address: string } {
   const match = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(value);
   if (match?.[1] && match[2]) return { name: match[1].trim(), address: match[2].trim() };
-  return { name: 'Fenwick Invoicing', address: value.trim() };
+  return { name: 'Prime Shelf Space Inc.', address: value.trim() };
 }
 
 function renderEmailReceiptHtml(input: {

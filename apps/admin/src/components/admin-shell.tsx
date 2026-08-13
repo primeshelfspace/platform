@@ -494,7 +494,18 @@ export function AdminShell({
           </div>
         </header>
 
-        <div className="min-w-0 flex-1 overflow-y-auto">{children}</div>
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          {/* Keyed by pathname so each real route change remounts this div and
+              re-triggers the fade — the CSS animation only plays on mount, so
+              without the key it would run once and never again. Deliberately
+              not keyed on the full URL: switching a query-param filter (a
+              brand, a tab, a search term) is an in-page state change, not a
+              page transition, and animating every one of those would be the
+              "excessive animation" this is supposed to avoid. */}
+          <div key={pathname} className="page-transition">
+            {children}
+          </div>
+        </div>
       </div>
 
       <AddBrandModal

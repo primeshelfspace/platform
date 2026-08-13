@@ -58,3 +58,67 @@ body {
     opacity: 0.5;
   }
 }
+
+/* The page content fade on navigation (components/admin-shell.tsx). Short and
+   subtle on purpose — this runs on every route change, so anything longer or
+   more elaborate turns into drag rather than polish. */
+@keyframes page-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-transition {
+  animation: page-content-in 180ms ease-out both;
+}
+
+/* Route-level loading fallback (components/page-skeleton.tsx). Faded in on a
+   delay, not instantly: most navigations resolve well under that delay, and a
+   skeleton visible for one frame reads as a glitch rather than as feedback. */
+@keyframes page-skeleton-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.skeleton-fade-in {
+  animation: page-skeleton-in 200ms ease-out 150ms both;
+}
+
+.skeleton-block {
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-transition {
+    animation: none;
+  }
+
+  .skeleton-fade-in {
+    animation: none;
+    opacity: 1;
+  }
+
+  .skeleton-block {
+    animation: none;
+    opacity: 0.7;
+  }
+}

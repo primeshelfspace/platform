@@ -442,6 +442,9 @@ export interface Invoice {
   customerId: string;
   number: string;
   status: string;
+  /** Overlay flag, not part of the status enum — set by a scheduled job once
+   * the due date passes with a positive balance (see invoice-status.ts). */
+  overdue: boolean;
   invoiceDate: string;
   dueDate: string;
   currency: string;
@@ -453,6 +456,8 @@ export interface Invoice {
   balanceMinor: number;
   publicToken: string;
   lineItems: LineItem[];
+  /** Only present on list rows — a single-invoice fetch has no need for it. */
+  customer?: { displayName: string };
 }
 
 export interface InvoiceListResponse {

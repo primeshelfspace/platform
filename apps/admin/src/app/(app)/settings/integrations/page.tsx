@@ -76,8 +76,11 @@ export default async function IntegrationsPage({
 
   if (activeBrand && tab === 'zoho') {
     try {
-      zohoStatus = await getZohoStatus(activeBrand.id);
-      zohoActivity = await getZohoActivity(activeBrand.id);
+      // Neither call depends on the other's result — fetched together.
+      [zohoStatus, zohoActivity] = await Promise.all([
+        getZohoStatus(activeBrand.id),
+        getZohoActivity(activeBrand.id),
+      ]);
     } catch (cause) {
       zohoError = cause instanceof ApiError ? cause.message : String(cause);
     }

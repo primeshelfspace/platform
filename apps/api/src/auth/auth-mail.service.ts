@@ -65,13 +65,13 @@ export class AuthMailService {
   }
 }
 
-/** `"Fenwick Invoicing <billing@localhost>"` -> name and address. Falls back to
+/** `"Prime Shelf Space Inc. <billing@localhost>"` -> name and address. Falls back to
  * treating the whole value as an address, which is the other shape people
  * configure. */
 function parseFrom(value: string): { name: string; address: string } {
   const match = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(value);
   if (match?.[1] && match[2]) return { name: match[1].trim(), address: match[2].trim() };
-  return { name: 'Fenwick Invoicing', address: value.trim() };
+  return { name: 'Prime Shelf Space Inc.', address: value.trim() };
 }
 
 function renderHtml(input: { name: string; lead: string; url: string }): string {
