@@ -10,6 +10,7 @@ import {
   type SendTestEmailState,
 } from './actions';
 import type { PaymentPagePreviewInvoice } from './payment-page-editor';
+import { BrandingSubTabs, type BrandingSubTab } from './tabs';
 
 const initialSaveState: EmailReceiptState = {};
 const initialSendState: SendTestEmailState = {};
@@ -184,7 +185,6 @@ function ColourField({
 function PreviewBody({
   brand,
   themeColor,
-  accentColor,
   layout,
   logoSrc,
   subjectTemplate,
@@ -194,11 +194,10 @@ function PreviewBody({
   viewUrl,
 }: {
   brand: Brand;
+  /** Drives the top border strip, the logo avatar's fallback background, and
+   * the brand name inside the subject line — all three pick it up, so
+   * changing one colour in Brand Elements re-colours all three at once. */
   themeColor: string;
-  /** Doubles as the "new brand event" colour: the top border strip and the
-   * brand name inside the subject line both pick it up, so changing one
-   * colour in Brand Elements re-colours both at once. */
-  accentColor: string;
   layout: EmailReceiptLayout;
   logoSrc: string | null;
   subjectTemplate: string;
@@ -228,7 +227,7 @@ function PreviewBody({
       {/* The one visual cue that this is a live send rather than a plain
           document — every layout gets it, not just the ones with a coloured
           header band. */}
-      <div style={{ backgroundColor: accentColor }} className="h-1.5 w-full" aria-hidden />
+      <div style={{ backgroundColor: themeColor }} className="h-1.5 w-full" aria-hidden />
 
       {layout === 'HERO' ? (
         <div style={{ backgroundColor: themeColor }} className="flex flex-col items-center gap-2 px-6 py-8">
@@ -252,7 +251,7 @@ function PreviewBody({
         <p className="text-base font-bold text-ink-strong">
           {segmentsForLine(subjectTemplate, variables).map((segment, index) =>
             segment.isVariable ? (
-              <span key={index} style={{ color: accentColor }}>
+              <span key={index} style={{ color: themeColor }}>
                 {segment.text}
               </span>
             ) : (
@@ -290,18 +289,18 @@ function PreviewBody({
           View &amp; Pay Invoice
         </a>
 
-        <div className="mt-6 border-t border-[#E5E7EB] pt-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink-subtle">Invoice summary</p>
-          <dl className="mt-2 space-y-1.5 text-sm">
-            <div className="flex justify-between">
+        <div className="mt-6 overflow-hidden rounded-lg border border-[#E5E7EB]">
+          <p className="bg-surface-muted px-4 py-2.5 text-sm font-bold text-ink-strong">Invoice summary</p>
+          <dl className="divide-y divide-[#E5E7EB] text-sm">
+            <div className="flex justify-between px-4 py-2.5">
               <dt className="text-ink-muted">Invoice number</dt>
               <dd className="font-bold text-ink-strong">{invoiceLabel.number}</dd>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between px-4 py-2.5">
               <dt className="text-ink-muted">Amount due</dt>
               <dd className="font-bold text-ink-strong">{invoiceLabel.amountDue}</dd>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between px-4 py-2.5">
               <dt className="text-ink-muted">Due date</dt>
               <dd className="font-bold text-ink-strong">{invoiceLabel.dueDate}</dd>
             </div>
@@ -314,11 +313,15 @@ function PreviewBody({
 
 export function EmailReceiptEditor({
   brand,
+  activeSub,
   settings,
   accentColor: initialAccentColor,
   previewInvoice,
 }: {
   brand: Brand;
+  /** Rendered inside the Preview column's own top row — see PaymentPageEditor's
+   * identical treatment for why it isn't a separate row above the card. */
+  activeSub: BrandingSubTab;
   settings: EmailReceiptSettings;
   /** Same field Payment Page edits — there is only one accent colour per
    * brand; Brand Elements here is a second entry point onto it. */
@@ -343,9 +346,9 @@ export function EmailReceiptEditor({
   const logoSrc = logoPreview ?? brand.logoUrl;
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
-  const [brandElementsOpen, setBrandElementsOpen] = useState(true);
-  const [layoutOpen, setLayoutOpen] = useState(true);
-  const [contentOpen, setContentOpen] = useState(true);
+  const [brandElementsOpen, setBrandElementsOpen] = useState(false);
+  const [layoutOpen, setLayoutOpen] = useState(false);
+  const [contentOpen, setContentOpen] = useState(false);
 
   const layoutGroupId = useId();
   const testFormId = useId();
@@ -588,46 +591,50 @@ export function EmailReceiptEditor({
             (it never touches saved settings; see sendTestEmailAction). The
             compact button in the preview panel submits this same form via
             its `form` attribute rather than duplicating the fields. */}
-        {contentOpen && (
-          <form id={testFormId} action={sendFormAction} className="mt-6 border-t border-[#E5E7EB] pt-6">
-            <input type="hidden" name="emailReceiptSubject" value={renderedSubject} />
-            <input type="hidden" name="emailReceiptBody" value={renderedBody} />
-            <p className="text-sm font-bold text-ink-strong">Send a test email</p>
-            <p className="mt-1 text-sm text-ink-muted">Preview exactly what your customers will receive.</p>
-            <div className="mt-3 flex gap-2">
-              <input
-                type="email"
-                name="to"
-                required
-                value={testTo}
-                onChange={(event) => setTestTo(event.target.value)}
-                placeholder="Enter email address"
-                className="h-10 flex-1 rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
-                           shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                           focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-              />
-              <button
-                type="submit"
-                disabled={sendPending}
-                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-bold
-                           text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
-              >
-                <Send className="h-3.5 w-3.5" aria-hidden />
-                {sendPending ? 'Sending…' : 'Send Test Email'}
-              </button>
-            </div>
-            {sendState.error && (
-              <p role="alert" className="mt-2 text-sm text-red-700">
-                {sendState.error}
-              </p>
-            )}
-            {sendState.success && <p className="mt-2 text-sm text-emerald-700">Test email sent to {testTo}.</p>}
-          </form>
-        )}
+        <form id={testFormId} action={sendFormAction} className="mt-6 border-t border-[#E5E7EB] pt-6">
+          <input type="hidden" name="emailReceiptSubject" value={renderedSubject} />
+          <input type="hidden" name="emailReceiptBody" value={renderedBody} />
+          <p className="text-sm font-bold text-ink-strong">Send a test email</p>
+          <p className="mt-1 text-sm text-ink-muted">Preview exactly what your customers will receive.</p>
+          <div className="mt-3 flex gap-2">
+            <input
+              type="email"
+              name="to"
+              required
+              value={testTo}
+              onChange={(event) => setTestTo(event.target.value)}
+              placeholder="Enter email address"
+              className="h-10 flex-1 rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
+                         shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                         focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+            />
+            <button
+              type="submit"
+              disabled={sendPending}
+              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-bold
+                         text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
+            >
+              <Send className="h-3.5 w-3.5" aria-hidden />
+              {sendPending ? 'Sending…' : 'Send Test Email'}
+            </button>
+          </div>
+          {sendState.error && (
+            <p role="alert" className="mt-2 text-sm text-red-700">
+              {sendState.error}
+            </p>
+          )}
+          {sendState.success && <p className="mt-2 text-sm text-emerald-700">Test email sent to {testTo}.</p>}
+        </form>
       </section>
 
       <section>
-        <div className="flex items-center justify-between">
+        {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
+            "Brand Settings" page heading — cancelled here since it's the
+            first thing in this column now. */}
+        <div className="-mt-6">
+          <BrandingSubTabs active={activeSub} brandId={brand.id} />
+        </div>
+        <div className="mt-6 flex items-center justify-between">
           <h3 className="text-base font-bold text-ink-strong">Preview</h3>
           <button
             type="submit"
@@ -647,7 +654,6 @@ export function EmailReceiptEditor({
           <PreviewBody
             brand={brand}
             themeColor={themeColor}
-            accentColor={accentColor}
             layout={layout}
             logoSrc={logoSrc}
             subjectTemplate={subject}

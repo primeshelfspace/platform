@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import type { Brand, PaymentPageDisplaySettings, PaymentPageLayout } from '@/lib/api';
 import { savePaymentPageDisplayAction, type PaymentPageDisplayState } from './actions';
+import { BrandingSubTabs, type BrandingSubTab } from './tabs';
 
 const initialState: PaymentPageDisplayState = {};
 
@@ -152,9 +153,14 @@ function ColourField({
 function InvoiceSummary({
   invoice,
   centered,
+  light,
 }: {
   invoice: PaymentPagePreviewInvoice | null;
   centered?: boolean;
+  /** Renders white-on-colour instead of dark-on-white — for the Split
+   * layout's full-bleed brand-colour panel, where the default dark/blue/orange
+   * palette would be unreadable against a saturated background. */
+  light?: boolean;
 }) {
   // No invoice yet: fall back to SAMPLE_PREVIEW so there's still a full page
   // to style-check, but badge and caption it clearly — this must never read
@@ -162,40 +168,61 @@ function InvoiceSummary({
   const isSample = !invoice;
   const data = invoice ?? SAMPLE_PREVIEW;
 
+  const sampleBadge = isSample && (
+    <span
+      className={`ml-2 rounded-full px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide ${
+        light ? 'bg-white/20 text-white' : 'bg-surface-muted text-ink-subtle'
+      }`}
+    >
+      Sample
+    </span>
+  );
+
   return (
     <div className={centered ? 'text-center' : ''}>
-      <p className="text-sm text-ink-muted">
-        Invoice {data.number} &bull; {data.customerName}
-        {isSample && (
-          <span className="ml-2 rounded-full bg-surface-muted px-2 py-0.5 align-middle text-[11px] font-semibold uppercase tracking-wide text-ink-subtle">
-            Sample
+      {light ? (
+        <p className="text-base font-bold leading-snug text-white">
+          <span className="block">Invoice {data.number}</span>
+          <span className="block">
+            {data.customerName}
+            {sampleBadge}
           </span>
-        )}
+        </p>
+      ) : (
+        <p className="text-sm text-ink-muted">
+          Invoice {data.number} &bull; {data.customerName}
+          {sampleBadge}
+        </p>
+      )}
+      <p className={`${light ? 'mt-2' : 'mt-1'} text-3xl font-bold ${light ? 'text-white' : 'text-ink-strong'}`}>
+        {data.amountLabel}
       </p>
-      <p className="mt-1 text-3xl font-bold text-ink-strong">{data.amountLabel}</p>
       <div
-        className={`mt-2 flex gap-3 text-sm text-ink-muted ${
-          centered ? 'flex-col items-center' : 'items-center justify-between'
-        }`}
+        className={`flex text-sm ${light ? 'mt-4 gap-4' : 'mt-2 gap-3'} ${light ? 'text-white' : 'text-ink-muted'} ${
+          light ? 'font-bold' : ''
+        } ${centered ? 'flex-col items-center' : light ? 'flex-col items-start' : 'items-center justify-between'}`}
       >
         <span>
-          Due Date: <span className="font-semibold text-orange-600">{data.dueDateLabel}</span>
+          Due Date: <span className={light ? undefined : 'font-semibold text-orange-600'}>{data.dueDateLabel}</span>
         </span>
         {invoice?.viewUrl && (
           <a
             href={invoice.viewUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg border border-blue-600 bg-white px-3 py-1.5
-                       text-xs font-semibold text-blue-600 hover:bg-blue-50"
+            className={`inline-flex items-center gap-1.5 rounded-lg border font-semibold ${
+              light
+                ? 'border-white bg-transparent px-4 py-2 text-sm text-white hover:bg-white/10'
+                : 'border-blue-600 bg-white px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50'
+            }`}
           >
             View Invoice
-            <ExternalLink className="h-3 w-3" aria-hidden />
+            <ExternalLink className={light ? 'h-4 w-4' : 'h-3 w-3'} aria-hidden />
           </a>
         )}
       </div>
       {isSample && (
-        <p className={`mt-2 text-xs text-ink-subtle ${centered ? 'text-center' : ''}`}>
+        <p className={`mt-2 text-xs ${light ? 'text-white/70' : 'text-ink-subtle'} ${centered ? 'text-center' : ''}`}>
           Sample data — create an invoice for this brand to preview your real numbers here.
         </p>
       )}
@@ -406,10 +433,10 @@ function PreviewBody({
 
   if (layout === 'SPLIT') {
     return (
-      <div className={`grid gap-6 p-6 ${device === 'web' ? 'sm:grid-cols-2' : ''}`}>
-        <div>
-          <div style={{ backgroundColor: themeColor }} className="rounded-xl px-4 py-5 text-center">
-            <span className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-white/20 text-sm font-bold text-white mx-auto">
+      <div className={`grid ${device === 'web' ? 'sm:grid-cols-2' : ''}`}>
+        <div style={{ backgroundColor: themeColor }} className="flex flex-col gap-6 p-6">
+          <div className="flex items-center gap-3 border-b border-white/20 pb-5">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/20 text-sm font-bold text-white">
               {logoSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoSrc} alt="" className="h-full w-full object-cover" />
@@ -417,13 +444,11 @@ function PreviewBody({
                 initialOf(brand.displayName)
               )}
             </span>
-            <span className="mt-2 block text-sm font-bold text-white">{brand.displayName}</span>
+            <span className="text-lg font-bold text-white">{brand.displayName}</span>
           </div>
-          <div className="mt-4">
-            <InvoiceSummary invoice={invoice} />
-          </div>
+          <InvoiceSummary invoice={invoice} light />
         </div>
-        <div>{paymentForm}</div>
+        <div className="p-6">{paymentForm}</div>
       </div>
     );
   }
@@ -445,17 +470,22 @@ function PreviewBody({
 
 export function PaymentPageEditor({
   brand,
+  activeSub,
   display,
   previewInvoice,
 }: {
   brand: Brand;
+  /** Rendered inside the Preview column's own top row rather than as a
+   * separate row above the whole card — see BrandingSubTabs' call site
+   * below for why. */
+  activeSub: BrandingSubTab;
   display: PaymentPageDisplaySettings;
   /** The brand's actual most recent invoice, or null if it has none yet —
    * see PaymentPagePreviewInvoice. Never fabricated. */
   previewInvoice: PaymentPagePreviewInvoice | null;
 }) {
   const action = savePaymentPageDisplayAction.bind(null, brand);
-  const [state, formAction, pending] = useActionState(action, initialState);
+  const [state, formAction] = useActionState(action, initialState);
 
   const [themeColor, setThemeColor] = useState(brand.themeColor);
   const [accentColor, setAccentColor] = useState(display.accentColor);
@@ -481,12 +511,16 @@ export function PaymentPageEditor({
   }
 
   return (
-    <form action={formAction} className="mt-8 grid gap-10 lg:grid-cols-2 lg:items-start">
+    <form
+      action={formAction}
+      className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
+                 border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
+    >
       <input type="hidden" name="themeColor" value={themeColor} />
       <input type="hidden" name="accentColor" value={accentColor} />
       <input type="hidden" name="paymentPageLayout" value={layout} />
 
-      <section>
+      <section className="w-[350px] shrink-0 p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
@@ -592,20 +626,18 @@ export function PaymentPageEditor({
             Saved.
           </p>
         )}
-
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-6 rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
-                     hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
-                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
-          {pending ? 'Saving…' : 'Save Changes'}
-        </button>
       </section>
 
-      <section>
-        <div className="flex justify-end">
+      <section className="min-w-0 w-[744px] max-w-full p-6">
+        {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
+            "Brand Settings" page heading — here it's the first thing in a
+            padded card, so that margin is cancelled rather than stacking
+            with the section's own p-6. */}
+        <div className="-mt-6">
+          <BrandingSubTabs active={activeSub} brandId={brand.id} />
+        </div>
+        <div className="mt-6 flex items-center justify-between">
+          <h3 className="text-base font-bold text-ink-strong">Preview</h3>
           <div
             role="radiogroup"
             aria-label="Preview device"
@@ -626,7 +658,7 @@ export function PaymentPageEditor({
                   aria-checked={selected}
                   onClick={() => setDevice(key)}
                   className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    selected ? 'bg-surface-muted text-ink-strong' : 'text-ink-muted hover:text-ink-strong'
+                    selected ? 'bg-black text-white' : 'text-ink-muted hover:text-ink-strong'
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" aria-hidden />
@@ -638,9 +670,9 @@ export function PaymentPageEditor({
         </div>
 
         <div
-          className={`mt-4 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm transition-[max-width] ${
-            device === 'mobile' ? 'mx-auto max-w-[360px]' : 'max-w-none'
-          }`}
+          className={`mt-4 overflow-hidden border border-[#E5E7EB] bg-white shadow-sm transition-[max-width] ${
+            layout === 'SPLIT' && device === 'web' ? 'rounded-l-2xl' : 'rounded-2xl'
+          } ${device === 'mobile' ? 'mx-auto w-full max-w-[340px]' : 'max-w-none'}`}
         >
           <PreviewBody
             brand={brand}

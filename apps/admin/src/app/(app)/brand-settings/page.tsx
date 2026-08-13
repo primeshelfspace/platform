@@ -108,28 +108,26 @@ export default async function BrandSettingsPage({
         </div>
       ) : (
         <>
-          {/* Right-aligned to sit above the preview column, not the settings
-              column — matches the reference design; the empty left cell uses
-              the same grid/gap as PaymentPageEditor's below so the two line up. */}
-          <div className="grid gap-10 lg:grid-cols-2">
-            <div aria-hidden />
-            <BrandingSubTabs active={activeSub} brandId={brand.id} />
-          </div>
           {activeSub === 'payment-page' ? (
             <PaymentPageEditor
               brand={brand}
+              activeSub={activeSub}
               display={await getPaymentPageDisplaySettings(brand.id)}
               previewInvoice={await loadPreviewInvoice(brand.id)}
             />
           ) : activeSub === 'email-receipt' ? (
             <EmailReceiptEditor
               brand={brand}
+              activeSub={activeSub}
               settings={await getEmailReceiptSettings(brand.id)}
               accentColor={(await getPaymentPageDisplaySettings(brand.id)).accentColor}
               previewInvoice={await loadPreviewInvoice(brand.id)}
             />
           ) : (
-            <NotBuiltYet tab={activeSub} />
+            <>
+              <BrandingSubTabs active={activeSub} brandId={brand.id} />
+              <NotBuiltYet tab={activeSub} />
+            </>
           )}
         </>
       )}
