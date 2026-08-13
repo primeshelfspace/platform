@@ -123,6 +123,13 @@ describe('line total rounding (round 1)', () => {
   it('refuses a non-integer unit price', () => {
     expect(() => calculateLineTotal(quantityFrom(1), 10.5)).toThrow(MoneyError);
   });
+
+  it('refuses a line total that overflows the safe integer range', () => {
+    // Each input is individually a safe integer; only their product is not.
+    expect(() => calculateLineTotal(quantityFrom(2), Number.MAX_SAFE_INTEGER)).toThrow(
+      /line total overflows the safe integer range/,
+    );
+  });
 });
 
 describe('balance', () => {
@@ -148,6 +155,20 @@ describe('balance', () => {
     // Overpayment is a real condition that needs handling upstream, not a
     // number to hide by flooring at zero.
     expect(result.balanceMinor).toBe(-2000);
+  });
+});
+
+describe('subtotal overflow', () => {
+  it('refuses a subtotal that overflows the safe integer range even though every line is individually safe', () => {
+    const line = { quantity: quantityFrom(1), unitPriceMinor: Number.MAX_SAFE_INTEGER };
+    expect(() =>
+      calculate({
+        lines: [line, line],
+        taxRateBp: 0,
+        cardFeeRateBp: 0,
+        paymentMethod: 'ACH',
+      }),
+    ).toThrow(/sum overflows the safe integer range/);
   });
 });
 

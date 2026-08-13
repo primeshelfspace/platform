@@ -4,6 +4,7 @@ import {
   addMinor,
   allocate,
   applyBasisPoints,
+  assertMinor,
   divideRoundHalfUp,
   formatBasisPoints,
   formatMinor,
@@ -16,6 +17,7 @@ import {
   parseBasisPoints,
   parseMinor,
   subtractMinor,
+  toCurrencyCode,
 } from './money.js';
 import { formatQuantity, quantityFrom } from './quantity.js';
 
@@ -145,6 +147,36 @@ describe('quantity', () => {
 
   it('refuses more than four decimal places', () => {
     expect(() => quantityFrom('0.00001')).toThrow(MoneyError);
+  });
+});
+
+describe('toCurrencyCode', () => {
+  it('passes through a supported code', () => {
+    expect(toCurrencyCode('EUR')).toBe('EUR');
+  });
+
+  it('falls back to USD by default for anything unsupported', () => {
+    expect(toCurrencyCode('XYZ')).toBe('USD');
+    expect(toCurrencyCode(null)).toBe('USD');
+    expect(toCurrencyCode(undefined)).toBe('USD');
+  });
+
+  it('falls back to the caller-supplied default instead of USD when given one', () => {
+    expect(toCurrencyCode('XYZ', 'GBP')).toBe('GBP');
+  });
+});
+
+describe('overflow guards', () => {
+  it('refuses a minor amount outside the safe integer range', () => {
+    expect(() => assertMinor(Number.MAX_SAFE_INTEGER + 2)).toThrow(
+      /exceeds the safe integer range/,
+    );
+  });
+
+  it('refuses a sum that overflows the safe integer range', () => {
+    expect(() => addMinor(Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)).toThrow(
+      /overflows the safe integer range/,
+    );
   });
 });
 
