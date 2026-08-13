@@ -190,7 +190,10 @@ export class BrandSettingsService {
           brandName: brand.displayName,
           customerName: invoice.customer.displayName,
           invoiceNumber: invoice.number,
-          amountDue: formatMinorForDisplay(Number(invoice.balanceMinor), toCurrencyCode(invoice.currency)),
+          amountDue: formatMinorForDisplay(
+            Number(invoice.balanceMinor),
+            toCurrencyCode(invoice.currency),
+          ),
           dueDate: new Intl.DateTimeFormat('en-US', {
             month: 'short',
             day: 'numeric',
@@ -246,7 +249,11 @@ function renderEmailReceiptHtml(input: {
 }): string {
   const paragraphs = input.body
     .split('\n')
-    .map((line) => (line.trim() ? `<p style="margin:0 0 12px;font-size:15px;color:#334155;">${escapeHtml(line)}</p>` : ''))
+    .map((line) =>
+      line.trim()
+        ? `<p style="margin:0 0 12px;font-size:15px;color:#334155;">${escapeHtml(line)}</p>`
+        : '',
+    )
     .join('\n');
 
   return `<!doctype html>

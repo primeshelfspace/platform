@@ -26,8 +26,8 @@ export default function TermsPage() {
         <div className="space-y-8 text-[15px] leading-relaxed text-[#334155]">
           <Section title="1. Acceptance of these terms">
             By creating an account or otherwise using Fenwick, you agree to these terms. If you are
-            accepting them on behalf of a company, you are confirming you have the authority to
-            bind that company.
+            accepting them on behalf of a company, you are confirming you have the authority to bind
+            that company.
           </Section>
 
           <Section title="2. What Fenwick provides">
@@ -72,7 +72,10 @@ export default function TermsPage() {
 
           <Section title="9. Contact">
             Questions about these terms can be sent to{' '}
-            <a href="mailto:legal@fenwickholdings.test" className="font-medium text-[#0F172A] underline">
+            <a
+              href="mailto:legal@fenwickholdings.test"
+              className="font-medium text-[#0F172A] underline"
+            >
               legal@fenwickholdings.test
             </a>
             .

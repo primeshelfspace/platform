@@ -22,7 +22,14 @@ export const dynamic = 'force-dynamic';
 function formatAddress(address: CustomerAddress | null): string | null {
   if (!address) return null;
   return (
-    [address.line1, address.line2, address.city, address.region, address.postalCode, address.country]
+    [
+      address.line1,
+      address.line2,
+      address.city,
+      address.region,
+      address.postalCode,
+      address.country,
+    ]
       .filter(Boolean)
       .join(', ') || null
   );
@@ -114,7 +121,9 @@ export default async function CustomerDetailPage({
               <p className="text-sm uppercase tracking-widest text-ink-subtle">
                 {customer.type === 'BUSINESS' ? 'Company' : 'Individual'}
               </p>
-              <h1 className="mt-1 text-2xl font-semibold text-ink-strong">{customer.displayName}</h1>
+              <h1 className="mt-1 text-2xl font-semibold text-ink-strong">
+                {customer.displayName}
+              </h1>
               <p className="mt-2 text-ink-muted">{customer.email ?? 'No email on file'}</p>
               {customer.phone && <p className="text-ink-muted">{customer.phone}</p>}
             </header>

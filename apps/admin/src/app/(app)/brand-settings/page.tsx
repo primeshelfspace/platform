@@ -98,7 +98,10 @@ export default async function BrandSettingsPage({
   // Each sub-tab's data calls are independent of one another (none reads the
   // others' result) — fetched together so the slowest one sets the wait
   // instead of the sum of all of them.
-  let paymentPageProps: { display: PaymentPageDisplaySettings; previewInvoice: PaymentPagePreviewInvoice | null } | null = null;
+  let paymentPageProps: {
+    display: PaymentPageDisplaySettings;
+    previewInvoice: PaymentPagePreviewInvoice | null;
+  } | null = null;
   let emailReceiptProps: {
     settings: EmailReceiptSettings;
     accentColor: string;

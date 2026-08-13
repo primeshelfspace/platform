@@ -158,7 +158,9 @@ export function BrandsForm() {
     if (key) nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
   }
   const duplicateKeys = new Set(
-    rows.filter((row) => (nameCounts.get(row.name.trim().toLowerCase()) ?? 0) > 1).map((r) => r.key),
+    rows
+      .filter((row) => (nameCounts.get(row.name.trim().toLowerCase()) ?? 0) > 1)
+      .map((r) => r.key),
   );
   const hasDuplicates = duplicateKeys.size > 0;
   const canSubmit = named.length > 0 && !hasDuplicates && !pending;

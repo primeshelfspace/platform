@@ -31,8 +31,8 @@ export default function PrivacyPage() {
 
           <Section title="2. How we use it">
             To operate your account, issue invoices and process payments on your behalf, send
-            transactional email such as sign-up and password links, and maintain the security
-            audit log required to protect every account on the platform.
+            transactional email such as sign-up and password links, and maintain the security audit
+            log required to protect every account on the platform.
           </Section>
 
           <Section title="3. Who we share it with">

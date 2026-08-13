@@ -20,7 +20,11 @@ import {
  * directly so the table updates on every keystroke. */
 const SEARCH_DEBOUNCE_MS = 300;
 
-const TABS: ReadonlyArray<{ key: string; label: string; statuses: readonly InvoiceListStatus[] | null }> = [
+const TABS: ReadonlyArray<{
+  key: string;
+  label: string;
+  statuses: readonly InvoiceListStatus[] | null;
+}> = [
   { key: 'all', label: 'All', statuses: null },
   { key: 'draft', label: 'Drafts', statuses: ['DRAFT'] },
   { key: 'unpaid', label: 'Unpaid', statuses: ['UNPAID'] },
@@ -38,9 +42,11 @@ const RANGE_OPTIONS = [
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(
-    new Date(value),
-  );
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(value));
 }
 
 function initialOf(value: string): string {
@@ -49,7 +55,10 @@ function initialOf(value: string): string {
 
 /** Closes a panel on an outside click or Escape — the one bit of behaviour
  * every dropdown here needs (mirrors AdminShell's own, file-local copy). */
-function useDismissablePanel<T extends HTMLElement>(open: boolean, onClose: () => void): React.RefObject<T> {
+function useDismissablePanel<T extends HTMLElement>(
+  open: boolean,
+  onClose: () => void,
+): React.RefObject<T> {
   const ref = useRef<T>(null);
 
   useEffect(() => {
@@ -104,7 +113,9 @@ export function InvoicesPageClient({
   const [rangeMenuOpen, setRangeMenuOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const rangeMenuRef = useDismissablePanel<HTMLDivElement>(rangeMenuOpen, () => setRangeMenuOpen(false));
+  const rangeMenuRef = useDismissablePanel<HTMLDivElement>(rangeMenuOpen, () =>
+    setRangeMenuOpen(false),
+  );
 
   // A brand switch or a searchParams change from elsewhere (browser back,
   // another tab) should still show up in the box, not just this box's own edits.
@@ -122,7 +133,10 @@ export function InvoicesPageClient({
   function onSearchChange(value: string) {
     setSearchTerm(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => pushParams({ search: value || null }), SEARCH_DEBOUNCE_MS);
+    debounceRef.current = setTimeout(
+      () => pushParams({ search: value || null }),
+      SEARCH_DEBOUNCE_MS,
+    );
   }
 
   function onTabChange(key: string) {
@@ -323,8 +337,10 @@ export function InvoicesPageClient({
             ) : (
               <table className="w-full min-w-[900px] text-sm">
                 <thead>
-                  <tr className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs font-semibold uppercase
-                                  tracking-wide text-[#8C919B]">
+                  <tr
+                    className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs font-semibold uppercase
+                                  tracking-wide text-[#8C919B]"
+                  >
                     <th className="px-5 py-3">Invoice</th>
                     <th className="px-3 py-3">Customer</th>
                     <th className="px-3 py-3">Brand</th>
@@ -339,7 +355,9 @@ export function InvoicesPageClient({
                   {visible.map(({ inv, status }) => (
                     <tr key={inv.id} className="border-b border-[#E5E7EB] last:border-0">
                       <td className="px-5 py-3 font-semibold text-[#0F172A]">{inv.number}</td>
-                      <td className="px-3 py-3 text-[#0F172A]">{inv.customer?.displayName ?? '—'}</td>
+                      <td className="px-3 py-3 text-[#0F172A]">
+                        {inv.customer?.displayName ?? '—'}
+                      </td>
                       <td className="px-3 py-3">
                         {brand && (
                           <span className="inline-flex items-center gap-2">
@@ -364,7 +382,10 @@ export function InvoicesPageClient({
                         <span
                           className={`inline-flex items-center gap-1.5 text-sm font-medium ${invoiceListStatusTone(status)}`}
                         >
-                          <span className={`h-1.5 w-1.5 rounded-full ${invoiceListStatusDot(status)}`} aria-hidden />
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${invoiceListStatusDot(status)}`}
+                            aria-hidden
+                          />
                           {invoiceListStatusLabel(status)}
                         </span>
                       </td>

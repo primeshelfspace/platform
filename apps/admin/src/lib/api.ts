@@ -557,7 +557,9 @@ export interface PaymentPageDisplaySettings {
   paymentPageLayout: PaymentPageLayout;
 }
 
-export function getPaymentPageDisplaySettings(brandId: string): Promise<PaymentPageDisplaySettings> {
+export function getPaymentPageDisplaySettings(
+  brandId: string,
+): Promise<PaymentPageDisplaySettings> {
   return apiFetch<PaymentPageDisplaySettings>(`/brands/${brandId}/settings/payment-page-display`);
 }
 

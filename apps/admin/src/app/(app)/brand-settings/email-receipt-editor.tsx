@@ -26,7 +26,11 @@ const SAMPLE_PREVIEW = {
 };
 
 const LAYOUTS: readonly { key: EmailReceiptLayout; title: string; description: string }[] = [
-  { key: 'CLASSIC', title: 'Classic', description: 'Logo and brand name in a row, plain background' },
+  {
+    key: 'CLASSIC',
+    title: 'Classic',
+    description: 'Logo and brand name in a row, plain background',
+  },
   { key: 'HERO', title: 'Hero', description: 'Full-width colour header, centred logo and name' },
   { key: 'MINIMAL', title: 'Minimal', description: 'Clean, no header colour — logo mark only' },
 ];
@@ -60,7 +64,8 @@ type TemplateVariables = {
   dueDate: string;
 };
 
-const VARIABLE_TOKEN_RE = /(\{\{brand_name\}\}|\{\{customer_name\}\}|\{\{invoice_number\}\}|\{\{amount_due\}\}|\{\{due_date\}\})/g;
+const VARIABLE_TOKEN_RE =
+  /(\{\{brand_name\}\}|\{\{customer_name\}\}|\{\{invoice_number\}\}|\{\{amount_due\}\}|\{\{due_date\}\})/g;
 
 /** Splits one line of a raw (un-substituted) template into literal text and
  * variable segments, so the preview can bold exactly the parts a variable
@@ -95,7 +100,13 @@ function segmentsForLine(
  * something other than what a test send will actually contain. */
 function substitute(
   template: string,
-  vars: { brandName: string; customerName: string; invoiceNumber: string; amountDue: string; dueDate: string },
+  vars: {
+    brandName: string;
+    customerName: string;
+    invoiceNumber: string;
+    amountDue: string;
+    dueDate: string;
+  },
 ): string {
   return template
     .replaceAll('{{brand_name}}', vars.brandName)
@@ -230,7 +241,10 @@ function PreviewBody({
       <div style={{ backgroundColor: themeColor }} className="h-1.5 w-full" aria-hidden />
 
       {layout === 'HERO' ? (
-        <div style={{ backgroundColor: themeColor }} className="flex flex-col items-center gap-2 px-6 py-8">
+        <div
+          style={{ backgroundColor: themeColor }}
+          className="flex flex-col items-center gap-2 px-6 py-8"
+        >
           {avatar('h-14 w-14', 'rgba(255,255,255,0.2)')}
           <span className="text-lg font-bold text-white">{brand.displayName}</span>
           <span className="text-xs text-white/80">{senderAddress}</span>
@@ -290,7 +304,9 @@ function PreviewBody({
         </a>
 
         <div className="mt-6 overflow-hidden rounded-lg border border-[#E5E7EB]">
-          <p className="bg-surface-muted px-4 py-2.5 text-sm font-bold text-ink-strong">Invoice summary</p>
+          <p className="bg-surface-muted px-4 py-2.5 text-sm font-bold text-ink-strong">
+            Invoice summary
+          </p>
           <dl className="divide-y divide-[#E5E7EB] text-sm">
             <div className="flex justify-between px-4 py-2.5">
               <dt className="text-ink-muted">Invoice number</dt>
@@ -591,11 +607,17 @@ export function EmailReceiptEditor({
             (it never touches saved settings; see sendTestEmailAction). The
             compact button in the preview panel submits this same form via
             its `form` attribute rather than duplicating the fields. */}
-        <form id={testFormId} action={sendFormAction} className="mt-6 border-t border-[#E5E7EB] pt-6">
+        <form
+          id={testFormId}
+          action={sendFormAction}
+          className="mt-6 border-t border-[#E5E7EB] pt-6"
+        >
           <input type="hidden" name="emailReceiptSubject" value={renderedSubject} />
           <input type="hidden" name="emailReceiptBody" value={renderedBody} />
           <p className="text-sm font-bold text-ink-strong">Send a test email</p>
-          <p className="mt-1 text-sm text-ink-muted">Preview exactly what your customers will receive.</p>
+          <p className="mt-1 text-sm text-ink-muted">
+            Preview exactly what your customers will receive.
+          </p>
           <div className="mt-3 flex gap-2">
             <input
               type="email"
@@ -623,7 +645,9 @@ export function EmailReceiptEditor({
               {sendState.error}
             </p>
           )}
-          {sendState.success && <p className="mt-2 text-sm text-emerald-700">Test email sent to {testTo}.</p>}
+          {sendState.success && (
+            <p className="mt-2 text-sm text-emerald-700">Test email sent to {testTo}.</p>
+          )}
         </form>
       </section>
 
