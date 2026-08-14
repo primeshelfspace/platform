@@ -18,7 +18,9 @@ import {
   parseMinor,
   quantityFrom,
   type CalculationResult,
+  type InvoiceStatus,
   type PaymentMethod,
+  type Role,
 } from '@fenwick/shared';
 import { hashPassword } from '../src/auth/password.js';
 
@@ -504,13 +506,7 @@ async function createBrand(
 
 async function createUser(
   merchantId: string,
-  role:
-    | 'MERCHANT_OWNER'
-    | 'MERCHANT_ADMIN'
-    | 'BRAND_ADMIN'
-    | 'FINANCE_USER'
-    | 'SALES_USER'
-    | 'READ_ONLY',
+  role: Role,
   email: string,
   name: string,
   passwordHash: string,
@@ -568,7 +564,7 @@ interface SeedLine {
 async function createInvoice(input: {
   brand: { id: string };
   customerId: string;
-  status: 'DRAFT' | 'SENT' | 'VIEWED' | 'PENDING_PAYMENT' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED';
+  status: InvoiceStatus;
   lines: SeedLine[];
   taxRateBp: number;
   cardFeeRateBp: number;

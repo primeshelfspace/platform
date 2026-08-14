@@ -1,4 +1,5 @@
 import type { CurrencyCode } from '../money/money.js';
+import type { BusinessType } from './business-type.js';
 
 /**
  * What a brand gets when nobody has said otherwise.
@@ -13,3 +14,4 @@ import type { CurrencyCode } from '../money/money.js';
 export const DEFAULT_BRAND_CURRENCY: CurrencyCode = 'USD';
 export const DEFAULT_BRAND_TIMEZONE = 'America/New_York';
 export const DEFAULT_BRAND_THEME_COLOR = '#2D6A6A';
+export const DEFAULT_BRAND_BUSINESS_TYPE: BusinessType = 'LLC';

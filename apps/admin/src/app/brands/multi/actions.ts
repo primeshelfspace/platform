@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import {
+  DEFAULT_BRAND_BUSINESS_TYPE,
   DEFAULT_BRAND_CURRENCY,
   DEFAULT_BRAND_THEME_COLOR,
   DEFAULT_BRAND_TIMEZONE,
@@ -67,7 +68,7 @@ export async function createBrandsAction(
     const input: BrandFormInput & { invoicePrefix: string } = {
       legalName: entry.name,
       displayName: entry.name,
-      businessType: companyDetails?.businessType ?? 'LLC',
+      businessType: companyDetails?.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
       salesPersonName: null,
       phone: null,
       email: null,

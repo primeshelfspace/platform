@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  DEFAULT_BRAND_BUSINESS_TYPE,
   DEFAULT_BRAND_CURRENCY,
   DEFAULT_BRAND_THEME_COLOR,
   DEFAULT_BRAND_TIMEZONE,
@@ -48,7 +49,7 @@ export async function addBrandAction(
   const input: BrandFormInput & { invoicePrefix: string } = {
     legalName: name,
     displayName: name,
-    businessType: reference?.businessType ?? 'LLC',
+    businessType: reference?.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
     salesPersonName: null,
     phone: null,
     email: null,

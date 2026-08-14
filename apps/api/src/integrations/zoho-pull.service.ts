@@ -1,7 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { IntegrationError, type AccountingConnection, type Scope } from '@fenwick/shared';
+import {
+  IntegrationError,
+  type AccountingConnection,
+  type InvoiceStatus,
+  type Scope,
+} from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
 import {
@@ -19,7 +24,7 @@ export interface PullCounts {
 /** Zoho's invoice status vocabulary onto ours. Zoho has no direct
  * counterpart to our overdue tracking (a separate boolean flag here, not a
  * status value) — "overdue" reads as PENDING_PAYMENT, same as "unpaid". */
-const INVOICE_STATUS_MAP: Record<string, string> = {
+const INVOICE_STATUS_MAP: Record<string, InvoiceStatus> = {
   draft: 'DRAFT',
   sent: 'SENT',
   viewed: 'VIEWED',
@@ -225,8 +230,7 @@ export class ZohoPullService {
       const data = {
         customerId,
         number: invoice.invoice_number,
-        status: (INVOICE_STATUS_MAP[invoice.status] ?? 'SENT') as
-          'DRAFT' | 'SENT' | 'VIEWED' | 'PENDING_PAYMENT' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED',
+        status: INVOICE_STATUS_MAP[invoice.status] ?? 'SENT',
         invoiceDate: new Date(invoice.date),
         dueDate: new Date(invoice.due_date),
         currency: invoice.currency_code,

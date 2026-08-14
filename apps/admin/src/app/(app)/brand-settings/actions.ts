@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { DEFAULT_BRAND_BUSINESS_TYPE } from '@fenwick/shared';
 import {
   getPaymentPageDisplaySettings,
   sendEmailReceiptTest,
@@ -46,7 +47,7 @@ export async function saveBrandDetailsAction(
   const input: BrandFormInput = {
     legalName,
     displayName: brand.displayName,
-    businessType: brand.businessType ?? 'LLC',
+    businessType: brand.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
     salesPersonName: emptyToNull(formData.get('salesPerson')),
     phone: emptyToNull(formData.get('phone')),
     email: emptyToNull(formData.get('email')),
@@ -107,7 +108,7 @@ export async function savePaymentPageDisplayAction(
       const input: BrandFormInput = {
         legalName: brand.legalName,
         displayName: brand.displayName,
-        businessType: brand.businessType ?? 'LLC',
+        businessType: brand.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
         salesPersonName: brand.salesPerson,
         phone: brand.phone,
         email: brand.email,
@@ -175,7 +176,7 @@ export async function saveEmailReceiptSettingsAction(
       const input: BrandFormInput = {
         legalName: brand.legalName,
         displayName: brand.displayName,
-        businessType: brand.businessType ?? 'LLC',
+        businessType: brand.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
         salesPersonName: brand.salesPerson,
         phone: brand.phone,
         email: brand.email,
