@@ -1,13 +1,13 @@
 'use client';
 
 import { useActionState, useState } from 'react';
+import {
+  TOKEN_FIELD_INPUT_CLASS as inputClass,
+  TOKEN_FIELD_LABEL_CLASS as labelClass,
+} from '@/components/ui/form-styles';
 import { createCustomerAction, type CreateCustomerState } from './actions';
 
 const initialState: CreateCustomerState = {};
-
-const inputClass =
-  'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong';
-const labelClass = 'mb-1 block text-xs font-medium text-ink-muted';
 
 function Field({
   label,

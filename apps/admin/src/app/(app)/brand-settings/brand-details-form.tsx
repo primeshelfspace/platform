@@ -4,15 +4,13 @@ import { useActionState, useId, useState } from 'react';
 import { COUNTRIES, regionsFor } from '@fenwick/shared';
 import type { Brand } from '@/lib/api';
 import { Select } from '@/components/ui/select';
+import {
+  STATIC_FIELD_INPUT_CLASS as inputClass,
+  STATIC_FIELD_LABEL_CLASS as labelClass,
+} from '@/components/ui/form-styles';
 import { saveBrandDetailsAction, type BrandDetailsState } from './actions';
 
 const initialState: BrandDetailsState = {};
-
-const inputClass =
-  'w-full h-10 rounded-lg border border-[#D4D4D4] bg-white px-4 text-base text-slate-900 ' +
-  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-slate-400 focus-visible:outline-none ' +
-  'focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 transition-colors';
-const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
 
 function Field({
   label,

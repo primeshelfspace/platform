@@ -2,6 +2,10 @@
 
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import { ImageIcon, Plus, Trash2 } from 'lucide-react';
+import {
+  FIELD_INVALID_BORDER as invalidBorder,
+  FIELD_VALID_BORDER_SECONDARY as validBorder,
+} from '@/components/ui/form-styles';
 import { createBrandsAction, type CreateBrandsState } from './actions';
 
 const initialState: CreateBrandsState = {};
@@ -10,8 +14,6 @@ const inputClass =
   'w-full rounded-[8px] border bg-white px-3 py-2.5 text-sm text-slate-900 ' +
   'placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 ' +
   'focus-visible:ring-offset-1 transition-colors';
-const validBorder = 'border-[#D1D5DB] focus:border-slate-900 focus-visible:ring-slate-900';
-const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-red-500';
 
 /** Stable per-row identity so React keeps input state when a row above is
  * removed — indexes as keys would shift every value up by one. */

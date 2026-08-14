@@ -3,6 +3,10 @@
 import { useActionState, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { Customer } from '@/lib/api';
+import {
+  TOKEN_FIELD_INPUT_CLASS as inputClass,
+  TOKEN_FIELD_LABEL_CLASS as labelClass,
+} from '@/components/ui/form-styles';
 import { createInvoiceAction, type CreateInvoiceState } from './actions';
 
 const initialState: CreateInvoiceState = {};
@@ -22,10 +26,6 @@ const emptyRow: Row = {
   unitPrice: '',
   taxExempt: false,
 };
-
-const inputClass =
-  'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink-strong';
-const labelClass = 'mb-1 block text-xs font-medium text-ink-muted';
 
 export function InvoiceForm({
   brandId,

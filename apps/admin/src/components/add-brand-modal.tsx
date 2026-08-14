@@ -5,13 +5,12 @@ import { Plus } from 'lucide-react';
 import type { Brand } from '@/lib/api';
 import { addBrandAction, type AddBrandState } from '@/app/(app)/brands/actions';
 import { Modal } from '@/components/ui/modal';
+import {
+  STATIC_FIELD_INPUT_CLASS as inputClass,
+  STATIC_FIELD_LABEL_CLASS as labelClass,
+} from '@/components/ui/form-styles';
 
 const initialState: AddBrandState = {};
-
-const inputClass =
-  'w-full h-10 rounded-lg border border-[#D4D4D4] bg-white px-4 text-base text-slate-900 ' +
-  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-slate-400 focus-visible:outline-none ' +
-  'focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 transition-colors';
 
 /**
  * The sidebar's "Add New Brand" flow. Deliberately asks for only a name and
@@ -70,7 +69,7 @@ export function AddBrandModal({
     <Modal open={open} onClose={onClose} titleId="add-brand-heading" title="Add New Brand">
       <form ref={formRef} action={formAction} className="space-y-4">
         <label className="block">
-          <span className="mb-2 block text-sm font-bold text-[#0F172A]">Brand Name</span>
+          <span className={labelClass}>Brand Name</span>
           <input
             name="brandName"
             required
@@ -81,7 +80,7 @@ export function AddBrandModal({
         </label>
 
         <label className="block">
-          <span className="mb-2 block text-sm font-bold text-[#0F172A]">Logo (optional)</span>
+          <span className={labelClass}>Logo (optional)</span>
           <div className="flex items-center gap-3">
             {logoPreview ? (
               // eslint-disable-next-line @next/next/no-img-element

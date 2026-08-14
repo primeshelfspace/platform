@@ -2,6 +2,10 @@
 
 import { useActionState, useId, useMemo, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
+import {
+  FIELD_INVALID_BORDER as invalidBorder,
+  FIELD_VALID_BORDER_SECONDARY as validBorder,
+} from '@/components/ui/form-styles';
 import { setPasswordAction, type SetPasswordState } from './actions';
 
 const initialState: SetPasswordState = {};
@@ -12,8 +16,6 @@ const inputClass =
   'w-full rounded-[10px] border bg-white px-4 py-3.5 pr-12 text-base text-slate-900 ' +
   'placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 ' +
   'focus-visible:ring-offset-1 transition-colors';
-const validBorder = 'border-[#D1D5DB] focus:border-slate-900 focus-visible:ring-slate-900';
-const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-red-500';
 const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
 
 interface FieldErrors {

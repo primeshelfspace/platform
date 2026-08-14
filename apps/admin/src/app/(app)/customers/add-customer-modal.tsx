@@ -5,18 +5,16 @@ import { COUNTRIES, emailSchema, phoneSchema, regionsFor } from '@fenwick/shared
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import { Modal } from '@/components/ui/modal';
+import {
+  FIELD_INVALID_BORDER as invalidBorder,
+  FIELD_VALID_BORDER_PRIMARY as validBorder,
+  VALIDATED_FIELD_INPUT_CLASS as inputClass,
+  VALIDATED_FIELD_LABEL_CLASS as labelClass,
+} from '@/components/ui/form-styles';
 import type { Customer } from '@/lib/api';
 import { createCustomerAction, type CreateCustomerState } from './actions';
 
 const initialState: CreateCustomerState = {};
-
-const inputClass =
-  'w-full h-10 rounded-lg border bg-white px-4 text-base text-slate-900 ' +
-  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-slate-400 focus-visible:outline-none ' +
-  'focus-visible:ring-2 focus-visible:ring-offset-1 transition-colors disabled:bg-slate-50 disabled:text-slate-400';
-const validBorder = 'border-[#D4D4D4] focus:border-slate-900 focus-visible:ring-slate-900';
-const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-red-500';
-const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
 
 interface FieldErrors {
   name?: string;
