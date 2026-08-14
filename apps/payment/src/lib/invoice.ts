@@ -8,8 +8,7 @@
  */
 
 import { type InvoiceStatus, publicTokenSchema } from '@fenwick/shared';
-
-const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
+import { API_URL } from './env';
 
 export interface PublicInvoice {
   number: string;

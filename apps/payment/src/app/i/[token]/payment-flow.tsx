@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { applyBasisPoints, formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
+import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
 import { StripeCardForm } from './stripe-card-form';
-
-const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
 
 type Method = 'CARD' | 'WALLET' | 'ACH';
 

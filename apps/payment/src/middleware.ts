@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { API_URL as apiOrigin } from './lib/env';
 
 /**
  * Per-request CSP with a nonce (TDD-001 §3.3, §15.3).
@@ -18,7 +19,6 @@ import type { NextRequest } from 'next/server';
  * explicitly.
  */
 const gatewayOrigin = process.env.NEXT_PUBLIC_GATEWAY_ORIGIN ?? '';
-const apiOrigin = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 /**
  * Where brand logos are served from. `img-src 'self'` alone blocks them the
  * moment STORAGE_DRIVER=s3, because a presigned URL points at the bucket's own
