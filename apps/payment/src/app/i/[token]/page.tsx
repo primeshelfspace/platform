@@ -1,3 +1,4 @@
+import { isTerminal } from '@fenwick/shared';
 import { brandThemeVariables } from '@fenwick/shared/tokens';
 import { lookupInvoice } from '@/lib/invoice';
 import { PaymentFlow } from './payment-flow';
@@ -5,8 +6,6 @@ import { PaymentPageShell } from './payment-page-shell';
 
 // Never cached, never statically rendered: a balance is not a static value.
 export const dynamic = 'force-dynamic';
-
-const TERMINAL_STATUSES = new Set(['PAID', 'CANCELLED']);
 
 /**
  * The public invoice page (TDD-001 §12.1). Card, ACH, processing, success,
@@ -41,7 +40,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
 
   // FR-PAY-014: an invoice that is already settled or void gets the same
   // terminal treatment as an unknown token — no payment form, ever.
-  if (TERMINAL_STATUSES.has(invoice.status)) {
+  if (isTerminal(invoice.status)) {
     return (
       <div style={theme as React.CSSProperties}>
         <PaymentPageShell invoice={invoice}>

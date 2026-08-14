@@ -7,11 +7,13 @@
  * (TDD-001 §12.1 step 4).
  */
 
+import { type InvoiceStatus, publicTokenSchema } from '@fenwick/shared';
+
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
 
 export interface PublicInvoice {
   number: string;
-  status: string;
+  status: InvoiceStatus;
   currency: string;
   dueDate: string;
   totalMinor: number;
@@ -53,12 +55,10 @@ export type InvoiceLookup =
   | { state: 'not-found' }
   | { state: 'unavailable'; detail: string };
 
-const TOKEN_PATTERN = /^[0-9a-f]{32}$/;
-
 export async function lookupInvoice(token: string): Promise<InvoiceLookup> {
   // Reject malformed tokens before a network call: it costs nothing and keeps
   // obvious probing off the API entirely.
-  if (!TOKEN_PATTERN.test(token)) return { state: 'not-found' };
+  if (!publicTokenSchema.safeParse(token).success) return { state: 'not-found' };
 
   try {
     const response = await fetch(`${API_URL}/public/invoices/${token}`, { cache: 'no-store' });
