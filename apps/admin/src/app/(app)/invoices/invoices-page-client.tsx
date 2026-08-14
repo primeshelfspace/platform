@@ -13,6 +13,7 @@ import {
   invoiceListStatusTone,
   type InvoiceListStatus,
 } from '@/lib/invoice-presentation';
+import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
 
 /** How long the search box waits after the last keystroke before pushing a
  * new URL — matches CustomersPageClient's own debounce (FR-CUS list). The
@@ -51,35 +52,6 @@ function formatDate(value: string): string {
 
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
-}
-
-/** Closes a panel on an outside click or Escape — the one bit of behaviour
- * every dropdown here needs (mirrors AdminShell's own, file-local copy). */
-function useDismissablePanel<T extends HTMLElement>(
-  open: boolean,
-  onClose: () => void,
-): React.RefObject<T> {
-  const ref = useRef<T>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function onPointerDown(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
-    }
-
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open, onClose]);
-
-  return ref;
 }
 
 export function InvoicesPageClient({

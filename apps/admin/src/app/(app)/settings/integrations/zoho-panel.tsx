@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link2, Loader2, RefreshCw, Unlink } from 'lucide-react';
 import type { ZohoActivityEntry, ZohoConnectionStatus, ZohoSyncSettingsPatch } from '@/lib/api';
 import { Toggle } from '@/components/ui/toggle';
+import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
 import { disconnectZohoAction, updateZohoSyncSettingsAction } from './actions';
 
 const POLL_INTERVAL_MS = 4000;
@@ -44,19 +45,6 @@ function eventLabel(entry: ZohoActivityEntry): string {
 }
 function actionLabel(entry: ZohoActivityEntry): string {
   return entry.direction === 'PUSH' ? 'Pushed' : 'Pulled';
-}
-
-function useDismissablePanel<T extends HTMLElement>(open: boolean, onClose: () => void) {
-  const ref = useRef<T>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
-  return ref;
 }
 
 export function ZohoPanel({

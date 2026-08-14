@@ -1,10 +1,10 @@
 'use client';
 
 import { forwardRef, useActionState, useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
 import { COUNTRIES, emailSchema, phoneSchema, regionsFor } from '@fenwick/shared';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
+import { Modal } from '@/components/ui/modal';
 import type { Customer } from '@/lib/api';
 import { createCustomerAction, type CreateCustomerState } from './actions';
 
@@ -167,7 +167,6 @@ export function AddCustomerModal({
   const action = createCustomerAction.bind(null, brandId);
   const [state, formAction, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
   const [customerType, setCustomerType] = useState<'BUSINESS' | 'INDIVIDUAL'>('BUSINESS');
@@ -190,36 +189,12 @@ export function AddCustomerModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.customer]);
 
+  // Escape-to-close and the Tab focus trap are Modal's own concern now; this
+  // effect only owns what's specific to this form — focusing the first field.
   useEffect(() => {
     if (!open) return;
     firstFieldRef.current?.focus();
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose();
-        return;
-      }
-      if (event.key !== 'Tab' || !dialogRef.current) return;
-
-      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, onClose]);
+  }, [open]);
 
   useEffect(() => {
     if (open) return;
@@ -272,185 +247,164 @@ export function AddCustomerModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="add-customer-heading"
-      onClick={onClose}
+    <Modal
+      open={open}
+      onClose={onClose}
+      titleId="add-customer-heading"
+      title="Add Customer"
+      dialogClassName="max-h-[90vh] w-full max-w-[520px] overflow-y-auto"
     >
-      <div
-        ref={dialogRef}
-        className="max-h-[90vh] w-full max-w-[520px] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
-        onClick={(event) => event.stopPropagation()}
+      <form
+        ref={formRef}
+        action={formAction}
+        onSubmit={handleSubmit}
+        noValidate
+        className="space-y-6"
       >
-        <div className="mb-5 flex items-center justify-between">
-          <h2 id="add-customer-heading" className="text-xl font-bold text-[#0F172A]">
-            Add Customer
-          </h2>
+        <input type="hidden" name="sameAsBilling" value={sameAsBilling ? 'on' : ''} />
+
+        <div>
+          <span className={labelClass}>Business Type</span>
+          <div className="flex items-center gap-6" role="radiogroup" aria-label="Business type">
+            <label className="flex items-center gap-2 text-sm text-[#0F172A]">
+              <input
+                type="radio"
+                name="type"
+                value="BUSINESS"
+                checked={customerType === 'BUSINESS'}
+                onChange={() => setCustomerType('BUSINESS')}
+                className="h-4 w-4 accent-black"
+              />
+              Company
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[#0F172A]">
+              <input
+                type="radio"
+                name="type"
+                value="INDIVIDUAL"
+                checked={customerType === 'INDIVIDUAL'}
+                onChange={() => setCustomerType('INDIVIDUAL')}
+                className="h-4 w-4 accent-black"
+              />
+              Individual
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="mb-4 text-base font-bold text-[#0F172A]">Basic Information</h3>
+          <div className="space-y-4">
+            {customerType === 'BUSINESS' ? (
+              <Field
+                ref={firstFieldRef}
+                label="Company Name"
+                name="companyName"
+                placeholder="Enter your company name"
+                error={fieldErrors.name}
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <Field
+                  ref={firstFieldRef}
+                  label="First Name"
+                  name="firstName"
+                  placeholder="Enter first name"
+                  error={fieldErrors.name}
+                />
+                <Field label="Last Name" name="lastName" placeholder="Enter last name" />
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-4">
+              <Field
+                label="Email Address"
+                name="email"
+                type="email"
+                placeholder={
+                  customerType === 'BUSINESS'
+                    ? 'Enter company email address'
+                    : 'Enter email address'
+                }
+                error={fieldErrors.email}
+              />
+              <Field
+                label="Contact Number"
+                name="phone"
+                type="tel"
+                placeholder="Enter contact number"
+                error={fieldErrors.phone}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="mb-4 text-base font-bold text-[#0F172A]">Billing Information</h3>
+          <span className={labelClass}>Billing Address</span>
+          <AddressFields
+            prefix="billing"
+            country={billingCountry}
+            onCountryChange={setBillingCountry}
+            errors={fieldErrors}
+          />
+        </div>
+
+        <div>
+          <h3 className="mb-3 text-base font-bold text-[#0F172A]">Shipping Address</h3>
+          <Toggle
+            id="same-as-billing"
+            checked={sameAsBilling}
+            onChange={setSameAsBilling}
+            label="Same as billing address"
+          />
+          <div
+            className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+              sameAsBilling ? 'grid-rows-[0fr]' : 'mt-4 grid-rows-[1fr]'
+            }`}
+          >
+            <div className="overflow-hidden">
+              <fieldset disabled={sameAsBilling}>
+                <AddressFields
+                  prefix="shipping"
+                  country={shippingCountry}
+                  onCountryChange={setShippingCountry}
+                  errors={fieldErrors}
+                />
+              </fieldset>
+            </div>
+          </div>
+        </div>
+
+        {state.error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            {state.error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-3 border-t border-[#E5E7EB] pt-5">
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
-            className="rounded-md p-1 text-[#64748B] hover:bg-slate-100 focus-visible:outline-none
-                       focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-          >
-            <X className="h-5 w-5" aria-hidden />
-          </button>
-        </div>
-
-        <form
-          ref={formRef}
-          action={formAction}
-          onSubmit={handleSubmit}
-          noValidate
-          className="space-y-6"
-        >
-          <input type="hidden" name="sameAsBilling" value={sameAsBilling ? 'on' : ''} />
-
-          <div>
-            <span className={labelClass}>Business Type</span>
-            <div className="flex items-center gap-6" role="radiogroup" aria-label="Business type">
-              <label className="flex items-center gap-2 text-sm text-[#0F172A]">
-                <input
-                  type="radio"
-                  name="type"
-                  value="BUSINESS"
-                  checked={customerType === 'BUSINESS'}
-                  onChange={() => setCustomerType('BUSINESS')}
-                  className="h-4 w-4 accent-black"
-                />
-                Company
-              </label>
-              <label className="flex items-center gap-2 text-sm text-[#0F172A]">
-                <input
-                  type="radio"
-                  name="type"
-                  value="INDIVIDUAL"
-                  checked={customerType === 'INDIVIDUAL'}
-                  onChange={() => setCustomerType('INDIVIDUAL')}
-                  className="h-4 w-4 accent-black"
-                />
-                Individual
-              </label>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="mb-4 text-base font-bold text-[#0F172A]">Basic Information</h3>
-            <div className="space-y-4">
-              {customerType === 'BUSINESS' ? (
-                <Field
-                  ref={firstFieldRef}
-                  label="Company Name"
-                  name="companyName"
-                  placeholder="Enter your company name"
-                  error={fieldErrors.name}
-                />
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  <Field
-                    ref={firstFieldRef}
-                    label="First Name"
-                    name="firstName"
-                    placeholder="Enter first name"
-                    error={fieldErrors.name}
-                  />
-                  <Field label="Last Name" name="lastName" placeholder="Enter last name" />
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <Field
-                  label="Email Address"
-                  name="email"
-                  type="email"
-                  placeholder={
-                    customerType === 'BUSINESS'
-                      ? 'Enter company email address'
-                      : 'Enter email address'
-                  }
-                  error={fieldErrors.email}
-                />
-                <Field
-                  label="Contact Number"
-                  name="phone"
-                  type="tel"
-                  placeholder="Enter contact number"
-                  error={fieldErrors.phone}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="mb-4 text-base font-bold text-[#0F172A]">Billing Information</h3>
-            <span className={labelClass}>Billing Address</span>
-            <AddressFields
-              prefix="billing"
-              country={billingCountry}
-              onCountryChange={setBillingCountry}
-              errors={fieldErrors}
-            />
-          </div>
-
-          <div>
-            <h3 className="mb-3 text-base font-bold text-[#0F172A]">Shipping Address</h3>
-            <Toggle
-              id="same-as-billing"
-              checked={sameAsBilling}
-              onChange={setSameAsBilling}
-              label="Same as billing address"
-            />
-            <div
-              className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
-                sameAsBilling ? 'grid-rows-[0fr]' : 'mt-4 grid-rows-[1fr]'
-              }`}
-            >
-              <div className="overflow-hidden">
-                <fieldset disabled={sameAsBilling}>
-                  <AddressFields
-                    prefix="shipping"
-                    country={shippingCountry}
-                    onCountryChange={setShippingCountry}
-                    errors={fieldErrors}
-                  />
-                </fieldset>
-              </div>
-            </div>
-          </div>
-
-          {state.error && (
-            <p
-              role="alert"
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {state.error}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-3 border-t border-[#E5E7EB] pt-5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-[#0F172A] bg-white px-5 py-2.5 text-sm font-bold text-[#0F172A]
+            className="rounded-lg border border-[#0F172A] bg-white px-5 py-2.5 text-sm font-bold text-[#0F172A]
                          transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2
                          focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-lg bg-black px-5 py-2.5 text-sm font-bold text-white transition-colors
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-lg bg-black px-5 py-2.5 text-sm font-bold text-white transition-colors
                          hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB]
                          disabled:text-[#94A3B8] focus-visible:outline-none focus-visible:ring-2
                          focus-visible:ring-black focus-visible:ring-offset-1"
-            >
-              {pending ? 'Adding…' : 'Add Customer'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          >
+            {pending ? 'Adding…' : 'Add Customer'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

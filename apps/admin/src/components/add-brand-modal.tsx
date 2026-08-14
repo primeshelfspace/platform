@@ -1,9 +1,10 @@
 'use client';
 
 import { useActionState, useEffect, useRef, useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { Brand } from '@/lib/api';
 import { addBrandAction, type AddBrandState } from '@/app/(app)/brands/actions';
+import { Modal } from '@/components/ui/modal';
 
 const initialState: AddBrandState = {};
 
@@ -66,97 +67,72 @@ export function AddBrandModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="add-brand-heading"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[420px] rounded-2xl bg-white p-6 shadow-xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 id="add-brand-heading" className="text-lg font-bold text-[#0F172A]">
-            Add New Brand
-          </h2>
+    <Modal open={open} onClose={onClose} titleId="add-brand-heading" title="Add New Brand">
+      <form ref={formRef} action={formAction} className="space-y-4">
+        <label className="block">
+          <span className="mb-2 block text-sm font-bold text-[#0F172A]">Brand Name</span>
+          <input
+            name="brandName"
+            required
+            autoFocus
+            placeholder="Enter brand name"
+            className={inputClass}
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-sm font-bold text-[#0F172A]">Logo (optional)</span>
+          <div className="flex items-center gap-3">
+            {logoPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoPreview}
+                alt=""
+                className="h-10 w-10 shrink-0 rounded-lg object-cover"
+              />
+            ) : (
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#94A3B8]">
+                <Plus className="h-4 w-4" aria-hidden />
+              </span>
+            )}
+            <input
+              type="file"
+              name="brandLogo"
+              accept="image/jpeg,image/png,image/svg+xml"
+              onChange={handleLogoChange}
+              className="text-sm text-[#64748B]"
+            />
+          </div>
+        </label>
+
+        {state.error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            {state.error}
+          </p>
+        )}
+
+        <div className="flex justify-end gap-3 pt-2">
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
-            className="rounded-md p-1 text-[#64748B] hover:bg-slate-100"
+            className="rounded-lg border border-[#D4D4D4] bg-white px-4 py-2.5 text-sm font-bold
+                       text-[#0F172A] transition-colors hover:bg-slate-50"
           >
-            <X className="h-5 w-5" aria-hidden />
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-lg bg-black px-5 py-2.5 text-sm font-bold text-white transition-colors
+                       hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
+          >
+            {pending ? 'Creating…' : 'Create Brand'}
           </button>
         </div>
-
-        <form ref={formRef} action={formAction} className="space-y-4">
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-[#0F172A]">Brand Name</span>
-            <input
-              name="brandName"
-              required
-              autoFocus
-              placeholder="Enter brand name"
-              className={inputClass}
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-2 block text-sm font-bold text-[#0F172A]">Logo (optional)</span>
-            <div className="flex items-center gap-3">
-              {logoPreview ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={logoPreview}
-                  alt=""
-                  className="h-10 w-10 shrink-0 rounded-lg object-cover"
-                />
-              ) : (
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-[#94A3B8]">
-                  <Plus className="h-4 w-4" aria-hidden />
-                </span>
-              )}
-              <input
-                type="file"
-                name="brandLogo"
-                accept="image/jpeg,image/png,image/svg+xml"
-                onChange={handleLogoChange}
-                className="text-sm text-[#64748B]"
-              />
-            </div>
-          </label>
-
-          {state.error && (
-            <p
-              role="alert"
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {state.error}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-[#D4D4D4] bg-white px-4 py-2.5 text-sm font-bold
-                         text-[#0F172A] transition-colors hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-lg bg-black px-5 py-2.5 text-sm font-bold text-white transition-colors
-                         hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
-            >
-              {pending ? 'Creating…' : 'Create Brand'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { TopProgress } from './top-progress';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { logoutAction } from '@/lib/logout-action';
 import type { Brand, CurrentUser } from '@/lib/api';
+import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
 import { AddBrandModal } from './add-brand-modal';
 
 interface NavItem {
@@ -42,35 +43,6 @@ const MAIN_NAV: readonly NavItem[] = [
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/invoices', label: 'Invoices', icon: ScrollText },
 ];
-
-/** Closes a panel on an outside click or Escape, and hands focus back to
- * whatever opened it — the one bit of behaviour every dropdown here needs. */
-function useDismissablePanel<T extends HTMLElement>(
-  open: boolean,
-  onClose: () => void,
-): React.RefObject<T> {
-  const ref = useRef<T>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function onPointerDown(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose();
-    }
-
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open, onClose]);
-
-  return ref;
-}
 
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
