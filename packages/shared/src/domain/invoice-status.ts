@@ -191,3 +191,15 @@ export function isTerminal(status: InvoiceStatus): boolean {
 export function isPayable(status: InvoiceStatus): boolean {
   return PAYABLE_STATUSES.has(status);
 }
+
+/**
+ * Customer-facing copy for a settled invoice — shown on the public payment
+ * page in place of a payment form, and mirrored by the admin app's own
+ * preview of that same page. Null for anything not terminal, so callers can
+ * use it as both the message and the terminal check in one call.
+ */
+export function terminalStatusLabel(status: InvoiceStatus): string | null {
+  if (status === 'PAID') return 'This invoice has been paid.';
+  if (status === 'CANCELLED') return 'This invoice was cancelled.';
+  return null;
+}

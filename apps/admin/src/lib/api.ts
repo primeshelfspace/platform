@@ -9,7 +9,7 @@
  * forwarded — see lib/session.ts.
  */
 
-import type { BusinessType } from '@fenwick/shared';
+import type { BusinessType, InvoiceStatus } from '@fenwick/shared';
 import { readSessionToken } from './session';
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
@@ -441,7 +441,7 @@ export interface Invoice {
   brandId: string;
   customerId: string;
   number: string;
-  status: string;
+  status: InvoiceStatus;
   /** Overlay flag, not part of the status enum — set by a scheduled job once
    * the due date passes with a positive balance (see invoice-status.ts). */
   overdue: boolean;

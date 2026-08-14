@@ -9,19 +9,6 @@
  * different vocabulary that only looks similar.
  */
 
-/** Statuses that still owe money and are not terminal — what "open" means on
- * the dashboard's outstanding-balance tile. */
-export const OPEN_INVOICE_STATUSES: ReadonlySet<string> = new Set([
-  'SENT',
-  'VIEWED',
-  'PENDING_PAYMENT',
-  'PARTIALLY_PAID',
-]);
-
-export function isOpenInvoiceStatus(status: string): boolean {
-  return OPEN_INVOICE_STATUSES.has(status);
-}
-
 /** Tailwind text colour for an invoice status. */
 export function invoiceStatusTone(status: string): string {
   if (status === 'PAID') return 'text-success';

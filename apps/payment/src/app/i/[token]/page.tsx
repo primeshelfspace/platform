@@ -1,4 +1,4 @@
-import { isTerminal } from '@fenwick/shared';
+import { terminalStatusLabel } from '@fenwick/shared';
 import { brandThemeVariables } from '@fenwick/shared/tokens';
 import { lookupInvoice } from '@/lib/invoice';
 import { PaymentFlow } from './payment-flow';
@@ -40,15 +40,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
 
   // FR-PAY-014: an invoice that is already settled or void gets the same
   // terminal treatment as an unknown token — no payment form, ever.
-  if (isTerminal(invoice.status)) {
+  const settledLabel = terminalStatusLabel(invoice.status);
+  if (settledLabel !== null) {
     return (
       <div style={theme as React.CSSProperties}>
         <PaymentPageShell invoice={invoice}>
-          <p className="text-center text-sm font-medium text-ink-strong">
-            {invoice.status === 'PAID'
-              ? 'This invoice has been paid.'
-              : 'This invoice was cancelled.'}
-          </p>
+          <p className="text-center text-sm font-medium text-ink-strong">{settledLabel}</p>
         </PaymentPageShell>
       </div>
     );

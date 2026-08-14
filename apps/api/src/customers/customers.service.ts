@@ -26,7 +26,7 @@ export interface CustomerListResult {
 
 /** Payment statuses that count as "collected" for the list view's Payments
  * column — mirrors the settled/terminal split invoices.service.ts already
- * draws between OPEN_INVOICE_STATUSES and the rest. */
+ * draws using PAYABLE_STATUSES (@fenwick/shared) and the rest. */
 const COLLECTED_PAYMENT_STATUSES = ['SETTLED'] as const;
 
 /**

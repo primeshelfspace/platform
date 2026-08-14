@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Invoice, type LineItem } from '@prisma/client';
 import {
+  PAYABLE_STATUSES,
   calculate,
   evaluateTransition,
   isPublicScope,
@@ -9,7 +10,6 @@ import {
   quantityFrom,
   type InvoiceDraftInput,
   type InvoiceListQuery,
-  type InvoiceStatus,
   type Scope,
 } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -32,15 +32,6 @@ export interface InvoiceSummary {
   readonly outstandingMinor: number;
   readonly openCount: number;
 }
-
-/** Statuses that still owe money and are not terminal. Mirrors the admin
- * app's own open-status set; both derive from the same TDD-001 §8.1 lifecycle. */
-const OPEN_INVOICE_STATUSES = [
-  'SENT',
-  'VIEWED',
-  'PENDING_PAYMENT',
-  'PARTIALLY_PAID',
-] as const satisfies readonly InvoiceStatus[];
 
 /**
  * FR-INV. Draft creation and issue only — edit, cancel and duplicate follow
@@ -104,7 +95,7 @@ export class InvoicesService {
     return this.prisma.withScope(scope, async (tx) => {
       const where: Prisma.InvoiceWhereInput = {
         brandId,
-        status: { in: [...OPEN_INVOICE_STATUSES] },
+        status: { in: [...PAYABLE_STATUSES] },
       };
       const [aggregate, openCount] = await Promise.all([
         tx.invoice.aggregate({ where, _sum: { balanceMinor: true } }),

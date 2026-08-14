@@ -5,6 +5,7 @@ import {
   isOverdue,
   isPayable,
   isTerminal,
+  terminalStatusLabel,
 } from './invoice-status.js';
 
 const base: TransitionContext = {
@@ -226,5 +227,24 @@ describe('status predicates', () => {
     expect(isTerminal('SENT')).toBe(false);
     expect(isPayable('DRAFT')).toBe(false);
     expect(isPayable('PARTIALLY_PAID')).toBe(true);
+  });
+});
+
+describe('terminalStatusLabel', () => {
+  it('describes each terminal status', () => {
+    expect(terminalStatusLabel('PAID')).toBe('This invoice has been paid.');
+    expect(terminalStatusLabel('CANCELLED')).toBe('This invoice was cancelled.');
+  });
+
+  it('is null for anything not terminal', () => {
+    for (const status of [
+      'DRAFT',
+      'SENT',
+      'VIEWED',
+      'PENDING_PAYMENT',
+      'PARTIALLY_PAID',
+    ] as const) {
+      expect(terminalStatusLabel(status)).toBeNull();
+    }
   });
 });

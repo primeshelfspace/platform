@@ -1,3 +1,4 @@
+import { terminalStatusLabel } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import {
   getCustomer,
@@ -27,11 +28,6 @@ export const dynamic = 'force-dynamic';
 // Same convention as the Invoices list page's "Open payment page" link.
 const PAYMENT_PUBLIC_URL = process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
 
-const SETTLED_INVOICE_LABEL: Record<string, string> = {
-  PAID: 'This invoice has been paid.',
-  CANCELLED: 'This invoice was cancelled.',
-};
-
 /**
  * What the Payment Page tab's preview shows: this brand's actual most recent
  * invoice, never an invented one (FR-PAY design note — the reference mockup's
@@ -56,7 +52,7 @@ async function loadPreviewInvoice(brandId: string): Promise<PaymentPagePreviewIn
     // Intentionally ignored — see comment above.
   }
 
-  const settledLabel = SETTLED_INVOICE_LABEL[latest.status] ?? null;
+  const settledLabel = terminalStatusLabel(latest.status);
 
   return {
     number: latest.number,
