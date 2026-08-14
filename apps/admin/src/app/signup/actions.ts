@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { emailSchema } from '@fenwick/shared';
 import { ApiError, register } from '@/lib/api';
 
 export interface SignupState {
@@ -9,8 +10,6 @@ export interface SignupState {
   readonly fullName?: string;
   readonly email?: string;
 }
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
  * FR-ONB step 0. Creates the tenant and its owner, then signs them in.
@@ -31,7 +30,7 @@ export async function signupAction(
   if (!fullName) return { error: 'Enter your full name.', fullName, email };
   // The form validates this too, but a request can always arrive without
   // having run that JS — the server is the check that actually holds.
-  if (!EMAIL_PATTERN.test(email)) {
+  if (!emailSchema.safeParse(email).success) {
     return { error: 'Enter a valid email address.', fullName, email };
   }
 

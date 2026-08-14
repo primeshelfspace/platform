@@ -2,7 +2,7 @@
 
 import { forwardRef, useActionState, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
-import { COUNTRIES, regionsFor } from '@fenwick/shared';
+import { COUNTRIES, emailSchema, phoneSchema, regionsFor } from '@fenwick/shared';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import type { Customer } from '@/lib/api';
@@ -17,9 +17,6 @@ const inputClass =
 const validBorder = 'border-[#D4D4D4] focus:border-slate-900 focus-visible:ring-slate-900';
 const invalidBorder = 'border-red-400 focus:border-red-500 focus-visible:ring-red-500';
 const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_PATTERN = /^[+()\-.\s\d]*$/;
 
 interface FieldErrors {
   name?: string;
@@ -243,10 +240,11 @@ export function AddCustomerModal({
     }
 
     const email = get('email');
-    if (email && !EMAIL_PATTERN.test(email)) errors.email = 'Enter a valid email address.';
+    if (email && !emailSchema.safeParse(email).success)
+      errors.email = 'Enter a valid email address.';
 
     const phone = get('phone');
-    if (phone && !PHONE_PATTERN.test(phone)) {
+    if (phone && !phoneSchema.safeParse(phone).success) {
       errors.phone = 'Phone may contain digits and + ( ) - . only.';
     }
 

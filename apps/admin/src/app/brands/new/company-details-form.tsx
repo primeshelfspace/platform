@@ -7,8 +7,10 @@ import {
   regionsFor,
   normalizeUsPhone,
   isValidUsZip,
+  isValidEin,
   normalizeWebsiteDomain,
   checkBusinessEmail,
+  emailSchema,
 } from '@fenwick/shared';
 
 import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@fenwick/shared';
@@ -20,7 +22,6 @@ const initialState: CompanyDetailsState = {};
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml'];
-const EIN_PATTERN = /^\d{2}-\d{7}$/;
 
 const inputClass =
   'w-full h-10 rounded-lg border bg-white px-4 text-base text-slate-900 ' +
@@ -46,8 +47,6 @@ interface FieldErrors {
   billingRegion?: string;
   billingPostalCode?: string;
 }
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function Field({
   label,
@@ -234,7 +233,7 @@ export function CompanyDetailsForm() {
 
     const email = get('email');
     if (!email) errors.email = 'Brand email is required.';
-    else if (!EMAIL_PATTERN.test(email)) errors.email = 'Enter a valid email address.';
+    else if (!emailSchema.safeParse(email).success) errors.email = 'Enter a valid email address.';
     else {
       const businessEmail = checkBusinessEmail(email, websiteDomain);
       if (!businessEmail.ok) {
@@ -254,7 +253,7 @@ export function CompanyDetailsForm() {
     }
 
     const taxId = get('taxId');
-    if (taxId && mailingCountry === 'US' && !EIN_PATTERN.test(taxId)) {
+    if (taxId && mailingCountry === 'US' && !isValidEin(taxId)) {
       errors.taxId = 'A US Tax ID must be an EIN in the form 12-3456789.';
     }
 

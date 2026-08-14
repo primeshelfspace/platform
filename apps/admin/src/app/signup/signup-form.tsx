@@ -2,11 +2,10 @@
 
 import { useActionState, useId, useState } from 'react';
 import Link from 'next/link';
+import { emailSchema } from '@fenwick/shared';
 import { signupAction, type SignupState } from './actions';
 
 const initialState: SignupState = {};
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const inputClass =
   'w-full rounded-[10px] border bg-white px-4 py-3.5 text-base text-slate-900 ' +
@@ -37,7 +36,7 @@ export function SignupForm() {
     if (!fullName) errors.fullName = 'Full name is required.';
 
     if (!email) errors.email = 'Email address is required.';
-    else if (!EMAIL_PATTERN.test(email)) errors.email = 'Enter a valid email address.';
+    else if (!emailSchema.safeParse(email).success) errors.email = 'Enter a valid email address.';
 
     return errors;
   }

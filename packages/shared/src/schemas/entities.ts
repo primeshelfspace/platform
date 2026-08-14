@@ -79,6 +79,13 @@ export const businessTypeSchema = z.enum(BUSINESS_TYPES);
 const EIN_PATTERN = /^\d{2}-\d{7}$/;
 export const TAX_ID_FORMAT_MESSAGE = 'a US Tax ID must be an EIN in the form 12-3456789';
 
+/** Exported so client-side forms can check EIN shape as the user types,
+ * without pulling in the full brand/company-details object shape that
+ * taxIdMatchesCountry below needs. */
+export function isValidEin(taxId: string): boolean {
+  return EIN_PATTERN.test(taxId);
+}
+
 /** Exported so createBrandSchema (API controller, adds invoicePrefix) can
  * apply the identical check after extending the object — a schema produced
  * by `.refine()` has no `.extend()` of its own to build on. */
@@ -86,7 +93,7 @@ export function taxIdMatchesCountry(v: {
   readonly mailingAddress: { readonly country: string | null } | null;
   readonly taxId: string | null;
 }): boolean {
-  return v.mailingAddress?.country !== 'US' || !v.taxId || EIN_PATTERN.test(v.taxId);
+  return v.mailingAddress?.country !== 'US' || !v.taxId || isValidEin(v.taxId);
 }
 
 export const brandObjectSchema = z.object({

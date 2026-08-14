@@ -1,11 +1,10 @@
 'use client';
 
 import { useActionState, useId, useState } from 'react';
+import { emailSchema } from '@fenwick/shared';
 import { loginAction, type LoginState } from './actions';
 
 const initialState: LoginState = {};
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const inputClass =
   'w-full rounded-[10px] border bg-white px-4 py-3.5 text-base text-slate-900 ' +
@@ -34,7 +33,7 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
     const errors: FieldErrors = {};
 
     if (!email) errors.email = 'Email address is required.';
-    else if (!EMAIL_PATTERN.test(email)) errors.email = 'Enter a valid email address.';
+    else if (!emailSchema.safeParse(email).success) errors.email = 'Enter a valid email address.';
 
     if (!password) errors.password = 'Password is required.';
 

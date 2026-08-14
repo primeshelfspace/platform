@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { emailSchema } from '@fenwick/shared';
 import { ApiError, login } from '@/lib/api';
 import { resolveOnboardingStep, routeForStep } from '@/lib/onboarding';
 import { safeReturnPath, writeSessionToken } from '@/lib/session';
@@ -18,8 +19,6 @@ export interface LoginState {
  */
 const GENERIC_FAILURE = 'That email and password combination was not recognised.';
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 export async function loginAction(_prevState: LoginState, formData: FormData): Promise<LoginState> {
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
@@ -30,7 +29,7 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
   }
   // The form validates this too, but a request can always arrive without
   // having run that JS — the server is the check that actually holds.
-  if (!EMAIL_PATTERN.test(email)) {
+  if (!emailSchema.safeParse(email).success) {
     return { error: 'Enter a valid email address.', email };
   }
 
