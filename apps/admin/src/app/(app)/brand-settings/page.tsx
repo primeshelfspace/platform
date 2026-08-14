@@ -1,4 +1,4 @@
-import { terminalStatusLabel } from '@fenwick/shared';
+import { formatDateForDisplay, terminalStatusLabel } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import {
   getCustomer,
@@ -58,11 +58,7 @@ async function loadPreviewInvoice(brandId: string): Promise<PaymentPagePreviewIn
     number: latest.number,
     customerName,
     amountLabel: formatMinorForDisplay(latest.balanceMinor, toCurrencyCode(latest.currency)),
-    dueDateLabel: new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    }).format(new Date(latest.dueDate)),
+    dueDateLabel: formatDateForDisplay(latest.dueDate),
     isSettled: settledLabel !== null,
     settledLabel,
     // A draft has no public token worth linking to yet.

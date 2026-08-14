@@ -1,5 +1,6 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  formatDateForDisplay,
   formatMinorForDisplay,
   MAIL_PORT,
   renderEmailReceiptTemplate,
@@ -194,11 +195,7 @@ export class BrandSettingsService {
             Number(invoice.balanceMinor),
             toCurrencyCode(invoice.currency),
           ),
-          dueDate: new Intl.DateTimeFormat('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          }).format(invoice.dueDate),
+          dueDate: formatDateForDisplay(invoice.dueDate),
         }
       : {
           brandName: brand.displayName,

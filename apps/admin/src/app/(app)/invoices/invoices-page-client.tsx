@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown, Plus, ScrollText, Search } from 'lucide-react';
+import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import type { Brand, Invoice } from '@/lib/api';
 import {
@@ -41,14 +42,6 @@ const RANGE_OPTIONS = [
 ] as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(value));
-}
 
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
@@ -345,8 +338,12 @@ export function InvoicesPageClient({
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-[#64748B]">{formatDate(inv.invoiceDate)}</td>
-                      <td className="px-3 py-3 text-[#64748B]">{formatDate(inv.dueDate)}</td>
+                      <td className="px-3 py-3 text-[#64748B]">
+                        {formatDateForDisplay(inv.invoiceDate)}
+                      </td>
+                      <td className="px-3 py-3 text-[#64748B]">
+                        {formatDateForDisplay(inv.dueDate)}
+                      </td>
                       <td className="px-3 py-3 font-medium text-[#0F172A]">
                         {formatMinorForDisplay(inv.totalMinor, currency)}
                       </td>
