@@ -14,9 +14,9 @@ import { PageContainer } from './page-container';
  * The fade-in delay and pulse are defined in globals.css (`skeleton-fade-in`,
  * `skeleton-block`) so this file stays about structure, not animation.
  */
-export function PageSkeleton({ rows = 4 }: { rows?: number }) {
+export function PageSkeleton({ rows = 4, compact = false }: { rows?: number; compact?: boolean }) {
   return (
-    <PageContainer>
+    <PageContainer compact={compact}>
       <div className="skeleton-fade-in" aria-hidden>
         <div className="skeleton-block h-4 w-40 rounded bg-surface-muted" />
         <div className="skeleton-block mt-3 h-7 w-64 rounded bg-surface-muted" />

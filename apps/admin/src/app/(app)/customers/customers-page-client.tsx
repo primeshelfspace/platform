@@ -6,8 +6,10 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Users } from 'lucide-react';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { Toggle } from '@/components/ui/toggle';
-import type { Brand, Customer, CustomerListRow } from '@/lib/api';
+import type { Brand, Customer, CustomerListRow, Invoice } from '@/lib/api';
 import { AddCustomerModal } from './add-customer-modal';
+import { CustomerDetailDrawer } from './customer-detail-drawer';
+import { getCustomerDetailAction } from './actions';
 
 /** How long the search box waits after the last keystroke before pushing a
  * new URL — long enough that a fast typist doesn't fire a request per
@@ -42,6 +44,40 @@ export function CustomersPageClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [justAdded, setJustAdded] = useState<Customer | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The detail slide-over. `detailRow` (the list row already on screen) drives
+  // the header and Outstanding Balance instantly; `detail` is what the server
+  // action fills in once it resolves, so the panel opens right away with what
+  // it already knows rather than waiting on a round-trip first.
+  const [detailRow, setDetailRow] = useState<CustomerListRow | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detail, setDetail] = useState<{ customer: Customer; invoices: Invoice[] } | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  function openCustomerDetail(row: CustomerListRow) {
+    setDetailRow(row);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    getCustomerDetailAction(row.brandId, row.id)
+      .then((result) => {
+        if (result.customer) {
+          setDetail({ customer: result.customer, invoices: result.invoices ?? [] });
+        } else {
+          setDetailError(result.error ?? 'Could not load this customer.');
+        }
+      })
+      .catch((error: unknown) => {
+        setDetailError(error instanceof Error ? error.message : 'Could not load this customer.');
+      })
+      .finally(() => setDetailLoading(false));
+  }
+
+  function closeCustomerDetail() {
+    setDetailRow(null);
+    setDetail(null);
+    setDetailError(null);
+  }
 
   // A brand switch or a searchParams change from elsewhere (browser back,
   // another tab) should still show up in the box, not just this box's own edits.
@@ -93,7 +129,7 @@ export function CustomersPageClient({
 
   return (
     <div>
-      <header className="mb-6 flex items-start justify-between gap-4">
+      <header className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-[28px] font-bold text-[#0F172A]">Customers</h1>
           <p className="mt-1 text-[15px] text-[#64748B]">
@@ -137,7 +173,7 @@ export function CustomersPageClient({
             </div>
           )}
 
-          <div className="mb-4 flex items-center justify-between gap-4">
+          <div className="mb-3 flex items-center justify-between gap-4">
             <div className="relative max-w-xs flex-1">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]"
@@ -198,7 +234,7 @@ export function CustomersPageClient({
                     className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs font-semibold uppercase
                                   tracking-wide text-[#8C919B]"
                   >
-                    <th className="w-10 px-5 py-3">
+                    <th className="w-10 px-5 py-2">
                       <input
                         type="checkbox"
                         aria-label="Select all customers"
@@ -207,19 +243,19 @@ export function CustomersPageClient({
                         className="h-4 w-4 accent-black"
                       />
                     </th>
-                    <th className="px-3 py-3">Name</th>
-                    <th className="px-3 py-3">Email</th>
-                    <th className="px-3 py-3">Phone</th>
-                    <th className="px-3 py-3">Outstanding</th>
-                    <th className="px-3 py-3">Invoices</th>
-                    <th className="px-3 py-3">Payments</th>
-                    <th className="px-5 py-3" />
+                    <th className="px-3 py-2">Name</th>
+                    <th className="px-3 py-2">Email</th>
+                    <th className="px-3 py-2">Phone</th>
+                    <th className="px-3 py-2">Outstanding</th>
+                    <th className="px-3 py-2">Invoices</th>
+                    <th className="px-3 py-2">Payments</th>
+                    <th className="px-5 py-2" />
                   </tr>
                 </thead>
                 <tbody>
                   {customers.map((c) => (
                     <tr key={c.id} className="border-b border-[#E5E7EB] last:border-0">
-                      <td className="px-5 py-3">
+                      <td className="px-5 py-2">
                         <input
                           type="checkbox"
                           aria-label={`Select ${c.displayName}`}
@@ -228,10 +264,10 @@ export function CustomersPageClient({
                           className="h-4 w-4 accent-black"
                         />
                       </td>
-                      <td className="px-3 py-3 font-medium text-ink-strong">{c.displayName}</td>
-                      <td className="px-3 py-3 text-ink-muted">{c.email ?? '—'}</td>
-                      <td className="px-3 py-3 text-ink-muted">{c.phone ?? '—'}</td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2 font-medium text-ink-strong">{c.displayName}</td>
+                      <td className="px-3 py-2 text-ink-muted">{c.email ?? '—'}</td>
+                      <td className="px-3 py-2 text-ink-muted">{c.phone ?? '—'}</td>
+                      <td className="px-3 py-2">
                         {c.outstandingMinor > 0 ? (
                           <span className="font-medium" style={{ color: '#D97706' }}>
                             {formatMinorForDisplay(c.outstandingMinor, currency)}
@@ -240,16 +276,17 @@ export function CustomersPageClient({
                           <span className="text-ink-subtle">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-ink-muted">{c.invoiceCount}</td>
-                      <td className="px-3 py-3 text-ink-muted">{c.paymentCount}</td>
-                      <td className="px-5 py-3 text-right">
-                        <Link
-                          href={`/customers/${c.id}?brandId=${brand?.id ?? ''}`}
-                          className="inline-flex h-8 items-center rounded-lg border border-[#0F172A] bg-white px-3
+                      <td className="px-3 py-2 text-ink-muted">{c.invoiceCount}</td>
+                      <td className="px-3 py-2 text-ink-muted">{c.paymentCount}</td>
+                      <td className="px-5 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openCustomerDetail(c)}
+                          className="inline-flex h-8 items-center rounded-md border border-[#0F172A] bg-white px-3
                                      text-xs font-bold text-[#0F172A] transition-colors hover:bg-slate-50"
                         >
                           View
-                        </Link>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -274,6 +311,18 @@ export function CustomersPageClient({
           onCreated={onCustomerCreated}
         />
       )}
+
+      <CustomerDetailDrawer
+        open={detailRow !== null}
+        onClose={closeCustomerDetail}
+        brandName={brand?.displayName}
+        loading={detailLoading}
+        error={detailError}
+        customer={detail?.customer ?? null}
+        invoices={detail?.invoices ?? []}
+        outstandingMinor={detailRow?.outstandingMinor ?? 0}
+        currency={currency}
+      />
     </div>
   );
 }

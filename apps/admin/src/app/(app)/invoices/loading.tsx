@@ -1,5 +1,5 @@
 import { PageSkeleton } from '@/components/page-skeleton';
 
 export default function InvoicesLoading() {
-  return <PageSkeleton rows={6} />;
+  return <PageSkeleton rows={6} compact />;
 }

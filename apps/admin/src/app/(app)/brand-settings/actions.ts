@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { DEFAULT_BRAND_BUSINESS_TYPE } from '@fenwick/shared';
+import { DEFAULT_BRAND_BUSINESS_TYPE, isBusinessType } from '@fenwick/shared';
 import {
   getPaymentPageDisplaySettings,
   sendEmailReceiptTest,
@@ -27,9 +27,9 @@ export interface BrandDetailsState {
  * form, since useActionState's action signature has no room for it otherwise.
  *
  * A full replace, not a partial patch (see BrandsService.update) — fields
- * this form doesn't show (business type, tax id, billing address, currency,
- * timezone) are carried forward unchanged from the brand already loaded into
- * the page, not re-collected here.
+ * this form doesn't show (sales person, currency, timezone) are carried
+ * forward unchanged from the brand already loaded into the page, not
+ * re-collected here.
  */
 export async function saveBrandDetailsAction(
   brand: Brand,
@@ -37,23 +37,35 @@ export async function saveBrandDetailsAction(
   formData: FormData,
 ): Promise<BrandDetailsState> {
   const legalName = emptyToNull(formData.get('legalName'));
-  if (!legalName) return { error: 'Legal name is required.' };
+  if (!legalName) return { error: 'Legal business name is required.' };
+
+  const displayName = emptyToNull(formData.get('displayName'));
+  if (!displayName) return { error: 'DBA (doing business as) is required.' };
+
+  const businessTypeRaw = emptyToNull(formData.get('businessType'));
+  if (!isBusinessType(businessTypeRaw)) return { error: 'Select a business type.' };
 
   const mailingAddress = addressFromForm(formData, 'mailing');
   if (!mailingAddress) return { error: 'Mailing address is required.' };
+
+  // "Same as Mailing address" is enforced client-side by disabling the
+  // billing fields, so reading mailingAddress here rather than re-parsing
+  // disabled inputs keeps the two addresses byte-identical.
+  const sameAsMailing = formData.get('sameAsMailing') === '1';
+  const billingAddress = sameAsMailing ? mailingAddress : addressFromForm(formData, 'billing');
 
   const themeColor = emptyToNull(formData.get('themeColor')) ?? brand.themeColor;
 
   const input: BrandFormInput = {
     legalName,
-    displayName: brand.displayName,
-    businessType: brand.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
-    salesPersonName: emptyToNull(formData.get('salesPerson')),
+    displayName,
+    businessType: businessTypeRaw,
+    salesPersonName: brand.salesPerson,
     phone: emptyToNull(formData.get('phone')),
     email: emptyToNull(formData.get('email')),
     mailingAddress,
-    billingAddress: brand.billingAddress,
-    taxId: brand.taxId,
+    billingAddress,
+    taxId: emptyToNull(formData.get('taxId')),
     currency: brand.currency,
     timezone: brand.timezone,
     themeColor,
@@ -246,3 +258,4 @@ export async function sendTestEmailAction(
 
   return { success: true };
 }
+

@@ -44,7 +44,7 @@ export default async function CustomersPage({
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
-      <PageContainer>
+      <PageContainer compact>
         <CustomersPageClient
           brand={activeBrand}
           customers={customers}

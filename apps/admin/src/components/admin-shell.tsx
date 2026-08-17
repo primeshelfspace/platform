@@ -14,6 +14,7 @@ import {
   ScrollText,
   Search,
   Settings,
+  ShoppingBag,
   Store,
   Users,
   X,
@@ -32,6 +33,7 @@ interface NavItem {
 
 const TOP_NAV: readonly NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/shop-payment-gateways', label: 'Shop Payment Gateways', icon: ShoppingBag },
   { href: '/notifications', label: 'Notifications', icon: Bell },
 ];
 
@@ -75,16 +77,12 @@ export function AdminShell({
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [addBrandOpen, setAddBrandOpen] = useState(false);
   const [headerSearch, setHeaderSearch] = useState('');
 
   const brandMenuRef = useDismissablePanel<HTMLDivElement>(brandMenuOpen, () =>
     setBrandMenuOpen(false),
-  );
-  const accountMenuRef = useDismissablePanel<HTMLDivElement>(accountMenuOpen, () =>
-    setAccountMenuOpen(false),
   );
   const headerMenuRef = useDismissablePanel<HTMLDivElement>(headerMenuOpen, () =>
     setHeaderMenuOpen(false),
@@ -95,7 +93,6 @@ export function AdminShell({
   useEffect(() => {
     setMobileOpen(false);
     setBrandMenuOpen(false);
-    setAccountMenuOpen(false);
     setHeaderMenuOpen(false);
   }, [pathname, activeBrandId]);
 
@@ -145,7 +142,7 @@ export function AdminShell({
         aria-current={active ? 'page' : undefined}
         className={`flex items-center gap-3 rounded-lg px-3 py-2 text-[15px] transition-colors ${
           active
-            ? 'bg-[#2A2A2A] font-semibold text-white'
+            ? 'bg-[#404040] font-semibold text-white'
             : 'font-normal text-[#D4D4D4] hover:bg-[#232323] hover:text-white'
         }`}
       >
@@ -290,58 +287,6 @@ export function AdminShell({
           ))}
         </div>
       </nav>
-
-      <div className="relative border-t border-white/10 p-3" ref={accountMenuRef}>
-        {accountMenuOpen && (
-          <div
-            role="menu"
-            aria-label="Account"
-            className="absolute inset-x-3 bottom-full z-10 mb-1 overflow-hidden rounded-lg border border-white/10 bg-[#232323] py-1 shadow-lg"
-          >
-            <Link
-              role="menuitem"
-              href="/status"
-              className="block px-3 py-2 text-sm text-[#D4D4D4] transition-colors hover:bg-white/10 hover:text-white"
-            >
-              System status
-            </Link>
-            {/* A form, not a link: signing out revokes the session server-side,
-                and that is a state change no GET should perform (FR-AUTH-010). */}
-            <form action={logoutAction}>
-              <button
-                type="submit"
-                role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#D4D4D4] transition-colors hover:bg-white/10 hover:text-white"
-              >
-                <LogOut className="h-4 w-4" aria-hidden />
-                Sign out
-              </button>
-            </form>
-          </div>
-        )}
-
-        <button
-          type="button"
-          aria-haspopup="menu"
-          aria-expanded={accountMenuOpen}
-          onClick={() => setAccountMenuOpen((open) => !open)}
-          className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
-        >
-          <span
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold text-[#171717]"
-            aria-hidden
-          >
-            {initialOf(user.name || user.email)}
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold text-white">
-              {user.name || user.email}
-            </span>
-            <span className="block truncate text-xs text-[#8C8C8C]">{user.email}</span>
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-[#8C8C8C]" aria-hidden />
-        </button>
-      </div>
     </div>
   );
 

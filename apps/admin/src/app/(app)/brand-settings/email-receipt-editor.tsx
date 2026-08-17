@@ -333,6 +333,7 @@ export function EmailReceiptEditor({
   settings,
   accentColor: initialAccentColor,
   previewInvoice,
+  userEmail,
 }: {
   brand: Brand;
   /** Rendered inside the Preview column's own top row — see PaymentPageEditor's
@@ -343,6 +344,10 @@ export function EmailReceiptEditor({
    * brand; Brand Elements here is a second entry point onto it. */
   accentColor: string;
   previewInvoice: PaymentPagePreviewInvoice | null;
+  /** "Send Test Email" always sends to the signed-in user's own address —
+   * nothing to type, nowhere to mistype it. Null only if that lookup itself
+   * failed, in which case the button disables rather than sending nowhere. */
+  userEmail: string | null;
 }) {
   const saveAction = saveEmailReceiptSettingsAction.bind(null, brand);
   const [saveState, saveFormAction, savePending] = useActionState(saveAction, initialSaveState);
@@ -355,7 +360,6 @@ export function EmailReceiptEditor({
   const [layout, setLayout] = useState<EmailReceiptLayout>(settings.emailReceiptLayout);
   const [subject, setSubject] = useState(settings.emailReceiptSubject);
   const [body, setBody] = useState(settings.emailReceiptBody);
-  const [testTo, setTestTo] = useState('');
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -414,8 +418,11 @@ export function EmailReceiptEditor({
   const renderedBody = substitute(body, variables);
 
   return (
-    <div className="mt-8 grid gap-10 lg:grid-cols-2 lg:items-start">
-      <section>
+    <div
+      className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
+                 border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
+    >
+      <section className="w-[350px] shrink-0 p-6">
         <form action={saveFormAction}>
           <input type="hidden" name="themeColor" value={themeColor} />
           <input type="hidden" name="accentColor" value={accentColor} />
@@ -606,55 +613,43 @@ export function EmailReceiptEditor({
             form above, and "send a test" is a genuinely different submit
             (it never touches saved settings; see sendTestEmailAction). The
             compact button in the preview panel submits this same form via
-            its `form` attribute rather than duplicating the fields. */}
-        <form
-          id={testFormId}
-          action={sendFormAction}
-          className="mt-6 border-t border-[#E5E7EB] pt-6"
-        >
+            its `form` attribute rather than duplicating the fields. No email
+            field to fill in — it always goes to the signed-in user's own
+            address, via the hidden "to" field below. */}
+        <form id={testFormId} action={sendFormAction} className="mt-6 border-t border-[#E5E7EB] pt-6">
+          <input type="hidden" name="to" value={userEmail ?? ''} />
           <input type="hidden" name="emailReceiptSubject" value={renderedSubject} />
           <input type="hidden" name="emailReceiptBody" value={renderedBody} />
           <p className="text-sm font-bold text-ink-strong">Send a test email</p>
           <p className="mt-1 text-sm text-ink-muted">
             Preview exactly what your customers will receive.
           </p>
-          <div className="mt-3 flex gap-2">
-            <input
-              type="email"
-              name="to"
-              required
-              value={testTo}
-              onChange={(event) => setTestTo(event.target.value)}
-              placeholder="Enter email address"
-              className="h-10 flex-1 rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
-                         shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                         focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-            />
-            <button
-              type="submit"
-              disabled={sendPending}
-              className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-bold
-                         text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
-            >
-              <Send className="h-3.5 w-3.5" aria-hidden />
-              {sendPending ? 'Sending…' : 'Send Test Email'}
-            </button>
-          </div>
+          <button
+            type="submit"
+            disabled={sendPending || !userEmail}
+            title={userEmail ? undefined : 'Could not find your account email'}
+            className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-bold
+                       text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
+          >
+            <Send className="h-3.5 w-3.5" aria-hidden />
+            {sendPending ? 'Sending…' : 'Send Test Email'}
+          </button>
           {sendState.error && (
             <p role="alert" className="mt-2 text-sm text-red-700">
               {sendState.error}
             </p>
           )}
           {sendState.success && (
-            <p className="mt-2 text-sm text-emerald-700">Test email sent to {testTo}.</p>
+            <p className="mt-2 text-sm text-emerald-700">Test email sent to {userEmail}.</p>
           )}
         </form>
       </section>
 
-      <section>
+      <section className="min-w-0 w-[744px] max-w-full p-6">
         {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
-            "Brand Settings" page heading — cancelled here since it's the
-            first thing in this column now. */}
+            "Brand Settings" page heading — here it's the first thing in a
+            padded card, so that margin is cancelled rather than stacking
+            with the section's own p-6. */}
         <div className="-mt-6">
           <BrandingSubTabs active={activeSub} brandId={brand.id} />
         </div>
@@ -663,8 +658,8 @@ export function EmailReceiptEditor({
           <button
             type="submit"
             form={testFormId}
-            disabled={sendPending || !testTo}
-            title={testTo ? undefined : 'Enter an email address below first'}
+            disabled={sendPending || !userEmail}
+            title={userEmail ? undefined : 'Could not find your account email'}
             className="inline-flex items-center gap-1.5 rounded-lg border border-[#D1D5DB] bg-white px-3 py-1.5
                        text-xs font-semibold text-ink-strong transition-colors hover:bg-slate-50
                        disabled:cursor-not-allowed disabled:opacity-50"
