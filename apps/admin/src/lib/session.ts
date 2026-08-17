@@ -1,4 +1,4 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 /**
  * The admin app's half of FR-AUTH-001.
@@ -29,12 +29,33 @@ export async function writeSessionToken(token: string, expiresAt: Date): Promise
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    // Set on HTTPS deployments; omitted locally, where http://localhost would
-    // otherwise drop the cookie silently and leave sign-in looping.
-    secure: process.env.NODE_ENV === 'production',
+    secure: await isSecureRequest(),
     expires: expiresAt,
     path: '/',
   });
+}
+
+/**
+ * Whether *this* request actually arrived over HTTPS — mirrors the API's own
+ * `request.secure` (apps/api/src/auth/auth.controller.ts). `NODE_ENV ===
+ * 'production'` used to stand in for this and is wrong: a production build
+ * served over plain HTTP (e.g. hitting an EC2 box directly by IP, no TLS
+ * reverse proxy yet) would still mark the cookie Secure, and the browser
+ * silently discards a Secure cookie set over a non-HTTPS origin — every
+ * request after that one looks unauthenticated and sign-in loops forever.
+ *
+ * `x-forwarded-proto` is the standard signal a TLS-terminating proxy/load
+ * balancer sets (Vercel, an ALB, nginx, Cloudflare all do). No proxy means no
+ * header, which we take as "not HTTPS" rather than guessing from build mode.
+ * `COOKIE_SECURE` is an explicit escape hatch for the rare setup where Next
+ * itself terminates TLS with nothing in front of it to set the header.
+ */
+async function isSecureRequest(): Promise<boolean> {
+  const override = process.env['COOKIE_SECURE'];
+  if (override !== undefined) return override === 'true';
+
+  const forwardedProto = (await headers()).get('x-forwarded-proto');
+  return forwardedProto?.split(',')[0]?.trim().toLowerCase() === 'https';
 }
 
 export async function clearSessionToken(): Promise<void> {

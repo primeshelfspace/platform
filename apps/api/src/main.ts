@@ -40,11 +40,23 @@ async function bootstrap(): Promise<void> {
   // shared with the browser, so there is no class-decorator definition to
   // validate against here.
 
-  // Both web apps are separate origins and send session cookies.
+  // Both web apps are separate origins and send session cookies. Deduped in
+  // case ADMIN_PUBLIC_URL/PAYMENT_PUBLIC_URL and CORS_ALLOWED_ORIGINS overlap.
+  const corsOrigins = [
+    env.ADMIN_PUBLIC_URL,
+    env.PAYMENT_PUBLIC_URL,
+    ...(env.CORS_ALLOWED_ORIGINS?.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean) ?? []),
+  ];
   app.enableCors({
-    origin: [env.ADMIN_PUBLIC_URL, env.PAYMENT_PUBLIC_URL],
+    origin: [...new Set(corsOrigins)],
     credentials: true,
   });
+  // Logged unconditionally (not just at debug level): a request blocked by
+  // CORS fails silently in the browser with no server-side trace at all, so
+  // this is often the only place a host mismatch is visible after the fact.
+  logger.log(`cors allowed origins: ${corsOrigins.join(', ')}`);
 
   // Trust the proxy so request.ip is the client address in the audit log
   // rather than the load balancer's.
