@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { emailSchema } from '@fenwick/shared';
 import { ApiError, login } from '@/lib/api';
-import { resolveOnboardingStep, routeForStep } from '@/lib/onboarding';
+import { resolveOnboardingStep, routeForStep, type OnboardingStep } from '@/lib/onboarding';
 import { safeReturnPath, writeSessionToken } from '@/lib/session';
 
 export interface LoginState {
@@ -54,7 +54,19 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
   // included — resolveOnboardingStep checks that first) goes there instead
   // of wherever they were originally headed; a fully onboarded user gets
   // their original destination back.
-  const step = await resolveOnboardingStep(result.user);
+  //
+  // resolveOnboardingStep itself gets its own try/catch, separate from the
+  // one above: the credential check already succeeded by this point, so a
+  // momentary API hiccup resolving the *step* shouldn't turn a successful
+  // sign-in into an error page. Falling through to returnTo instead lets the
+  // (app) layout's own guard — which fails the same way, safely — resolve
+  // this exact same state again on first render.
+  let step: OnboardingStep | undefined;
+  try {
+    step = await resolveOnboardingStep(result.user);
+  } catch {
+    // Handled by falling through below.
+  }
   if (step === 'set-password') {
     redirect(`/set-password?next=${encodeURIComponent(returnTo)}`);
   }
