@@ -45,7 +45,10 @@ jobs:
             # ephemeral GITHUB_TOKEN, passed in via DEPLOY_TOKEN above. It's
             # sent as an extraheader (same mechanism actions/checkout uses),
             # never embedded in the URL or argv, and expires with the job.
-            git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$DEPLOY_TOKEN" | base64)" \
+            # -w0 matters: plain `base64` line-wraps at 76 cols, which
+            # embeds a newline mid-header — curl then rejects the header
+            # outright ("A libcurl function was given a bad argument").
+            git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$DEPLOY_TOKEN" | base64 -w0)" \
               fetch https://github.com/primeshelfspace/Multi-Brand-Invoicing.git main
 
             # Discards nothing that matters: .env and any other untracked file
