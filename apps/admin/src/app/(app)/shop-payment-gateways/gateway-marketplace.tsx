@@ -55,9 +55,7 @@ function GatewayCard({ gateway, connectHref }: { gateway: GatewayListing; connec
       <div className="relative h-28 shrink-0" style={{ backgroundColor: gateway.bannerColor }}>
         <div className="absolute right-4 top-4 flex items-center gap-2">
           {highlight && (
-            <span
-              className={`rounded-full px-3 py-1 text-xs font-bold ${highlight.className}`}
-            >
+            <span className={`rounded-full px-3 py-1 text-xs font-bold ${highlight.className}`}>
               {highlight.label}
             </span>
           )}
@@ -165,8 +163,8 @@ export function GatewayMarketplace() {
             </div>
             <h1 className="mt-4 text-4xl font-extrabold tracking-tight">Shop Payment Gateways</h1>
             <p className="mt-4 text-[#D4D4D4]">
-              Connect a payment processor to your branded invoice pages. Compare features, fees,
-              and global reach — then activate in one click.
+              Connect a payment processor to your branded invoice pages. Compare features, fees, and
+              global reach — then activate in one click.
             </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">

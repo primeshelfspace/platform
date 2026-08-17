@@ -616,7 +616,11 @@ export function EmailReceiptEditor({
             its `form` attribute rather than duplicating the fields. No email
             field to fill in — it always goes to the signed-in user's own
             address, via the hidden "to" field below. */}
-        <form id={testFormId} action={sendFormAction} className="mt-6 border-t border-[#E5E7EB] pt-6">
+        <form
+          id={testFormId}
+          action={sendFormAction}
+          className="mt-6 border-t border-[#E5E7EB] pt-6"
+        >
           <input type="hidden" name="to" value={userEmail ?? ''} />
           <input type="hidden" name="emailReceiptSubject" value={renderedSubject} />
           <input type="hidden" name="emailReceiptBody" value={renderedBody} />

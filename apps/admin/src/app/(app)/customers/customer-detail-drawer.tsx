@@ -74,7 +74,8 @@ function drawerInvoiceStatus(invoice: Invoice): { label: string; dot: string; te
   if (invoice.status === 'CANCELLED') {
     return { label: 'Cancelled', dot: 'bg-ink-subtle', text: 'text-ink-subtle' };
   }
-  if (invoice.status === 'DRAFT') return { label: 'Draft', dot: 'bg-ink-subtle', text: 'text-ink-subtle' };
+  if (invoice.status === 'DRAFT')
+    return { label: 'Draft', dot: 'bg-ink-subtle', text: 'text-ink-subtle' };
   if (invoice.overdue) return { label: 'Overdue', dot: 'bg-danger', text: 'text-danger' };
   if (invoice.status === 'PARTIALLY_PAID') {
     return { label: 'Partial', dot: 'bg-warning', text: 'text-warning' };
@@ -208,7 +209,10 @@ export function CustomerDetailDrawer({
                 <InfoField label="Billing Address" lines={addressLines(customer.billingAddress)} />
 
                 <InfoField label="Phone" lines={customer.phone ? [customer.phone] : []} />
-                <InfoField label="Shipping Address" lines={addressLines(customer.shippingAddress)} />
+                <InfoField
+                  label="Shipping Address"
+                  lines={addressLines(customer.shippingAddress)}
+                />
               </div>
 
               <div className="mt-5 border-t border-[#E5E7EB] pt-4">
@@ -249,8 +253,10 @@ export function CustomerDetailDrawer({
                     <div className="overflow-x-auto rounded-lg border border-[#E5E7EB]">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs
-                                          font-semibold uppercase tracking-wide text-[#8C919B]">
+                          <tr
+                            className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs
+                                          font-semibold uppercase tracking-wide text-[#8C919B]"
+                          >
                             <th className="px-4 py-2">Invoice</th>
                             <th className="px-4 py-2">Issue Date</th>
                             <th className="px-4 py-2">Due Date</th>
@@ -263,7 +269,10 @@ export function CustomerDetailDrawer({
                           {invoices.map((invoice) => {
                             const status = drawerInvoiceStatus(invoice);
                             return (
-                              <tr key={invoice.id} className="border-b border-[#E5E7EB] last:border-0">
+                              <tr
+                                key={invoice.id}
+                                className="border-b border-[#E5E7EB] last:border-0"
+                              >
                                 <td className="px-4 py-2 font-medium text-[#0F172A]">
                                   {invoice.number}
                                 </td>
@@ -311,4 +320,3 @@ export function CustomerDetailDrawer({
     document.body,
   );
 }
-

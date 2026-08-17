@@ -162,7 +162,7 @@ export const GATEWAYS: readonly GatewayListing[] = [
   {
     key: 'razorpay',
     name: 'Razorpay',
-    tagline: "Full-stack payments for South Asia",
+    tagline: 'Full-stack payments for South Asia',
     initials: 'R',
     bannerColor: '#2F6FED',
     accentColor: '#2F6FED',
@@ -201,6 +201,6 @@ export const COUNTRIES_SUPPORTED = '140+';
  * colour can never silently drift from its own catalog entry. */
 const TOP_PICK_KEYS: readonly string[] = ['stripe', 'paypal'];
 
-export const TOP_PICKS: readonly GatewayListing[] = TOP_PICK_KEYS.map(
-  (key) => GATEWAYS.find((g) => g.key === key)!,
+export const TOP_PICKS: readonly GatewayListing[] = TOP_PICK_KEYS.map((key) =>
+  GATEWAYS.find((g) => g.key === key)!,
 );
