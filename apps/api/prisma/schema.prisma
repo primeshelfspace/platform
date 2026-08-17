@@ -66,6 +66,24 @@ enum EmailReceiptLayout {
   MINIMAL
 }
 
+/// FR-PDF: how the generated invoice PDF a customer receives/downloads is
+/// arranged for a brand.
+enum InvoicePdfLayout {
+  CLASSIC
+  MODERN
+  MINIMAL
+}
+
+/// FR-PDF: the payment-terms label printed on the invoice PDF. Distinct from
+/// BrandSettings.paymentTermsDays (which drives the actual due-date math) —
+/// this is display copy a merchant may want to phrase differently.
+enum InvoicePdfPaymentTerms {
+  DUE_ON_RECEIPT
+  NET_15
+  NET_30
+  NET_60
+}
+
 /// FR-BRD onboarding: legal structure of the business behind a brand.
 enum BusinessType {
   SOLE_PROPRIETORSHIP
@@ -374,6 +392,21 @@ model BrandSettings {
   emailReceiptLayout  EmailReceiptLayout @default(CLASSIC) @map("email_receipt_layout")
   emailReceiptSubject String             @default("New invoice from {{brand_name}}") @map("email_receipt_subject")
   emailReceiptBody    String             @default("Hi {{customer_name}},\n\nThis is an automated message from {{brand_name}} regarding invoice {{invoice_number}}.\n\nAmount due: {{amount_due}}\nDue date: {{due_date}}\n\nPlease click the button below to view and pay your invoice.\n\nThank you for your business.") @map("email_receipt_body")
+
+  /// FR-PDF: Brand Settings > Branding > Invoice PDF — layout and which
+  /// optional sections appear on the invoice PDF a customer receives.
+  invoicePdfLayout             InvoicePdfLayout        @default(CLASSIC) @map("invoice_pdf_layout")
+  invoicePdfShowCompanyAddress Boolean                 @default(true) @map("invoice_pdf_show_company_address")
+  invoicePdfShowPaymentTerms   Boolean                 @default(true) @map("invoice_pdf_show_payment_terms")
+  invoicePdfShowTaxBreakdown   Boolean                 @default(true) @map("invoice_pdf_show_tax_breakdown")
+  invoicePdfShowNotes          Boolean                 @default(true) @map("invoice_pdf_show_notes")
+  /// Null until a merchant overrides it — the read path falls back to the
+  /// brand's own displayName/mailingAddress, so the PDF letterhead matches
+  /// Brand Details until someone deliberately wants it to read differently.
+  invoicePdfCompanyName        String?                 @map("invoice_pdf_company_name")
+  invoicePdfCompanyAddress     String?                 @map("invoice_pdf_company_address")
+  invoicePdfPaymentTerms       InvoicePdfPaymentTerms  @default(DUE_ON_RECEIPT) @map("invoice_pdf_payment_terms")
+  invoicePdfNotes              String                  @default("Thank you for your business. Please contact us with any questions.") @map("invoice_pdf_notes")
 
   createdAt              DateTime @default(now()) @map("created_at")
   updatedAt              DateTime @updatedAt @map("updated_at")

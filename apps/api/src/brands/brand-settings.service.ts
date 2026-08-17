@@ -1,4 +1,5 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, type Brand, type BrandSettings } from '@prisma/client';
 import {
   formatDateForDisplay,
   formatMinorForDisplay,
@@ -7,6 +8,7 @@ import {
   toCurrencyCode,
   type EmailReceiptSettingsInput,
   type EmailReceiptTestSendInput,
+  type InvoicePdfSettingsInput,
   type MailPort,
   type PaymentMethodSettingsInput,
   type PaymentPageDisplayInput,
@@ -32,6 +34,20 @@ export interface EmailReceiptSettings {
   readonly emailReceiptLayout: 'CLASSIC' | 'HERO' | 'MINIMAL';
   readonly emailReceiptSubject: string;
   readonly emailReceiptBody: string;
+}
+
+export interface InvoicePdfSettings {
+  readonly invoicePdfLayout: 'CLASSIC' | 'MODERN' | 'MINIMAL';
+  readonly showCompanyAddress: boolean;
+  readonly showPaymentTerms: boolean;
+  readonly showTaxBreakdown: boolean;
+  readonly showNotes: boolean;
+  /** Resolved, never null — falls back to the brand's own
+   * displayName/mailingAddress until a merchant overrides it. */
+  readonly companyName: string;
+  readonly companyAddress: string;
+  readonly paymentTerms: 'DUE_ON_RECEIPT' | 'NET_15' | 'NET_30' | 'NET_60';
+  readonly notes: string;
 }
 
 /** Same numbers the admin editor's preview falls back to when a brand has no
@@ -157,6 +173,49 @@ export class BrandSettingsService {
     });
   }
 
+  async getInvoicePdfSettings(scope: Scope, brandId: string): Promise<InvoicePdfSettings> {
+    const { settings, brand } = await this.prisma.withScope(scope, async (tx) => {
+      const settingsRow = await tx.brandSettings.findUnique({ where: { brandId } });
+      if (!settingsRow) throw new NotFoundException('brand settings not found');
+      const brandRow = await tx.brand.findUnique({ where: { id: brandId } });
+      if (!brandRow) throw new NotFoundException('brand not found');
+      return { settings: settingsRow, brand: brandRow };
+    });
+    return toInvoicePdfSettings(settings, brand);
+  }
+
+  async updateInvoicePdfSettings(
+    scope: Scope,
+    brandId: string,
+    input: InvoicePdfSettingsInput,
+  ): Promise<InvoicePdfSettings> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const existing = await tx.brandSettings.findUnique({ where: { brandId } });
+      if (!existing) throw new NotFoundException('brand settings not found');
+      const brand = await tx.brand.findUnique({ where: { id: brandId } });
+      if (!brand) throw new NotFoundException('brand not found');
+
+      const updated = await tx.brandSettings.update({
+        where: { brandId },
+        data: {
+          invoicePdfLayout: input.invoicePdfLayout,
+          invoicePdfShowCompanyAddress: input.showCompanyAddress,
+          invoicePdfShowPaymentTerms: input.showPaymentTerms,
+          invoicePdfShowTaxBreakdown: input.showTaxBreakdown,
+          invoicePdfShowNotes: input.showNotes,
+          // A plain nullable String column, not Json — an explicit `null`
+          // here already means "clear the override", no Prisma.DbNull dance
+          // needed (that's only for Json columns; see BrandsService.update).
+          invoicePdfCompanyName: input.companyName,
+          invoicePdfCompanyAddress: input.companyAddress,
+          invoicePdfPaymentTerms: input.paymentTerms,
+          invoicePdfNotes: input.notes,
+        },
+      });
+      return toInvoicePdfSettings(updated, brand);
+    });
+  }
+
   /**
    * Brand Settings > Branding > Email Receipt's "Send a test email" —
    * actually sends, through the same MailPort every other email in this
@@ -228,6 +287,38 @@ export class BrandSettingsService {
       idempotencyKey: `email-receipt-test:${brandId}:${Date.now()}`,
     });
   }
+}
+
+/** Resolves the stored override columns against the brand's own record —
+ * the one place that fallback decision gets made, so get and update always
+ * agree on what "unset" resolves to. */
+function toInvoicePdfSettings(settings: BrandSettings, brand: Brand): InvoicePdfSettings {
+  return {
+    invoicePdfLayout: settings.invoicePdfLayout,
+    showCompanyAddress: settings.invoicePdfShowCompanyAddress,
+    showPaymentTerms: settings.invoicePdfShowPaymentTerms,
+    showTaxBreakdown: settings.invoicePdfShowTaxBreakdown,
+    showNotes: settings.invoicePdfShowNotes,
+    companyName: settings.invoicePdfCompanyName ?? brand.displayName,
+    companyAddress: settings.invoicePdfCompanyAddress ?? formatBrandAddress(brand.mailingAddress),
+    paymentTerms: settings.invoicePdfPaymentTerms,
+    notes: settings.invoicePdfNotes,
+  };
+}
+
+/** Brand.mailingAddress is a loosely-typed Json column (see BrandsService) —
+ * this reads it defensively rather than assuming the CustomerAddress shape
+ * always holds, since nothing enforces that at the database level. */
+function formatBrandAddress(address: Prisma.JsonValue): string {
+  if (!address || typeof address !== 'object' || Array.isArray(address)) return '';
+  const a = address as Record<string, unknown>;
+  const str = (key: string): string => (typeof a[key] === 'string' ? (a[key] as string) : '');
+
+  const line1 = [str('line1'), str('line2')].filter(Boolean).join(', ');
+  const cityLine = [[str('city'), str('region')].filter(Boolean).join(', '), str('postalCode')]
+    .filter(Boolean)
+    .join(' ');
+  return [line1, cityLine].filter(Boolean).join('\n');
 }
 
 /** `"Prime Shelf Space Inc. <billing@localhost>"` -> name and address. Mirrors

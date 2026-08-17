@@ -120,24 +120,3 @@ export function BrandingSubTabs({
     </nav>
   );
 }
-
-/**
- * Shown for Branding sub-sections that are designed but not built.
- *
- * Deliberately explicit rather than a spinner or an empty panel: a tab that
- * looks broken generates a bug report, while one that says what it will do
- * does not. Each names the setting it will own, so the gap is legible.
- */
-export function NotBuiltYet({ tab }: { tab: 'invoice-pdf' }) {
-  const copy: Record<'invoice-pdf', string> = {
-    'invoice-pdf':
-      'Layout, logo placement and footer text for the PDF your customers receive. Invoices currently render with the platform default.',
-  };
-
-  return (
-    <div className="mt-8 rounded-lg border border-dashed border-border bg-surface-muted p-8 text-center">
-      <p className="text-sm font-medium text-ink-strong">Not built yet</p>
-      <p className="mx-auto mt-2 max-w-md text-sm text-ink-muted">{copy[tab]}</p>
-    </div>
-  );
-}

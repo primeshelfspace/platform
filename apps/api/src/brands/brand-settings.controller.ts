@@ -3,10 +3,12 @@ import {
   emailReceiptSettingsSchema,
   emailReceiptTestSendSchema,
   idSchema,
+  invoicePdfSettingsSchema,
   paymentMethodSettingsSchema,
   paymentPageDisplaySchema,
   type EmailReceiptSettingsInput,
   type EmailReceiptTestSendInput,
+  type InvoicePdfSettingsInput,
   type PaymentMethodSettingsInput,
   type PaymentPageDisplayInput,
   type Scope,
@@ -16,6 +18,7 @@ import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import {
   BrandSettingsService,
   type EmailReceiptSettings,
+  type InvoicePdfSettings,
   type PaymentMethodSettings,
   type PaymentPageDisplaySettings,
 } from './brand-settings.service.js';
@@ -91,5 +94,24 @@ export class BrandSettingsController {
   ): Promise<{ sent: true }> {
     await this.settings.sendEmailReceiptTest(scope, brandId, body);
     return { sent: true };
+  }
+
+  @Get('invoice-pdf')
+  @RequirePermission('BRAND_CONFIGURATION', 'READ')
+  getInvoicePdf(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+  ): Promise<InvoicePdfSettings> {
+    return this.settings.getInvoicePdfSettings(scope, brandId);
+  }
+
+  @Patch('invoice-pdf')
+  @RequirePermission('BRAND_CONFIGURATION', 'WRITE')
+  updateInvoicePdf(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Body(zodPipe(invoicePdfSettingsSchema)) body: InvoicePdfSettingsInput,
+  ): Promise<InvoicePdfSettings> {
+    return this.settings.updateInvoicePdfSettings(scope, brandId, body);
   }
 }

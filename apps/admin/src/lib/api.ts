@@ -610,6 +610,55 @@ export function sendEmailReceiptTest(
   });
 }
 
+// --- Invoice PDF (Brand Settings > Branding > Invoice PDF) -------------------
+
+export type InvoicePdfLayout = 'CLASSIC' | 'MODERN' | 'MINIMAL';
+export type InvoicePdfPaymentTerms = 'DUE_ON_RECEIPT' | 'NET_15' | 'NET_30' | 'NET_60';
+
+export interface InvoicePdfSettings {
+  invoicePdfLayout: InvoicePdfLayout;
+  showCompanyAddress: boolean;
+  showPaymentTerms: boolean;
+  showTaxBreakdown: boolean;
+  showNotes: boolean;
+  /** Resolved server-side, never null — the brand's own displayName/
+   * mailingAddress until a merchant overrides it (see BrandSettingsService). */
+  companyName: string;
+  companyAddress: string;
+  paymentTerms: InvoicePdfPaymentTerms;
+  notes: string;
+}
+
+/** The write shape, distinct from InvoicePdfSettings above: companyName/
+ * companyAddress are nullable here (null clears the override back to "use
+ * the brand's own record"), where the read response always resolves them
+ * to a concrete string. */
+export interface InvoicePdfSettingsInput {
+  invoicePdfLayout: InvoicePdfLayout;
+  showCompanyAddress: boolean;
+  showPaymentTerms: boolean;
+  showTaxBreakdown: boolean;
+  showNotes: boolean;
+  companyName: string | null;
+  companyAddress: string | null;
+  paymentTerms: InvoicePdfPaymentTerms;
+  notes: string;
+}
+
+export function getInvoicePdfSettings(brandId: string): Promise<InvoicePdfSettings> {
+  return apiFetch<InvoicePdfSettings>(`/brands/${brandId}/settings/invoice-pdf`);
+}
+
+export function updateInvoicePdfSettings(
+  brandId: string,
+  input: InvoicePdfSettingsInput,
+): Promise<InvoicePdfSettings> {
+  return apiFetch<InvoicePdfSettings>(`/brands/${brandId}/settings/invoice-pdf`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
 // --- Stripe Connect (one connected account per brand) ------------------------
 
 export interface StripeAccountStatus {

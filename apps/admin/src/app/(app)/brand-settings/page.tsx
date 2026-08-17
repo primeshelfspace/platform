@@ -4,20 +4,23 @@ import {
   getCurrentUser,
   getCustomer,
   getEmailReceiptSettings,
+  getInvoicePdfSettings,
   getPaymentPageDisplaySettings,
   listBrands,
   listInvoices,
+  type CustomerAddress,
   type EmailReceiptSettings,
+  type InvoicePdfSettings,
   type PaymentPageDisplaySettings,
 } from '@/lib/api';
 import { PageContainer } from '@/components/page-container';
 import { BrandDetailsForm } from './brand-details-form';
 import { EmailReceiptEditor } from './email-receipt-editor';
+import { InvoicePdfEditor, type InvoicePdfPreviewInvoice } from './invoice-pdf-editor';
 import { PaymentPageEditor, type PaymentPagePreviewInvoice } from './payment-page-editor';
 import {
   BrandSettingsTabs,
   BrandingSubTabs,
-  NotBuiltYet,
   isBrandSettingsTab,
   isBrandingSubTab,
   type BrandSettingsTab,
@@ -67,6 +70,67 @@ async function loadPreviewInvoice(brandId: string): Promise<PaymentPagePreviewIn
   };
 }
 
+/** Two lines the way a person addresses an envelope — "street, suite" then
+ * "city, region postal" — same convention as the customer detail drawer's
+ * own addressLines, duplicated rather than shared since one is a server
+ * component and the other a client component with no common module between
+ * them worth introducing for six lines. */
+function formatAddressLines(address: CustomerAddress | null): string {
+  if (!address) return '';
+  const line1 = [address.line1, address.line2].filter(Boolean).join(', ');
+  const line2 = [[address.city, address.region].filter(Boolean).join(', '), address.postalCode]
+    .filter(Boolean)
+    .join(' ');
+  return [line1, line2].filter(Boolean).join('\n');
+}
+
+/**
+ * What the Invoice PDF tab's preview renders: this brand's actual most
+ * recent invoice (with real line items), never an invented one — same
+ * FR-PAY design note loadPreviewInvoice follows. `null` when the brand has
+ * no invoices yet; the editor then shows the same sample every other
+ * Branding preview falls back to, clearly labelled as a sample.
+ */
+async function loadInvoicePdfPreview(brandId: string): Promise<InvoicePdfPreviewInvoice | null> {
+  let latest;
+  try {
+    latest = (await listInvoices(brandId, { pageSize: 1 })).data[0];
+  } catch {
+    return null;
+  }
+  if (!latest) return null;
+
+  let customerName = 'Customer';
+  let customerAddress = '';
+  try {
+    const customer = await getCustomer(brandId, latest.customerId);
+    customerName = customer.displayName;
+    customerAddress = formatAddressLines(customer.billingAddress);
+  } catch {
+    // Intentionally ignored — see loadPreviewInvoice's own comment.
+  }
+
+  const currency = toCurrencyCode(latest.currency);
+
+  return {
+    number: latest.number,
+    customerName,
+    customerAddress,
+    invoiceDateLabel: formatDateForDisplay(latest.invoiceDate),
+    dueDateLabel: formatDateForDisplay(latest.dueDate),
+    lineItems: latest.lineItems.map((line) => ({
+      description: line.itemName,
+      quantityLabel: String(line.quantity),
+      rateLabel: formatMinorForDisplay(line.unitPriceMinor, currency),
+      amountLabel: formatMinorForDisplay(line.lineTotalMinor, currency),
+    })),
+    subtotalLabel: formatMinorForDisplay(latest.subtotalMinor, currency),
+    taxLabel: latest.taxMinor > 0 ? formatMinorForDisplay(latest.taxMinor, currency) : null,
+    totalLabel: formatMinorForDisplay(latest.totalMinor, currency),
+    balanceDueLabel: formatMinorForDisplay(latest.balanceMinor, currency),
+  };
+}
+
 /**
  * The sidebar's "Brand Settings" destination. Scoped to whichever brand the
  * sidebar's brandId query param currently points at — the same convention
@@ -74,8 +138,8 @@ async function loadPreviewInvoice(brandId: string): Promise<PaymentPagePreviewIn
  *
  * Brand Details and Branding render here; Integrations and Payment Gateways
  * are tabs that link out to their existing standalone pages (see tabs.tsx).
- * Within Branding, only Payment Page is built — Email Receipt and Invoice
- * PDF say so in plain words rather than being hidden.
+ * All three Branding sub-tabs (Payment Page, Email Receipt, Invoice PDF) are
+ * built.
  */
 export default async function BrandSettingsPage({
   searchParams,
@@ -104,6 +168,10 @@ export default async function BrandSettingsPage({
      * fails, in which case the button disables rather than sending nowhere. */
     userEmail: string | null;
   } | null = null;
+  let invoicePdfProps: {
+    settings: InvoicePdfSettings;
+    previewInvoice: InvoicePdfPreviewInvoice | null;
+  } | null = null;
   if (brand && activeTab !== 'details') {
     if (activeSub === 'payment-page') {
       const [display, previewInvoice] = await Promise.all([
@@ -121,6 +189,12 @@ export default async function BrandSettingsPage({
           .catch(() => null),
       ]);
       emailReceiptProps = { settings, accentColor: display.accentColor, previewInvoice, userEmail };
+    } else if (activeSub === 'invoice-pdf') {
+      const [settings, previewInvoice] = await Promise.all([
+        getInvoicePdfSettings(brand.id),
+        loadInvoicePdfPreview(brand.id),
+      ]);
+      invoicePdfProps = { settings, previewInvoice };
     }
   }
 
@@ -139,11 +213,11 @@ export default async function BrandSettingsPage({
         </div>
       ) : (
         <>
-          {/* Branches on activeSub itself, exactly as before, so TypeScript
-              still narrows activeSub to 'invoice-pdf' in the fallback below
-              — the props objects are filled in by the identical condition
-              above, so the assertions below just tell TS what's already
-              guaranteed true at runtime. */}
+          {/* Branches on activeSub itself — the props objects above are
+              filled in by the identical condition, so the assertions below
+              just tell TS what's already guaranteed true at runtime. All
+              three Branding sub-tabs are built; there is no remaining
+              fallback case. */}
           {activeSub === 'payment-page' ? (
             <PaymentPageEditor
               brand={brand}
@@ -161,10 +235,12 @@ export default async function BrandSettingsPage({
               userEmail={emailReceiptProps!.userEmail}
             />
           ) : (
-            <>
-              <BrandingSubTabs active={activeSub} brandId={brand.id} />
-              <NotBuiltYet tab={activeSub} />
-            </>
+            <InvoicePdfEditor
+              brand={brand}
+              activeSub={activeSub}
+              settings={invoicePdfProps!.settings}
+              previewInvoice={invoicePdfProps!.previewInvoice}
+            />
           )}
         </>
       )}

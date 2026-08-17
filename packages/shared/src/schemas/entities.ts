@@ -248,6 +248,24 @@ export const emailReceiptTestSendSchema = z.object({
 });
 export type EmailReceiptTestSendInput = z.infer<typeof emailReceiptTestSendSchema>;
 
+/** Brand Settings > Branding > Invoice PDF: layout and which optional
+ * sections appear on the invoice PDF a customer receives/downloads.
+ * companyName/companyAddress are nullable — null means "use the brand's own
+ * displayName/mailingAddress", not "blank"; the editor always submits the
+ * value currently on screen, whether that's the fallback or an override. */
+export const invoicePdfSettingsSchema = z.object({
+  invoicePdfLayout: z.enum(['CLASSIC', 'MODERN', 'MINIMAL']),
+  showCompanyAddress: z.boolean(),
+  showPaymentTerms: z.boolean(),
+  showTaxBreakdown: z.boolean(),
+  showNotes: z.boolean(),
+  companyName: z.string().trim().max(200).nullable(),
+  companyAddress: z.string().trim().max(500).nullable(),
+  paymentTerms: z.enum(['DUE_ON_RECEIPT', 'NET_15', 'NET_30', 'NET_60']),
+  notes: z.string().trim().max(2000),
+});
+export type InvoicePdfSettingsInput = z.infer<typeof invoicePdfSettingsSchema>;
+
 // Stripe has no schema here: under Connect a brand authorises the platform on
 // Stripe's own consent screen rather than submitting credentials, so there is
 // no request body to validate. The resulting account id is read from Stripe's

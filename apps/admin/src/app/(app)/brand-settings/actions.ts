@@ -7,11 +7,14 @@ import {
   sendEmailReceiptTest,
   updateBrand,
   updateEmailReceiptSettings,
+  updateInvoicePdfSettings,
   updatePaymentPageDisplaySettings,
   uploadBrandLogo,
   type Brand,
   type BrandFormInput,
   type EmailReceiptLayout,
+  type InvoicePdfLayout,
+  type InvoicePdfPaymentTerms,
   type PaymentPageDisplaySettings,
   type PaymentPageLayout,
 } from '@/lib/api';
@@ -256,5 +259,94 @@ export async function sendTestEmailAction(
     return { error: describeActionError(error, 'Could not send the test email.') };
   }
 
+  return { success: true };
+}
+
+export interface InvoicePdfState {
+  readonly error?: string;
+  readonly success?: boolean;
+}
+
+const INVOICE_PDF_LAYOUTS: readonly InvoicePdfLayout[] = ['CLASSIC', 'MODERN', 'MINIMAL'];
+const INVOICE_PDF_PAYMENT_TERMS: readonly InvoicePdfPaymentTerms[] = [
+  'DUE_ON_RECEIPT',
+  'NET_15',
+  'NET_30',
+  'NET_60',
+];
+
+/**
+ * Brand Settings > Branding > Invoice PDF. Brand colour and accent colour
+ * are the same two fields Payment Page/Email Receipt edit — there is only
+ * one of each per brand — so accent colour is read-then-written against
+ * Payment Page's own settings to avoid silently reverting its layout choice.
+ */
+export async function saveInvoicePdfSettingsAction(
+  brand: Brand,
+  _prevState: InvoicePdfState,
+  formData: FormData,
+): Promise<InvoicePdfState> {
+  const themeColor = emptyToNull(formData.get('themeColor')) ?? brand.themeColor;
+  const accentColor = emptyToNull(formData.get('accentColor')) ?? '#171717';
+  const layoutRaw = emptyToNull(formData.get('invoicePdfLayout'));
+  const invoicePdfLayout = INVOICE_PDF_LAYOUTS.find((l) => l === layoutRaw) ?? 'CLASSIC';
+  const paymentTermsRaw = emptyToNull(formData.get('paymentTerms'));
+  const paymentTerms =
+    INVOICE_PDF_PAYMENT_TERMS.find((t) => t === paymentTermsRaw) ?? 'DUE_ON_RECEIPT';
+  const notes = emptyToNull(formData.get('notes')) ?? '';
+
+  if (!notes) return { error: 'Notes are required.' };
+
+  try {
+    if (themeColor !== brand.themeColor) {
+      const input: BrandFormInput = {
+        legalName: brand.legalName,
+        displayName: brand.displayName,
+        businessType: brand.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
+        salesPersonName: brand.salesPerson,
+        phone: brand.phone,
+        email: brand.email,
+        mailingAddress: brand.mailingAddress,
+        billingAddress: brand.billingAddress,
+        taxId: brand.taxId,
+        currency: brand.currency,
+        timezone: brand.timezone,
+        themeColor,
+      };
+      await updateBrand(brand.id, input);
+    }
+
+    const currentDisplay = await getPaymentPageDisplaySettings(brand.id);
+    if (accentColor !== currentDisplay.accentColor) {
+      await updatePaymentPageDisplaySettings(brand.id, { ...currentDisplay, accentColor });
+    }
+
+    await updateInvoicePdfSettings(brand.id, {
+      invoicePdfLayout,
+      showCompanyAddress: formData.get('showCompanyAddress') === 'on',
+      showPaymentTerms: formData.get('showPaymentTerms') === 'on',
+      showTaxBreakdown: formData.get('showTaxBreakdown') === 'on',
+      showNotes: formData.get('showNotes') === 'on',
+      companyName: emptyToNull(formData.get('companyName')),
+      companyAddress: emptyToNull(formData.get('companyAddress')),
+      paymentTerms,
+      notes,
+    });
+  } catch (error) {
+    return { error: describeActionError(error, 'Could not save the invoice PDF settings.') };
+  }
+
+  // Same convention as Brand Details: a failed logo upload does not fail the
+  // save that already succeeded.
+  const logo = formData.get('logo');
+  if (logo instanceof File && logo.size > 0) {
+    try {
+      await uploadBrandLogo(brand.id, logo);
+    } catch {
+      // Intentionally ignored — see comment above.
+    }
+  }
+
+  revalidatePath('/brand-settings');
   return { success: true };
 }
