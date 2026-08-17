@@ -1,6 +1,11 @@
 import { redirect } from 'next/navigation';
 import { can, type Role } from '@fenwick/shared';
-import { getCurrentUser, getMerchantOnboarding, type CurrentUser } from './api';
+import {
+  getCurrentUser,
+  getMerchantOnboarding,
+  type CurrentUser,
+  type MerchantOnboardingState,
+} from './api';
 import { LOGIN_PATH, readSessionToken } from './session';
 
 /**
@@ -31,12 +36,22 @@ const BRAND_SETUP_STEPS: ReadonlySet<OnboardingStep> = new Set<OnboardingStep>([
   'multi-brand-setup',
 ]);
 
-export async function resolveOnboardingStep(user: CurrentUser): Promise<OnboardingStep> {
+/**
+ * `prefetchedMerchant` lets a caller that already needs the merchant record
+ * for its own purposes (the authenticated layout, for its sidebar header)
+ * pass it in instead of this function fetching it again — otherwise every
+ * navigation would hit /merchant/onboarding twice. Every other caller omits
+ * it and this fetches its own, exactly as before.
+ */
+export async function resolveOnboardingStep(
+  user: CurrentUser,
+  prefetchedMerchant?: MerchantOnboardingState,
+): Promise<OnboardingStep> {
   // Applies to every role: a user on a temporary password sets their own
   // before anything else, and is always permitted to.
   if (user.mustResetPassword) return 'set-password';
 
-  const merchant = await getMerchantOnboarding();
+  const merchant = prefetchedMerchant ?? (await getMerchantOnboarding());
   if (merchant.onboardingComplete) return null;
 
   const step = resolveSetupStep(merchant);
@@ -100,7 +115,7 @@ export async function requireOnboardingStep(
 ): Promise<CurrentUser> {
   const user = await requireSignedInUser(routeForStep(step));
 
-  const actual = await resolveOnboardingStep(user);
+  const actual = await resolveOnboardingStepOrRedirect(user);
   if (actual !== step) {
     redirect(routeForStep(actual));
   }
@@ -114,12 +129,30 @@ export async function requireOnboardingStep(
 export async function requireOnboardingComplete(): Promise<CurrentUser> {
   const user = await requireSignedInUser('/brands/created');
 
-  const actual = await resolveOnboardingStep(user);
+  const actual = await resolveOnboardingStepOrRedirect(user);
   if (actual !== null) {
     redirect(routeForStep(actual));
   }
 
   return user;
+}
+
+/**
+ * Shared by both guards above. resolveOnboardingStep hits the API
+ * (getMerchantOnboarding), and every onboarding page calls one of these two
+ * guards before rendering anything of its own — so an unguarded call here
+ * meant a momentary API hiccup fell through to the root error boundary and
+ * showed "Something went wrong" on every single onboarding step, the same
+ * failure mode already fixed for the post-onboarding layout. Failing the
+ * same way requireSignedInUser's own getCurrentUser call does — back to
+ * /login — since we genuinely cannot tell which step this user belongs on.
+ */
+async function resolveOnboardingStepOrRedirect(user: CurrentUser): Promise<OnboardingStep> {
+  try {
+    return await resolveOnboardingStep(user);
+  } catch {
+    redirect(`${LOGIN_PATH}?expired=1`);
+  }
 }
 
 /**

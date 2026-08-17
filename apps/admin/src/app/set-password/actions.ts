@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { setPasswordSchema } from '@fenwick/shared';
 import { ApiError, getCurrentUser, setPassword, setPasswordWithToken } from '@/lib/api';
-import { resolveOnboardingStep, routeForStep } from '@/lib/onboarding';
+import { resolveOnboardingStep, routeForStep, type OnboardingStep } from '@/lib/onboarding';
 import { safeReturnPath, writeSessionToken } from '@/lib/session';
 
 export interface SetPasswordState {
@@ -62,8 +62,20 @@ export async function setPasswordAction(
   // this user on to whatever onboarding they still owe, or (an already-
   // onboarded user changing their password voluntarily) returns null and
   // this falls through to wherever they actually meant to go.
-  const user = await getCurrentUser();
-  const step = await resolveOnboardingStep(user);
+  //
+  // getCurrentUser/resolveOnboardingStep get their own try/catch, separate
+  // from the one above: the password change already succeeded by this
+  // point, so a momentary API hiccup resolving what comes next shouldn't
+  // turn that success into an error page. Falling through to returnTo
+  // instead lets the (app) layout's own guard — which fails the same way,
+  // safely — resolve this exact same state again on first render.
+  let step: OnboardingStep | undefined;
+  try {
+    const user = await getCurrentUser();
+    step = await resolveOnboardingStep(user);
+  } catch {
+    // Handled by falling through below.
+  }
   if (step) {
     redirect(routeForStep(step));
   }
