@@ -96,16 +96,9 @@ const envSchema = z
     API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
     ADMIN_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
     PAYMENT_PUBLIC_URL: z.string().url().default('http://localhost:3001'),
-    /**
-     * Extra origins CORS should accept, beyond ADMIN_PUBLIC_URL and
-     * PAYMENT_PUBLIC_URL — comma-separated. Exists for a box reached by an IP
-     * or hostname that differs from those two (a staging/test deployment,
-     * say): rather than repurposing ADMIN_PUBLIC_URL/PAYMENT_PUBLIC_URL
-     * (which other code also uses to build links — set-password emails,
-     * Stripe/Zoho redirects) to mean "and also allow this origin", this is
-     * additive and CORS-only.
-     */
-    CORS_ALLOWED_ORIGINS: z.string().optional(),
+    // CORS_ALLOWED_ORIGINS (the old per-origin allowlist input) is gone —
+    // main.ts now sets origin: true and accepts every origin, so there's
+    // nothing left for this to feed into.
 
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
     ENABLE_SCHEDULER: booleanish.default(true),

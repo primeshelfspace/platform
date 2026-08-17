@@ -40,23 +40,20 @@ async function bootstrap(): Promise<void> {
   // shared with the browser, so there is no class-decorator definition to
   // validate against here.
 
-  // Both web apps are separate origins and send session cookies. Deduped in
-  // case ADMIN_PUBLIC_URL/PAYMENT_PUBLIC_URL and CORS_ALLOWED_ORIGINS overlap.
-  const corsOrigins = [
-    env.ADMIN_PUBLIC_URL,
-    env.PAYMENT_PUBLIC_URL,
-    ...(env.CORS_ALLOWED_ORIGINS?.split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean) ?? []),
-  ];
+  // origin: true reflects back whatever Origin header the caller sends,
+  // rather than checking it against ADMIN_PUBLIC_URL/PAYMENT_PUBLIC_URL/an
+  // allowlist. It's deliberately not a literal '*' — browsers reject a
+  // wildcard origin once credentials are involved, and this app sends
+  // session cookies, so reflection is what's required to accept every
+  // origin AND keep credentials working. Net effect: any website can now
+  // make a credentialed request to this API carrying a signed-in merchant's
+  // own session cookie — there is no longer a per-origin allowlist guarding
+  // that. Requested explicitly; see chat history for the tradeoff.
   app.enableCors({
-    origin: [...new Set(corsOrigins)],
+    origin: true,
     credentials: true,
   });
-  // Logged unconditionally (not just at debug level): a request blocked by
-  // CORS fails silently in the browser with no server-side trace at all, so
-  // this is often the only place a host mismatch is visible after the fact.
-  logger.log(`cors allowed origins: ${corsOrigins.join(', ')}`);
+  logger.log('cors: reflecting all origins, credentials enabled (no allowlist)');
 
   // Trust the proxy so request.ip is the client address in the audit log
   // rather than the load balancer's.
