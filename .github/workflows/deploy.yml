@@ -12,6 +12,11 @@ concurrency:
   group: deploy-staging
   cancel-in-progress: false
 
+# Least-privilege token for the fetch auth below — this is the only thing
+# GITHUB_TOKEN is used for in this workflow.
+permissions:
+  contents: read
+
 jobs:
   deploy:
     name: Deploy to staging EC2
@@ -20,20 +25,33 @@ jobs:
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ubuntu
           key: ${{ secrets.STAGING_SSH_KEY }}
           command_timeout: 15m
+          envs: DEPLOY_TOKEN
           script: |
             set -e
             cd ~/Multi-Brand-Invoicing
 
+            # The box's own `origin` remote has no stored git credentials —
+            # every deploy was failing here with "could not read Username for
+            # 'https://github.com'" (repo is private, anonymous HTTPS 401s).
+            # Rather than provisioning a long-lived credential or deploy key
+            # on the box, authenticate just this one fetch with the run's own
+            # ephemeral GITHUB_TOKEN, passed in via DEPLOY_TOKEN above. It's
+            # sent as an extraheader (same mechanism actions/checkout uses),
+            # never embedded in the URL or argv, and expires with the job.
+            git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$DEPLOY_TOKEN" | base64)" \
+              fetch https://github.com/primeshelfspace/Multi-Brand-Invoicing.git main
+
             # Discards nothing that matters: .env and any other untracked file
             # (this workflow file's own runtime config included) survive a
             # reset, since reset --hard only ever touches tracked files.
-            git fetch origin main
-            git reset --hard origin/main
+            git reset --hard FETCH_HEAD
 
             pnpm install --frozen-lockfile
             pnpm --filter @fenwick/shared build
