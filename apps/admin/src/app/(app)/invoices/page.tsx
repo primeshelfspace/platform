@@ -50,7 +50,7 @@ export default async function InvoicesPage({
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
-      <PageContainer>
+      <PageContainer compact>
         <InvoicesPageClient
           brand={activeBrand}
           invoices={invoices}

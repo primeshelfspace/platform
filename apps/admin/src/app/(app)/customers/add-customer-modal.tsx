@@ -74,24 +74,25 @@ function AddressFields({
   const postalError = errors[`${prefix}PostalCode` as const];
 
   return (
-    <div className="space-y-4">
-      <input
-        name={`${prefix}Line1`}
-        placeholder="Address line 1"
-        aria-invalid={Boolean(line1Error)}
-        className={`${inputClass} ${line1Error ? invalidBorder : validBorder}`}
-      />
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-4">
+        <input
+          name={`${prefix}Line1`}
+          placeholder="Address line 1"
+          aria-invalid={Boolean(line1Error)}
+          className={`${inputClass} ${line1Error ? invalidBorder : validBorder}`}
+        />
+        <input
+          name={`${prefix}Line2`}
+          placeholder="Address line 2 (optional)"
+          className={`${inputClass} ${validBorder}`}
+        />
+      </div>
       {line1Error && (
-        <p role="alert" className="-mt-2.5 text-sm text-red-600">
+        <p role="alert" className="-mt-1 text-sm text-red-600">
           {line1Error}
         </p>
       )}
-
-      <input
-        name={`${prefix}Line2`}
-        placeholder="Address line 2 (optional)"
-        className={`${inputClass} ${validBorder}`}
-      />
 
       <div className="grid grid-cols-3 gap-4">
         <input
@@ -250,14 +251,14 @@ export function AddCustomerModal({
       onClose={onClose}
       titleId="add-customer-heading"
       title="Add Customer"
-      dialogClassName="max-h-[90vh] w-full max-w-[520px] overflow-y-auto"
+      dialogClassName="max-h-[96vh] w-full max-w-[520px] overflow-y-auto"
     >
       <form
         ref={formRef}
         action={formAction}
         onSubmit={handleSubmit}
         noValidate
-        className="space-y-6"
+        className="space-y-4"
       >
         <input type="hidden" name="sameAsBilling" value={sameAsBilling ? 'on' : ''} />
 
@@ -290,8 +291,8 @@ export function AddCustomerModal({
         </div>
 
         <div>
-          <h3 className="mb-4 text-base font-bold text-[#0F172A]">Basic Information</h3>
-          <div className="space-y-4">
+          <h3 className="mb-2 text-base font-bold text-[#0F172A]">Basic Information</h3>
+          <div className="space-y-2">
             {customerType === 'BUSINESS' ? (
               <Field
                 ref={firstFieldRef}
@@ -336,7 +337,7 @@ export function AddCustomerModal({
         </div>
 
         <div>
-          <h3 className="mb-4 text-base font-bold text-[#0F172A]">Billing Information</h3>
+          <h3 className="mb-2 text-base font-bold text-[#0F172A]">Billing Information</h3>
           <span className={labelClass}>Billing Address</span>
           <AddressFields
             prefix="billing"
@@ -347,7 +348,7 @@ export function AddCustomerModal({
         </div>
 
         <div>
-          <h3 className="mb-3 text-base font-bold text-[#0F172A]">Shipping Address</h3>
+          <h3 className="mb-2 text-base font-bold text-[#0F172A]">Shipping Address</h3>
           <Toggle
             id="same-as-billing"
             checked={sameAsBilling}
@@ -356,7 +357,7 @@ export function AddCustomerModal({
           />
           <div
             className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
-              sameAsBilling ? 'grid-rows-[0fr]' : 'mt-4 grid-rows-[1fr]'
+              sameAsBilling ? 'grid-rows-[0fr]' : 'mt-3 grid-rows-[1fr]'
             }`}
           >
             <div className="overflow-hidden">
@@ -381,7 +382,7 @@ export function AddCustomerModal({
           </p>
         )}
 
-        <div className="flex justify-end gap-3 border-t border-[#E5E7EB] pt-5">
+        <div className="flex justify-end gap-3 border-t border-[#E5E7EB] pt-3">
           <button
             type="button"
             onClick={onClose}

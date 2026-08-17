@@ -155,7 +155,7 @@ export function InvoicesPageClient({
 
   return (
     <div>
-      <header className="mb-6 flex items-start justify-between gap-4">
+      <header className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-[28px] font-bold text-[#0F172A]">Invoices</h1>
           <p className="mt-1 text-[15px] text-[#64748B]">
@@ -198,7 +198,7 @@ export function InvoicesPageClient({
             </div>
           )}
 
-          <div className="mb-4 flex items-center gap-6 border-b border-[#E5E7EB]">
+          <div className="mb-3 flex items-center gap-6 border-b border-[#E5E7EB]">
             {TABS.map((t) => {
               const active = t.key === tab;
               return (
@@ -225,7 +225,7 @@ export function InvoicesPageClient({
             })}
           </div>
 
-          <div className="mb-4 flex items-center gap-3">
+          <div className="mb-3 flex items-center gap-3">
             <div className="relative max-w-xs flex-1">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]"
@@ -306,24 +306,24 @@ export function InvoicesPageClient({
                     className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs font-semibold uppercase
                                   tracking-wide text-[#8C919B]"
                   >
-                    <th className="px-5 py-3">Invoice</th>
-                    <th className="px-3 py-3">Customer</th>
-                    <th className="px-3 py-3">Brand</th>
-                    <th className="px-3 py-3">Issue Date</th>
-                    <th className="px-3 py-3">Due Date</th>
-                    <th className="px-3 py-3">Amount</th>
-                    <th className="px-3 py-3">Status</th>
-                    <th className="px-5 py-3" />
+                    <th className="px-5 py-2">Invoice</th>
+                    <th className="px-3 py-2">Customer</th>
+                    <th className="px-3 py-2">Brand</th>
+                    <th className="px-3 py-2">Issue Date</th>
+                    <th className="px-3 py-2">Due Date</th>
+                    <th className="px-3 py-2">Amount</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-5 py-2" />
                   </tr>
                 </thead>
                 <tbody>
                   {visible.map(({ inv, status }) => (
                     <tr key={inv.id} className="border-b border-[#E5E7EB] last:border-0">
-                      <td className="px-5 py-3 font-semibold text-[#0F172A]">{inv.number}</td>
-                      <td className="px-3 py-3 text-[#0F172A]">
+                      <td className="px-5 py-2 font-semibold text-[#0F172A]">{inv.number}</td>
+                      <td className="px-3 py-2 text-[#0F172A]">
                         {inv.customer?.displayName ?? '—'}
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2">
                         {brand && (
                           <span className="inline-flex items-center gap-2">
                             <span
@@ -338,16 +338,16 @@ export function InvoicesPageClient({
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-[#64748B]">
+                      <td className="px-3 py-2 text-[#64748B]">
                         {formatDateForDisplay(inv.invoiceDate)}
                       </td>
-                      <td className="px-3 py-3 text-[#64748B]">
+                      <td className="px-3 py-2 text-[#64748B]">
                         {formatDateForDisplay(inv.dueDate)}
                       </td>
-                      <td className="px-3 py-3 font-medium text-[#0F172A]">
+                      <td className="px-3 py-2 font-medium text-[#0F172A]">
                         {formatMinorForDisplay(inv.totalMinor, currency)}
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2">
                         <span
                           className={`inline-flex items-center gap-1.5 text-sm font-medium ${invoiceListStatusTone(status)}`}
                         >
@@ -358,12 +358,12 @@ export function InvoicesPageClient({
                           {invoiceListStatusLabel(status)}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-5 py-2 text-right">
                         <a
                           href={`${paymentPublicUrl}/i/${inv.publicToken}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex h-8 items-center rounded-lg border border-[#0F172A] bg-white px-3
+                          className="inline-flex h-8 items-center rounded-md border border-[#0F172A] bg-white px-3
                                      text-xs font-bold text-[#0F172A] transition-colors hover:bg-slate-50"
                         >
                           View

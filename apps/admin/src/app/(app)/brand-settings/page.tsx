@@ -1,6 +1,7 @@
 import { formatDateForDisplay, terminalStatusLabel } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import {
+  getCurrentUser,
   getCustomer,
   getEmailReceiptSettings,
   getPaymentPageDisplaySettings,
@@ -98,6 +99,10 @@ export default async function BrandSettingsPage({
     settings: EmailReceiptSettings;
     accentColor: string;
     previewInvoice: PaymentPagePreviewInvoice | null;
+    /** Where "Send Test Email" sends to — the signed-in user's own address,
+     * so there's nothing to type. Null only if the session lookup itself
+     * fails, in which case the button disables rather than sending nowhere. */
+    userEmail: string | null;
   } | null = null;
   if (brand && activeTab !== 'details') {
     if (activeSub === 'payment-page') {
@@ -107,12 +112,15 @@ export default async function BrandSettingsPage({
       ]);
       paymentPageProps = { display, previewInvoice };
     } else if (activeSub === 'email-receipt') {
-      const [settings, display, previewInvoice] = await Promise.all([
+      const [settings, display, previewInvoice, userEmail] = await Promise.all([
         getEmailReceiptSettings(brand.id),
         getPaymentPageDisplaySettings(brand.id),
         loadPreviewInvoice(brand.id),
+        getCurrentUser()
+          .then((u) => u.email)
+          .catch(() => null),
       ]);
-      emailReceiptProps = { settings, accentColor: display.accentColor, previewInvoice };
+      emailReceiptProps = { settings, accentColor: display.accentColor, previewInvoice, userEmail };
     }
   }
 
@@ -150,6 +158,7 @@ export default async function BrandSettingsPage({
               settings={emailReceiptProps!.settings}
               accentColor={emailReceiptProps!.accentColor}
               previewInvoice={emailReceiptProps!.previewInvoice}
+              userEmail={emailReceiptProps!.userEmail}
             />
           ) : (
             <>

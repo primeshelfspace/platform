@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /**
@@ -12,6 +13,13 @@ import { X } from 'lucide-react';
  * focus trap. A keyboard user could dismiss "Add Customer" that way but not
  * "Add Brand" — both get the same behaviour now that there's one
  * implementation instead of two silently drifting apart.
+ *
+ * Portalled to <body> for the same reason customer-detail-drawer.tsx is: the
+ * (app) layout's `.page-transition` wrapper keeps a `transform` applied
+ * after its enter animation finishes (fill-mode `both`), which makes it the
+ * containing block for any `position: fixed` descendant. Centered on a tall
+ * page that mostly went unnoticed here; escaping via a portal is the actual
+ * fix rather than something this component should have to compensate for.
  */
 export function Modal({
   open,
@@ -63,7 +71,7 @@ export function Modal({
 
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       role="dialog"
@@ -73,10 +81,10 @@ export function Modal({
     >
       <div
         ref={dialogRef}
-        className={`rounded-2xl bg-white p-6 shadow-xl ${dialogClassName}`}
+        className={`rounded-2xl bg-white p-4 shadow-xl ${dialogClassName}`}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-3 flex items-center justify-between">
           <h2 id={titleId} className="text-xl font-bold text-[#0F172A]">
             {title}
           </h2>
@@ -92,6 +100,7 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
