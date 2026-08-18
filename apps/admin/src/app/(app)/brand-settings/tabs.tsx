@@ -62,7 +62,7 @@ export function BrandSettingsTabs({
     }`;
 
   return (
-    <nav className="mt-6 border-b border-border" aria-label="Brand settings sections">
+    <nav className="mt-8 border-b border-border" aria-label="Brand settings sections">
       <ul className="-mb-px flex gap-6 overflow-x-auto">
         {BRAND_SETTINGS_TABS.map((tab) => (
           <li key={tab.key}>
@@ -96,7 +96,7 @@ export function BrandingSubTabs({
   brandId: string | undefined;
 }) {
   return (
-    <nav className="mt-6 border-b border-border" aria-label="Branding sections">
+    <nav className="mt-8 border-b border-border" aria-label="Branding sections">
       <ul className="-mb-px flex gap-6 overflow-x-auto">
         {BRANDING_SUB_TABS.map((tab) => {
           const selected = tab.key === active;

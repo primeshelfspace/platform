@@ -328,7 +328,7 @@ export function AdminShell({
         {/* Desktop-only header: the mobile top bar above already covers
             navigation below lg, and there is nowhere on a phone screen to
             put a search box that isn't in the way. */}
-        <header className="hidden shrink-0 items-center gap-4 border-b border-border bg-surface px-6 py-3 lg:flex">
+        <header className="hidden shrink-0 items-center gap-4 border-b border-border bg-surface px-6 py-5 lg:flex">
           <form onSubmit={onHeaderSearchSubmit} className="relative max-w-sm flex-1">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"

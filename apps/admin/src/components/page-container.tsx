@@ -22,7 +22,7 @@ export function PageContainer({
 }: {
   children: ReactNode;
   narrow?: boolean;
-  /** Cuts the top padding down to a sliver instead of the default 40px — for
+  /** Cuts the top padding down to a sliver instead of the default 56px — for
    * a page whose own heading should sit close under the app header, not
    * float in a block of blank space. */
   compact?: boolean;
@@ -30,7 +30,7 @@ export function PageContainer({
 }) {
   return (
     <main
-      className={`w-full px-6 pb-10 sm:px-10 ${compact ? 'pt-4' : 'pt-10'} ${narrow ? 'mx-auto max-w-2xl' : ''} ${className}`.trim()}
+      className={`w-full px-6 pb-10 sm:px-10 ${compact ? 'pt-4' : 'pt-14'} ${narrow ? 'mx-auto max-w-2xl' : ''} ${className}`.trim()}
     >
       {children}
     </main>

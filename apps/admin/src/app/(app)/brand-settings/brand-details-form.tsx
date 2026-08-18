@@ -193,7 +193,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             aria-label="Upload business logo"
-            className="flex h-[88px] w-[88px] items-center justify-center overflow-hidden rounded-full text-2xl
+            className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full text-2xl
                        font-bold text-white focus-visible:outline-none focus-visible:ring-2
                        focus-visible:ring-slate-900 focus-visible:ring-offset-2"
             style={{ backgroundColor: logoSrc ? undefined : brand.themeColor }}
@@ -211,10 +211,10 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             onClick={() => fileInputRef.current?.click()}
             aria-hidden
             tabIndex={-1}
-            className="absolute bottom-0 right-0 flex h-6 w-6 items-center justify-center rounded-full
+            className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full
                        border-2 border-white bg-blue-600 text-white shadow-sm"
           >
-            <Pencil className="h-3 w-3" aria-hidden />
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
           </button>
           <input
             ref={fileInputRef}
@@ -231,7 +231,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
           </p>
         )}
 
-        <div className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2">
+        <div className="mt-6 grid gap-x-6 gap-y-5 sm:grid-cols-2">
           <Field
             label="Legal Business Name"
             name="legalName"

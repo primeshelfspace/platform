@@ -201,7 +201,7 @@ export default async function BrandSettingsPage({
   return (
     <PageContainer>
       {brand && <p className="text-sm text-ink-muted">{brand.displayName}</p>}
-      <h1 className="mt-1 text-2xl font-bold text-ink-strong">Brand Settings</h1>
+      <h1 className="mt-2 text-2xl font-bold text-ink-strong">Brand Settings</h1>
 
       <BrandSettingsTabs active={activeTab} brandId={brand?.id} />
 
