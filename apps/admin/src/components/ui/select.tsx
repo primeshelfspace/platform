@@ -9,6 +9,14 @@ const selectClass =
   'shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2 ' +
   'focus-visible:ring-offset-1 transition-colors';
 
+// Opt-in smaller sizing for forms with enough fields that the default h-10 /
+// text-base pushes the page past one screen's height (brand-details-form) —
+// other Select call sites are unaffected unless they pass `compact`.
+const compactSelectClass =
+  'w-full h-9 appearance-none rounded-lg border bg-white px-3 pr-9 text-sm text-slate-900 ' +
+  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2 ' +
+  'focus-visible:ring-offset-1 transition-colors';
+
 export function Select({
   id,
   name,
@@ -19,6 +27,7 @@ export function Select({
   error,
   errorId,
   placeholder,
+  compact = false,
   children,
 }: {
   id?: string;
@@ -30,6 +39,7 @@ export function Select({
   error?: string;
   errorId?: string;
   placeholder?: string;
+  compact?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -48,7 +58,7 @@ export function Select({
         required={required}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
-        className={`${selectClass} ${error ? invalidBorder : validBorder}`}
+        className={`${compact ? compactSelectClass : selectClass} ${error ? invalidBorder : validBorder}`}
       >
         {placeholder && (
           <option value="" disabled>
@@ -58,7 +68,7 @@ export function Select({
         {children}
       </select>
       <ChevronDown
-        className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]"
+        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-[#64748B] ${compact ? 'right-2.5 h-3.5 w-3.5' : 'right-3 h-4 w-4'}`}
         aria-hidden
       />
     </div>

@@ -55,14 +55,14 @@ export function BrandSettingsTabs({
   ];
 
   const tabClass = (selected: boolean) =>
-    `block whitespace-nowrap border-b-2 px-1 pb-3 text-sm transition-colors ${
+    `block whitespace-nowrap border-b-2 px-1 pb-2 text-sm transition-colors ${
       selected
         ? 'border-ink-strong font-semibold text-ink-strong'
         : 'border-transparent text-ink-muted hover:border-border hover:text-ink-strong'
     }`;
 
   return (
-    <nav className="mt-8 border-b border-border" aria-label="Brand settings sections">
+    <nav className="mt-3 border-b border-border" aria-label="Brand settings sections">
       <ul className="-mb-px flex gap-6 overflow-x-auto">
         {BRAND_SETTINGS_TABS.map((tab) => (
           <li key={tab.key}>
@@ -96,7 +96,7 @@ export function BrandingSubTabs({
   brandId: string | undefined;
 }) {
   return (
-    <nav className="mt-8 border-b border-border" aria-label="Branding sections">
+    <nav className="mt-3 border-b border-border" aria-label="Branding sections">
       <ul className="-mb-px flex gap-6 overflow-x-auto">
         {BRANDING_SUB_TABS.map((tab) => {
           const selected = tab.key === active;
@@ -105,7 +105,7 @@ export function BrandingSubTabs({
               <Link
                 href={tabHref(brandId, { tab: 'branding', sub: tab.key })}
                 aria-current={selected ? 'page' : undefined}
-                className={`block whitespace-nowrap border-b-2 px-1 pb-3 text-sm transition-colors ${
+                className={`block whitespace-nowrap border-b-2 px-1 pb-2 text-sm transition-colors ${
                   selected
                     ? 'border-ink-strong font-semibold text-ink-strong'
                     : 'border-transparent text-ink-muted hover:border-border hover:text-ink-strong'

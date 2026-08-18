@@ -20,6 +20,7 @@ export function Toggle({
   id,
   disabled = false,
   layout = 'inline',
+  divided = true,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -37,6 +38,11 @@ export function Toggle({
    * list of independent settings.
    */
   layout?: 'inline' | 'row';
+  /** 'row' only. Set false to drop the rule between rows — the padding that
+   * spaces them stays, just without a line through it. Defaults to true so
+   * every existing 'row' call site (Customers, Zoho, Payment methods) keeps
+   * its current look unless it opts out. */
+  divided?: boolean;
 }) {
   const control = (
     <span className="relative inline-flex shrink-0 items-center">
@@ -70,9 +76,9 @@ export function Toggle({
   if (layout === 'row') {
     return (
       <label
-        className={`flex items-start justify-between gap-4 border-b border-border py-3 last:border-0 ${
-          disabled ? 'cursor-not-allowed' : 'cursor-pointer'
-        }`}
+        className={`flex items-start justify-between gap-4 py-3 ${
+          divided ? 'border-b border-border last:border-0' : ''
+        } ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <span>
           <span className="block text-sm font-medium text-ink-strong">{label}</span>

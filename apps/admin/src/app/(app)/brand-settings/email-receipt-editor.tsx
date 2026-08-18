@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useId, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Send } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Send } from 'lucide-react';
 import type { Brand, EmailReceiptLayout, EmailReceiptSettings } from '@/lib/api';
 import {
   saveEmailReceiptSettingsAction,
@@ -236,9 +236,15 @@ function PreviewBody({
   return (
     <>
       {/* The one visual cue that this is a live send rather than a plain
-          document — every layout gets it, not just the ones with a coloured
-          header band. */}
-      <div style={{ backgroundColor: themeColor }} className="h-1.5 w-full" aria-hidden />
+          document. Hero gets the full-width bar spanning the very top of
+          the card; Classic and Minimal share the same header (avatar, name,
+          email, border) with a short accent bar below it instead, right
+          above the subject line — per the reference design, the two aren't
+          visually distinguished beyond their name/description in the
+          picker above. */}
+      {layout === 'HERO' && (
+        <div style={{ backgroundColor: themeColor }} className="h-1.5 w-full" aria-hidden />
+      )}
 
       {layout === 'HERO' ? (
         <div
@@ -249,7 +255,7 @@ function PreviewBody({
           <span className="text-lg font-bold text-white">{brand.displayName}</span>
           <span className="text-xs text-white/80">{senderAddress}</span>
         </div>
-      ) : layout === 'CLASSIC' ? (
+      ) : (
         <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-6 py-5">
           {avatar('h-10 w-10')}
           <span>
@@ -257,11 +263,16 @@ function PreviewBody({
             <span className="block text-sm text-ink-subtle">{senderAddress}</span>
           </span>
         </div>
-      ) : (
-        <div className="px-6 pt-6">{avatar('h-9 w-9')}</div>
       )}
 
       <div className="p-6">
+        {layout !== 'HERO' && (
+          <div
+            style={{ backgroundColor: themeColor }}
+            className="mb-4 h-1.5 w-10 rounded-full"
+            aria-hidden
+          />
+        )}
         <p className="text-base font-bold text-ink-strong">
           {segmentsForLine(subjectTemplate, variables).map((segment, index) =>
             segment.isVariable ? (
@@ -323,6 +334,24 @@ function PreviewBody({
           </dl>
         </div>
       </div>
+
+      {/* Legal footer — links to the same public /terms and /privacy pages
+          linked from the sign-up form (see apps/admin/src/app/terms and
+          .../privacy), not brand-specific. This preview is a mockup for
+          editing subject/body/layout, not a byte-for-byte match of the real
+          send (see renderEmailReceiptHtml in brand-settings.service.ts,
+          which is a separate, simpler template) — so the footer only needs
+          to exist here for now. */}
+      <div className="border-t border-[#E5E7EB] bg-surface-muted px-6 py-6 text-center text-sm text-ink-muted">
+        {brand.displayName} ·{' '}
+        <a href="/terms" className="underline hover:text-ink-strong">
+          Terms &amp; Conditions
+        </a>{' '}
+        ·{' '}
+        <a href="/privacy" className="underline hover:text-ink-strong">
+          Privacy Policy
+        </a>
+      </div>
     </>
   );
 }
@@ -349,8 +378,14 @@ export function EmailReceiptEditor({
    * failed, in which case the button disables rather than sending nowhere. */
   userEmail: string | null;
 }) {
+  // The Brand Elements / Email Layout / Email Content panel no longer has a
+  // Save Changes control (removed at the user's request) — saveFormAction
+  // still wires the fields' hidden inputs into the server action via the
+  // <form>'s action attribute, but there's currently no submit trigger for
+  // it, and saveState/savePending (the status message + pending flag that
+  // used to sit under that button) are gone with it.
   const saveAction = saveEmailReceiptSettingsAction.bind(null, brand);
-  const [saveState, saveFormAction, savePending] = useActionState(saveAction, initialSaveState);
+  const [, saveFormAction] = useActionState(saveAction, initialSaveState);
 
   const sendAction = sendTestEmailAction.bind(null, brand);
   const [sendState, sendFormAction, sendPending] = useActionState(sendAction, initialSendState);
@@ -430,183 +465,177 @@ export function EmailReceiptEditor({
           <input type="hidden" name="emailReceiptSubject" value={subject} />
           <input type="hidden" name="emailReceiptBody" value={body} />
 
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
-              <p className="mt-1 text-sm text-ink-muted">
-                Set default elements that appear across all customer communications.
-              </p>
-            </div>
-            <CollapseToggle
-              open={brandElementsOpen}
-              onToggle={() => setBrandElementsOpen((open) => !open)}
-              label="Brand Elements"
-            />
-          </div>
-
-          {brandElementsOpen && (
-            <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
-              <div className="flex items-center justify-between py-3">
-                <span className="text-sm font-medium text-ink-strong">Logo</span>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Upload brand logo"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
-                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  style={{ backgroundColor: logoSrc ? undefined : themeColor }}
-                >
-                  {logoSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    initialOf(brand.displayName)
-                  )}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  name="logo"
-                  accept="image/jpeg,image/png,image/svg+xml"
-                  onChange={handleLogoChange}
-                  className="hidden"
+          {/* Brand Elements / Email Layout / Email Content used to just be
+              mt-6-spaced with no line between them — only "Send a test
+              email" below got a border, from its own separate <form>. This
+              divide-y draws the same light line under each of the three
+              here too, matching the reference design. */}
+          <div className="divide-y divide-[#E5E7EB]">
+            <div className="pb-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    Set default elements that appear across all customer communications.
+                  </p>
+                </div>
+                <CollapseToggle
+                  open={brandElementsOpen}
+                  onToggle={() => setBrandElementsOpen((open) => !open)}
+                  label="Brand Elements"
                 />
               </div>
 
-              <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
-              <ColourField label="Accent colour" value={accentColor} onChange={setAccentColor} />
-            </div>
-          )}
-
-          <div className="mt-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-bold text-ink-strong">Email Layout</p>
-                <p className="mt-1 text-sm text-ink-muted">
-                  Choose how your email receipts are structured and presented.
-                </p>
-              </div>
-              <CollapseToggle
-                open={layoutOpen}
-                onToggle={() => setLayoutOpen((open) => !open)}
-                label="Email Layout"
-              />
-            </div>
-
-            {layoutOpen && (
-              <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
-                {LAYOUTS.map(({ key, title, description }) => {
-                  const selected = key === layout;
-                  return (
+              {brandElementsOpen && (
+                <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-sm font-medium text-ink-strong">Logo</span>
                     <button
-                      key={key}
                       type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => setLayout(key)}
-                      className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
-                        selected
-                          ? 'border-ink-strong bg-surface-muted'
-                          : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
-                      }`}
+                      onClick={() => fileInputRef.current?.click()}
+                      aria-label="Upload brand logo"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
+                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                      style={{ backgroundColor: logoSrc ? undefined : themeColor }}
                     >
-                      <span>
-                        <span className="block text-sm font-semibold text-ink-strong">{title}</span>
-                        <span className="block text-xs text-ink-muted">{description}</span>
-                      </span>
+                      {logoSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logoSrc} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        initialOf(brand.displayName)
+                      )}
                     </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      name="logo"
+                      accept="image/jpeg,image/png,image/svg+xml"
+                      onChange={handleLogoChange}
+                      className="hidden"
+                    />
+                  </div>
 
-          <div className="mt-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-bold text-ink-strong">Email Content</p>
-                <p className="mt-1 text-sm text-ink-muted">
-                  Customise the subject and body of your email receipts.
-                </p>
-              </div>
-              <CollapseToggle
-                open={contentOpen}
-                onToggle={() => setContentOpen((open) => !open)}
-                label="Email Content"
-              />
+                  <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
+                  <ColourField
+                    label="Accent colour"
+                    value={accentColor}
+                    onChange={setAccentColor}
+                  />
+                </div>
+              )}
             </div>
 
-            {contentOpen && (
-              <div className="mt-4 space-y-4">
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-ink-strong">Subject</span>
-                  <input
-                    value={subject}
-                    onChange={(event) => setSubject(event.target.value)}
-                    className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-ink-strong">Body</span>
-                  <textarea
-                    ref={bodyRef}
-                    value={body}
-                    onChange={(event) => setBody(event.target.value)}
-                    rows={8}
-                    className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  />
-                </label>
-
+            <div className="py-6">
+              <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-medium text-ink-muted">
-                    Click a variable to insert it at the cursor position in the body.
+                  <p className="text-sm font-bold text-ink-strong">Email Layout</p>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    Choose how your email receipts are structured and presented.
                   </p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {VARIABLES.map((variable) => (
+                </div>
+                <CollapseToggle
+                  open={layoutOpen}
+                  onToggle={() => setLayoutOpen((open) => !open)}
+                  label="Email Layout"
+                />
+              </div>
+
+              {layoutOpen && (
+                <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
+                  {LAYOUTS.map(({ key, title, description }) => {
+                    const selected = key === layout;
+                    return (
                       <button
-                        key={variable.token}
+                        key={key}
                         type="button"
-                        onClick={() => insertVariable(variable.token)}
-                        className="rounded-full border border-[#D1D5DB] bg-white px-3 py-1 font-mono text-xs
-                                   text-ink-strong transition-colors hover:bg-slate-50"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setLayout(key)}
+                        className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                          selected
+                            ? 'border-ink-strong bg-surface-muted'
+                            : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
+                        }`}
                       >
-                        {variable.token}
+                        <span>
+                          <span className="block text-sm font-semibold text-ink-strong">
+                            {title}
+                          </span>
+                          <span className="block text-xs text-ink-muted">{description}</span>
+                        </span>
+                        {selected && (
+                          <Check className="h-5 w-5 shrink-0 text-ink-strong" aria-hidden />
+                        )}
                       </button>
-                    ))}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-bold text-ink-strong">Email Content</p>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    Customise the subject and body of your email receipts.
+                  </p>
+                </div>
+                <CollapseToggle
+                  open={contentOpen}
+                  onToggle={() => setContentOpen((open) => !open)}
+                  label="Email Content"
+                />
+              </div>
+
+              {contentOpen && (
+                <div className="mt-4 space-y-4">
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-ink-strong">Subject</span>
+                    <input
+                      value={subject}
+                      onChange={(event) => setSubject(event.target.value)}
+                      className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-ink-strong">Body</span>
+                    <textarea
+                      ref={bodyRef}
+                      value={body}
+                      onChange={(event) => setBody(event.target.value)}
+                      rows={8}
+                      className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                    />
+                  </label>
+
+                  <div>
+                    <p className="text-xs font-medium text-ink-muted">
+                      Click a variable to insert it at the cursor position in the body.
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {VARIABLES.map((variable) => (
+                        <button
+                          key={variable.token}
+                          type="button"
+                          onClick={() => insertVariable(variable.token)}
+                          className="rounded-full border border-[#D1D5DB] bg-white px-3 py-1 font-mono text-xs
+                                   text-ink-strong transition-colors hover:bg-slate-50"
+                        >
+                          {variable.token}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-
-          {saveState.error && (
-            <p
-              role="alert"
-              className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {saveState.error}
-            </p>
-          )}
-          {saveState.success && (
-            <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              Saved.
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={savePending}
-            className="mt-6 rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
-                       hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
-                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
-            {savePending ? 'Saving…' : 'Save Changes'}
-          </button>
         </form>
 
         {/* A separate <form> — HTML forbids nesting one inside Save Changes'

@@ -199,16 +199,16 @@ export default async function BrandSettingsPage({
   }
 
   return (
-    <PageContainer>
-      {brand && <p className="text-sm text-ink-muted">{brand.displayName}</p>}
-      <h1 className="mt-2 text-2xl font-bold text-ink-strong">Brand Settings</h1>
+    <PageContainer compact>
+      {brand && <p className="text-xs text-ink-muted">{brand.displayName}</p>}
+      <h1 className="mt-0.5 text-xl font-bold text-ink-strong">Brand Settings</h1>
 
       <BrandSettingsTabs active={activeTab} brandId={brand?.id} />
 
       {!brand ? (
-        <p className="mt-8 text-sm text-ink-muted">No brand exists to configure yet.</p>
+        <p className="mt-3 text-sm text-ink-muted">No brand exists to configure yet.</p>
       ) : activeTab === 'details' ? (
-        <div className="mt-8">
+        <div className="mt-3">
           <BrandDetailsForm brand={brand} />
         </div>
       ) : (
