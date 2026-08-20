@@ -29,7 +29,7 @@ export default async function StatusPage() {
         </p>
       </header>
 
-      <section className="mb-8 rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <section className="mb-8 rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <div className="mb-4 flex items-center gap-2">
           <Activity className="h-4 w-4 text-ink-muted" aria-hidden />
           <h2 className="font-medium text-ink-strong">API health</h2>
@@ -82,7 +82,7 @@ export default async function StatusPage() {
         )}
       </section>
 
-      <section className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <section className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <h2 className="mb-1 font-medium text-ink-strong">Brand theming</h2>
         <p className="mb-4 text-sm text-ink-muted">
           One component set, any brand&rsquo;s colours. The foreground is computed for contrast, so

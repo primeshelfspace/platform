@@ -121,7 +121,7 @@ export default async function DashboardPage({
             Could not load brands: {brandsError}
           </div>
         ) : brands.length === 0 ? (
-          <div className="rounded-lg border border-border bg-surface p-8 text-center">
+          <div className="rounded-2xl border border-border bg-surface p-8 text-center">
             <p className="text-sm text-ink-muted">No brands exist yet.</p>
             <Link
               href="/brands/structure"
@@ -157,7 +157,7 @@ export default async function DashboardPage({
               />
             </div>
 
-            <section className="rounded-lg border border-border bg-surface shadow-sm">
+            <section className="rounded-2xl border border-border bg-surface shadow-sm">
               <div className="flex items-center justify-between border-b border-border px-5 py-3">
                 <h2 className="font-medium text-ink-strong">Recent invoices</h2>
                 <Link

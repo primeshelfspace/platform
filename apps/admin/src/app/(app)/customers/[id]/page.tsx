@@ -143,7 +143,7 @@ export default async function CustomerDetailPage({
               </section>
             </div>
 
-            <section className="rounded-lg border border-border bg-surface shadow-sm">
+            <section className="rounded-2xl border border-border bg-surface shadow-sm">
               <h2 className="border-b border-border px-5 py-4 text-sm font-semibold text-ink-strong">
                 Invoices
               </h2>

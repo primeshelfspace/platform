@@ -48,6 +48,10 @@ export interface ZohoContactListItem {
   first_name?: string;
   last_name?: string;
   last_modified_time?: string;
+  /** 'active' | 'inactive' — Zoho's own archive flag. Mapped onto our
+   * Customer.status by ZohoPullService rather than treated as a value to
+   * merely display, so a contact deactivated in Zoho is reflected here too. */
+  status?: string;
 }
 
 /** GET /contacts/{id} only — billing/shipping address is absent from the list response. */
@@ -600,7 +604,11 @@ export class ZohoBooksAdapter implements AccountingPort {
       contacts?: ZohoContactListItem[];
       page_context?: { has_more_page?: boolean };
     }>(connection, 'GET', '/books/v3/contacts', {
-      query: { page: String(page), per_page: '200' },
+      // Status.All: without this Zoho returns only active contacts, and a
+      // customer archived (or hard-deleted, which Zoho itself only allows
+      // once no invoice references them) there would never come back down
+      // this list again for pullCustomers to notice and archive locally.
+      query: { page: String(page), per_page: '200', filter_by: 'Status.All' },
     });
     return {
       contacts: body.contacts ?? [],

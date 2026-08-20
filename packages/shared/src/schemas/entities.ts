@@ -373,6 +373,10 @@ export const customerListQuerySchema = paginationSchema.extend({
   hasOutstanding: z.coerce.boolean().optional(),
   search: z.string().trim().max(200).optional(),
   dateRange: dateRangeSchema.optional(),
+  // Customers pulled from Zoho are archived, not deleted, when Zoho no
+  // longer reports them (ZohoPullService.archiveMissingCustomers) — this
+  // keeps the default list view free of them without losing the record.
+  includeArchived: z.coerce.boolean().optional(),
 });
 export type CustomerListQuery = z.infer<typeof customerListQuerySchema>;
 

@@ -388,11 +388,12 @@ export interface CustomerListResponse {
 
 export function listCustomers(
   brandId: string,
-  params: { search?: string; hasOutstanding?: boolean } = {},
+  params: { search?: string; hasOutstanding?: boolean; includeArchived?: boolean } = {},
 ): Promise<CustomerListResponse> {
   const qs = new URLSearchParams();
   if (params.search) qs.set('search', params.search);
   if (params.hasOutstanding !== undefined) qs.set('hasOutstanding', String(params.hasOutstanding));
+  if (params.includeArchived) qs.set('includeArchived', 'true');
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return apiFetch<CustomerListResponse>(`/brands/${brandId}/customers${suffix}`);
 }

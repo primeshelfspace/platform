@@ -181,7 +181,7 @@ export function InvoicesPageClient({
           <p className="mt-1 font-mono text-xs">{brandsError}</p>
         </div>
       ) : !hasBrands ? (
-        <div className="rounded-lg border border-border bg-surface p-8 text-center">
+        <div className="rounded-2xl border border-border bg-surface p-8 text-center">
           <p className="text-sm text-ink-muted">No brands exist yet.</p>
           <Link
             href="/brands/new"
@@ -283,7 +283,7 @@ export function InvoicesPageClient({
             </div>
           </div>
 
-          <section className="overflow-x-auto rounded-lg border border-[#E5E7EB] bg-white shadow-sm">
+          <section className="overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
             {invoicesError ? (
               <div className="p-6 text-sm text-danger">
                 <p className="font-medium">Could not load invoices.</p>

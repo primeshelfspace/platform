@@ -11,10 +11,16 @@ export const dynamic = 'force-dynamic';
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brandId?: string; search?: string; outstanding?: string }>;
+  searchParams: Promise<{
+    brandId?: string;
+    search?: string;
+    outstanding?: string;
+    archived?: string;
+  }>;
 }) {
   const params = await searchParams;
   const hasOutstanding = params.outstanding === '1' ? true : undefined;
+  const includeArchived = params.archived === '1';
 
   let brands: Brand[] = [];
   let brandsError: string | null = null;
@@ -34,6 +40,7 @@ export default async function CustomersPage({
       const result = await listCustomers(activeBrand.id, {
         search: params.search,
         hasOutstanding,
+        includeArchived,
       });
       customers = result.data;
       total = result.total;
@@ -51,6 +58,7 @@ export default async function CustomersPage({
           total={total}
           search={params.search ?? ''}
           outstandingOnly={hasOutstanding === true}
+          includeArchived={includeArchived}
           brandsError={brandsError}
           hasBrands={brands.length > 0}
           customersError={customersError}

@@ -15,7 +15,7 @@ export default function NotificationsPage() {
         Alerts for invoice activity, payment failures, and sync issues across your brands.
       </p>
 
-      <div className="mt-8 rounded-lg border border-dashed border-border bg-surface-muted p-8 text-center">
+      <div className="mt-8 rounded-2xl border border-dashed border-border bg-surface-muted p-8 text-center">
         <p className="text-sm font-medium text-ink-strong">Not built yet</p>
         <p className="mx-auto mt-2 max-w-md text-sm text-ink-muted">
           A feed of account activity is planned but not built. Nothing here is muted or missed —

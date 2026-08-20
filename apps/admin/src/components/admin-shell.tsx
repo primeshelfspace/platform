@@ -331,7 +331,7 @@ export function AdminShell({
         <header className="hidden shrink-0 items-center gap-4 bg-surface px-6 py-3 lg:flex">
           <form onSubmit={onHeaderSearchSubmit} className="relative max-w-sm flex-1">
             <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
+              className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#737373]"
               aria-hidden
             />
             <input
@@ -340,8 +340,8 @@ export function AdminShell({
               value={headerSearch}
               onChange={(event) => setHeaderSearch(event.target.value)}
               placeholder="Search"
-              className="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-ink-strong
-                         placeholder:text-ink-subtle focus-visible:outline-none focus-visible:ring-2
+              className="h-8 w-full appearance-none rounded-lg bg-[#E7EDF5] pl-9 pr-3 text-sm text-[#0F172A]
+                         placeholder:text-[#737373] focus-visible:outline-none focus-visible:ring-2
                          focus-visible:ring-ink-strong focus-visible:ring-offset-1"
             />
           </form>
@@ -411,7 +411,7 @@ export function AdminShell({
           </div>
         </header>
 
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="no-scrollbar min-w-0 flex-1 overflow-y-auto">
           {/* Keyed by pathname so each real route change remounts this div and
               re-triggers the fade — the CSS animation only plays on mount, so
               without the key it would run once and never again. Deliberately

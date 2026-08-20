@@ -94,6 +94,13 @@ export class ZohoPullService {
    * brand-level failure showed as nothing at all in "Recent activity". This
    * wrapper exists specifically so that failure is visible too, not just
    * per-record ones.
+   *
+   * Every contact_id seen across the full scan (listContactsPage now asks
+   * for Status.All, so this covers Zoho-inactive contacts too) is collected
+   * regardless of the cursor, so a full pass always knows the complete set
+   * of customers Zoho currently reports — archiveMissingCustomers uses it to
+   * find the ones that fell out entirely (hard-deleted, which Zoho only
+   * allows once nothing references them) without a second API call.
    */
   private async pullCustomers(
     scope: Scope,
@@ -105,10 +112,12 @@ export class ZohoPullService {
       let page = 1;
       let hasMore = true;
       let touched = 0;
+      const seenContactIds = new Set<string>();
 
       while (hasMore) {
         const { contacts, hasMorePage } = await this.zoho.listContactsPage(connection, page);
         for (const item of contacts) {
+          seenContactIds.add(item.contact_id);
           const changedSinceCursor =
             !cursor || !item.last_modified_time || new Date(item.last_modified_time) > cursor;
           if (!changedSinceCursor) continue;
@@ -118,7 +127,45 @@ export class ZohoPullService {
         hasMore = hasMorePage;
         page++;
       }
-      return touched;
+
+      const archived = await this.archiveMissingCustomers(scope, brandId, seenContactIds);
+      if (archived > 0) {
+        this.logger.log(
+          `archived ${archived} customer(s) no longer present in Zoho for brand ${brandId}`,
+        );
+      }
+      return touched + archived;
+    });
+  }
+
+  /** A locally-active, Zoho-linked customer whose contact_id did not turn up
+   * anywhere in this run's full contact scan has been removed from Zoho
+   * outright — archived here rather than deleted, matching Customer.status's
+   * existing ACTIVE/ARCHIVED convention (mirrors Brand.status) and never
+   * touching the customer's invoices or payments. Only ever runs after a
+   * *complete* scan (see pullCustomers above) — a scan that fails partway
+   * through throws out of the while loop above and never reaches this call,
+   * so a transient error can't be misread as mass deletion. */
+  private async archiveMissingCustomers(
+    scope: Scope,
+    brandId: string,
+    seenContactIds: ReadonlySet<string>,
+  ): Promise<number> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const candidates = await tx.customer.findMany({
+        where: { brandId, zohoContactId: { not: null }, status: 'ACTIVE' },
+        select: { id: true, zohoContactId: true },
+      });
+      const staleIds = candidates
+        .filter((c) => c.zohoContactId !== null && !seenContactIds.has(c.zohoContactId))
+        .map((c) => c.id);
+      if (staleIds.length === 0) return 0;
+
+      await tx.customer.updateMany({
+        where: { id: { in: staleIds } },
+        data: { status: 'ARCHIVED' },
+      });
+      return staleIds.length;
     });
   }
 
@@ -145,6 +192,10 @@ export class ZohoPullService {
           Prisma.JsonNull) as Prisma.InputJsonValue,
         shippingAddress: (this.zoho.fromZohoAddress(contact.shipping_address) ??
           Prisma.JsonNull) as Prisma.InputJsonValue,
+        // Kept in sync in both directions — a contact Zoho reports inactive
+        // archives the local row, and one reactivated there restores it,
+        // the same way archiveMissingCustomers handles outright removal.
+        status: (contact.status === 'inactive' ? 'ARCHIVED' : 'ACTIVE') as 'ACTIVE' | 'ARCHIVED',
       };
 
       await this.prisma.withScope(scope, async (tx) => {

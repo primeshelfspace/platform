@@ -236,13 +236,12 @@ function PreviewBody({
   return (
     <>
       {/* The one visual cue that this is a live send rather than a plain
-          document. Hero gets the full-width bar spanning the very top of
-          the card; Classic and Minimal share the same header (avatar, name,
-          email, border) with a short accent bar below it instead, right
-          above the subject line — per the reference design, the two aren't
-          visually distinguished beyond their name/description in the
-          picker above. */}
-      {layout === 'HERO' && (
+          document. Hero and Classic both get the full-width bar spanning
+          the very top of the card (Classic's sits above its avatar/name
+          header row instead of behind it); Minimal stays bare per its own
+          "no header colour" description, with a short accent bar below its
+          header instead, right above the subject line. */}
+      {(layout === 'HERO' || layout === 'CLASSIC') && (
         <div style={{ backgroundColor: themeColor }} className="h-1.5 w-full" aria-hidden />
       )}
 
@@ -266,7 +265,7 @@ function PreviewBody({
       )}
 
       <div className="p-6">
-        {layout !== 'HERO' && (
+        {layout === 'MINIMAL' && (
           <div
             style={{ backgroundColor: themeColor }}
             className="mb-4 h-1.5 w-10 rounded-full"
