@@ -15,6 +15,21 @@ import {
   type RemoteRef,
 } from '@fenwick/shared';
 import { ENV, type Env } from '../../config/env.js';
+import { RedisService } from '../../infra/redis/redis.service.js';
+
+/**
+ * Zoho Books API v3's documented ceiling, per organisation. Kept a little
+ * under 100 rather than at it — acquireRateToken's window is a fixed window,
+ * not sliding, so a burst straddling two window boundaries could otherwise
+ * momentarily see close to double the nominal limit.
+ */
+const ZOHO_BOOKS_RATE_LIMIT_PER_MINUTE = 90;
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+/** How long request() will wait for a slot to free up before giving up and
+ * surfacing a TRANSIENT error for the job's own retry/backoff to handle —
+ * long enough to ride out one full window, never indefinite. */
+const RATE_LIMIT_MAX_WAIT_MS = 65_000;
+const RATE_LIMIT_POLL_MS = 300;
 
 /** Zoho's OAuth token endpoints return this shape for both grant types. */
 interface ZohoTokenResponse {
@@ -122,7 +137,10 @@ export class ZohoBooksAdapter implements AccountingPort {
 
   private readonly logger = new Logger(ZohoBooksAdapter.name);
 
-  constructor(@Inject(ENV) private readonly env: Env) {}
+  constructor(
+    @Inject(ENV) private readonly env: Env,
+    private readonly redis: RedisService,
+  ) {}
 
   // --- Transport -----------------------------------------------------------
 
@@ -229,6 +247,8 @@ export class ZohoBooksAdapter implements AccountingPort {
     path: string,
     options: { query?: Record<string, string>; body?: unknown } = {},
   ): Promise<T> {
+    await this.waitForRateSlot(connection.brandId, `${method} ${path}`);
+
     const url = new URL(path, this.env.ZOHO_API_DOMAIN);
     url.searchParams.set('organization_id', connection.organisationId);
     for (const [key, value] of Object.entries(options.query ?? {})) {
@@ -248,6 +268,45 @@ export class ZohoBooksAdapter implements AccountingPort {
       throw await this.toIntegrationError(response, `${method} ${path}`);
     }
     return (await response.json()) as T;
+  }
+
+  /**
+   * Proactive throttling, not just reactive 429 handling: RedisService's
+   * per-brand token bucket (built for exactly this — see its own doc
+   * comment — but never actually wired to anything before this) gates every
+   * Books API call so a brand's own pull, with several detail fetches now
+   * running concurrently (ZohoPullService's mapWithConcurrency batches),
+   * saturates Zoho's real ceiling instead of either sitting well under it
+   * (the old one-call-at-a-time loop) or blowing past it into a 429/backoff
+   * churn that would be slower than not throttling at all.
+   *
+   * Keyed by brandId, matching acquireRateToken's own design — correct as
+   * long as a brand's Zoho connection maps to one Zoho organisation, which
+   * is what a brand's own IntegrationConnection row records today. Two
+   * brands sharing one underlying Zoho organisation would each get their own
+   * budget against what is, at Zoho, actually one shared ceiling; nothing in
+   * the connect flow prevents that today, so it's a real edge case, just not
+   * one this change introduces.
+   */
+  private async waitForRateSlot(brandId: string, context: string): Promise<void> {
+    const startedAt = Date.now();
+    while (
+      !(await this.redis.acquireRateToken(
+        brandId,
+        ZOHO_BOOKS_RATE_LIMIT_PER_MINUTE,
+        RATE_LIMIT_WINDOW_SECONDS,
+      ))
+    ) {
+      if (Date.now() - startedAt > RATE_LIMIT_MAX_WAIT_MS) {
+        throw new IntegrationError({
+          message: `Zoho Books: local rate limit still exhausted after ${RATE_LIMIT_MAX_WAIT_MS}ms waiting for ${context}`,
+          errorClass: 'TRANSIENT',
+          provider: this.providerName,
+          retryAfterMs: RATE_LIMIT_WINDOW_SECONDS * 1000,
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_POLL_MS));
+    }
   }
 
   private async toIntegrationError(response: Response, context: string): Promise<IntegrationError> {

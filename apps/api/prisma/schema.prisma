@@ -462,7 +462,13 @@ model Customer {
 
   @@index([brandId])
   @@index([brandId, status])
-  @@index([zohoContactId])
+  /// Real uniqueness, not just an index: ZohoPullService now runs its
+  /// per-record detail fetches with several in flight at once
+  /// (mapWithConcurrency), so two concurrent pulls racing to create the same
+  /// not-yet-seen Zoho contact (e.g. two invoices for one new customer,
+  /// pulled in the same batch) must fail one of them at the database rather
+  /// than silently doubling the customer — pullOneCustomer upserts on this.
+  @@unique([brandId, zohoContactId])
   @@map("customer")
 }
 
@@ -520,6 +526,13 @@ model Invoice {
   @@index([brandId, status])
   @@index([brandId, dueDate])
   @@index([customerId])
+  /// Real uniqueness, not just an index — same reason as
+  /// Customer.zohoContactId above: pullOneInvoice now upserts on this rather
+  /// than findFirst-then-create, because pullOnePayment's cascade can have
+  /// two concurrently-pulled payments reference the same not-yet-seen
+  /// invoice (e.g. two partial payments on it) in the same
+  /// mapWithConcurrency batch.
+  @@unique([brandId, zohoInvoiceId])
   @@map("invoice")
 }
 
@@ -578,6 +591,10 @@ model Payment {
 
   @@index([invoiceId])
   @@index([brandId, status])
+  /// Looked up once per listed payment on every Zoho pull, to skip
+  /// re-fetching detail for one already pulled (ZohoPullService.pullPayments)
+  /// — same reason Customer.zohoContactId is indexed below.
+  @@index([zohoPaymentId])
   @@map("payment")
 }
 
