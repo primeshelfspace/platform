@@ -396,10 +396,7 @@ export class ZohoPullService {
    * delay between attempts, not a tight loop, since this is arbitrating
    * against a concurrent transaction that needs a moment to actually commit.
    */
-  private async withUniqueViolationRetry<T>(
-    work: () => Promise<T>,
-    attempts = 5,
-  ): Promise<T> {
+  private async withUniqueViolationRetry<T>(work: () => Promise<T>, attempts = 5): Promise<T> {
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
         return await work();

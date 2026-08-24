@@ -249,7 +249,9 @@ describeWithDb('ZohoPullService', () => {
       svc.pullOneInvoice(scope, brandId, connection, invoiceIdB),
     ]);
 
-    const customers = await owner.customer.findMany({ where: { brandId, zohoContactId: contactId } });
+    const customers = await owner.customer.findMany({
+      where: { brandId, zohoContactId: contactId },
+    });
     expect(customers).toHaveLength(1);
 
     const invoices = await owner.invoice.findMany({
