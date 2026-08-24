@@ -379,6 +379,31 @@ export interface CustomerListRow extends Customer {
   paymentCount: number;
 }
 
+/** A named person at the customer — Zoho-sourced (FR-ZHO-030), read-only
+ * from this app's side today. Mirrors LineItem's own role on Invoice below:
+ * a small, bounded child collection returned only alongside a single-record
+ * fetch, never on the list endpoint (see CustomerWithContacts). */
+export interface CustomerContactPerson {
+  id: string;
+  salutation: string | null;
+  firstName: string;
+  lastName: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  skype: string | null;
+  designation: string | null;
+  department: string | null;
+  isPrimaryContact: boolean;
+}
+
+/** What getCustomer actually returns — contactPersons rides along on the
+ * single-record fetch only; CustomerListRow (the list endpoint) has no
+ * equivalent field, so this is deliberately not folded into Customer itself. */
+export interface CustomerWithContacts extends Customer {
+  contactPersons: CustomerContactPerson[];
+}
+
 export interface CustomerListResponse {
   data: CustomerListRow[];
   page: number;
@@ -397,8 +422,8 @@ export function listCustomers(
   return apiFetch<CustomerListResponse>(`/brands/${brandId}/customers${suffix}`);
 }
 
-export function getCustomer(brandId: string, id: string): Promise<Customer> {
-  return apiFetch<Customer>(`/brands/${brandId}/customers/${id}`);
+export function getCustomer(brandId: string, id: string): Promise<CustomerWithContacts> {
+  return apiFetch<CustomerWithContacts>(`/brands/${brandId}/customers/${id}`);
 }
 
 /** Mirrors customerSchema in packages/shared exactly — nullable fields must be

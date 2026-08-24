@@ -117,6 +117,39 @@ describeWithDb('row-level security', () => {
     expect(events).toBe(0);
   });
 
+  it('holds customer_contact_person to the same scope as its parent customer', async () => {
+    // customer_contact_person carries no brand_id of its own — reached
+    // exclusively through its parent customer (app_customer_visible), the
+    // same shape line_item/invoice_event already prove above for invoice.
+    // Zoho-sourced in practice, but the row here is created directly so
+    // this test doesn't depend on ever having run a real pull.
+    const customer = await owner.customer.findFirst({ where: { brandId: solsticeId } });
+    if (!customer) throw new Error('seed data missing a Solstice customer — run pnpm db:seed');
+    const person = await owner.customerContactPerson.create({
+      data: { customerId: customer.id, firstName: 'RLS Test Contact' },
+    });
+
+    const visible = await withScope(
+      { merchantId: fenwickId, allBrands: false, brandIds: [solsticeId] },
+      (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),
+    );
+    expect(visible).toBe(1);
+
+    const wrongBrand = await withScope(
+      { merchantId: fenwickId, allBrands: false, brandIds: [] },
+      (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),
+    );
+    expect(wrongBrand).toBe(0);
+
+    // Even an all-brand role gets nothing: app_brand_visible requires the
+    // brand to belong to the *caller's* merchant, and Solstice is Fenwick's.
+    const wrongMerchant = await withScope(
+      { merchantId: northgateId, allBrands: true, brandIds: [] },
+      (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),
+    );
+    expect(wrongMerchant).toBe(0);
+  });
+
   it('denies the application role any update on the audit log', async () => {
     // Append-only is a grant, not a convention (TDD-001 §5.2).
     await expect(app.$executeRawUnsafe(`UPDATE audit_log SET action = 'tampered'`)).rejects.toThrow(

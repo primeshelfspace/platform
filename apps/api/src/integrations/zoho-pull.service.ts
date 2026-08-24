@@ -229,13 +229,58 @@ export class ZohoPullService {
       // in pullOneInvoice below needed more than this — see its own comment
       // — but that turned out to be a real race in a *different* place, not
       // evidence that upsert itself needed the same treatment.)
-      await this.prisma.withScope(scope, (tx) =>
-        tx.customer.upsert({
+      await this.prisma.withScope(scope, async (tx) => {
+        const row = await tx.customer.upsert({
           where: { brandId_zohoContactId: { brandId, zohoContactId: contactId } },
           create: { ...data, brandId, zohoContactId: contactId },
           update: data,
-        }),
-      );
+        });
+
+        // Same recipe as pullOneInvoice's line items, for the same reason:
+        // upsert each contact person individually (race-safe the same way
+        // the customer row above is — customerId_zohoContactPersonId is a
+        // real constraint), then a plain delete for the ones no longer
+        // present, scoped by id rather than a naive wipe-and-recreate.
+        const contactPersons = contact.contact_persons ?? [];
+        for (const person of contactPersons) {
+          const personData = {
+            salutation: person.salutation ?? null,
+            firstName: person.first_name,
+            lastName: person.last_name ?? null,
+            email: person.email ?? null,
+            phone: person.phone ?? null,
+            mobile: person.mobile ?? null,
+            skype: person.skype ?? null,
+            designation: person.designation ?? null,
+            department: person.department ?? null,
+            isPrimaryContact: person.is_primary_contact ?? false,
+          };
+          await tx.customerContactPerson.upsert({
+            where: {
+              customerId_zohoContactPersonId: {
+                customerId: row.id,
+                zohoContactPersonId: person.contact_person_id,
+              },
+            },
+            create: {
+              ...personData,
+              customerId: row.id,
+              zohoContactPersonId: person.contact_person_id,
+            },
+            update: personData,
+          });
+        }
+        // notIn: [] (Zoho now reports zero contact persons) correctly
+        // matches every existing Zoho-sourced row here, not none — SQL's
+        // NULL semantics keep any locally-created contact person (a future
+        // possibility; zohoContactPersonId null) out of this filter either way.
+        await tx.customerContactPerson.deleteMany({
+          where: {
+            customerId: row.id,
+            zohoContactPersonId: { notIn: contactPersons.map((p) => p.contact_person_id) },
+          },
+        });
+      });
     });
   }
 

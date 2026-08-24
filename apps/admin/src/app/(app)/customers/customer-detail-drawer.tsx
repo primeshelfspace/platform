@@ -5,10 +5,11 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, type CurrencyCode } from '@fenwick/shared/money';
-import type { Customer, CustomerAddress, Invoice } from '@/lib/api';
+import type { CustomerAddress, CustomerWithContacts, Invoice } from '@/lib/api';
 
 const TABS = [
   { key: 'invoices', label: 'Invoices' },
+  { key: 'contacts', label: 'Contact Persons' },
   { key: 'payments', label: 'Payments' },
   { key: 'activity', label: 'Activity' },
 ] as const;
@@ -110,7 +111,7 @@ export function CustomerDetailDrawer({
   brandName: string | undefined;
   loading: boolean;
   error: string | null;
-  customer: Customer | null;
+  customer: CustomerWithContacts | null;
   invoices: Invoice[];
   /** Passed down from the list row rather than re-derived from `invoices`,
    * so this figure always matches what the table the drawer was opened from
@@ -302,6 +303,57 @@ export function CustomerDetailDrawer({
                               </tr>
                             );
                           })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                ) : tab === 'contacts' ? (
+                  customer.contactPersons.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-ink-muted">
+                      No contact persons on file for this customer.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-lg border border-[#E5E7EB]">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr
+                            className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs
+                                          font-semibold uppercase tracking-wide text-[#8C919B]"
+                          >
+                            <th className="px-4 py-2">Name</th>
+                            <th className="px-4 py-2">Designation</th>
+                            <th className="px-4 py-2">Email</th>
+                            <th className="px-4 py-2">Phone</th>
+                            <th className="px-4 py-2" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {customer.contactPersons.map((person) => (
+                            <tr key={person.id} className="border-b border-[#E5E7EB] last:border-0">
+                              <td className="px-4 py-2 font-medium text-[#0F172A]">
+                                {[person.salutation, person.firstName, person.lastName]
+                                  .filter(Boolean)
+                                  .join(' ') || '—'}
+                              </td>
+                              <td className="px-4 py-2 text-[#64748B]">
+                                {person.designation ?? '—'}
+                              </td>
+                              <td className="px-4 py-2 text-[#64748B]">{person.email ?? '—'}</td>
+                              <td className="px-4 py-2 text-[#64748B]">
+                                {person.phone ?? person.mobile ?? '—'}
+                              </td>
+                              <td className="px-4 py-2">
+                                {person.isPrimaryContact && (
+                                  <span
+                                    className="rounded-full bg-[#F5F5F6] px-2 py-0.5 text-xs font-semibold
+                                               text-[#64748B]"
+                                  >
+                                    Primary
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
                         </tbody>
                       </table>
                     </div>

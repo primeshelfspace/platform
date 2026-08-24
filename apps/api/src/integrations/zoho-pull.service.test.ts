@@ -100,11 +100,16 @@ class FakeZohoBooksAdapter extends ZohoBooksAdapter {
   }
 }
 
-function fakeContact(contactId: string, name: string): ZohoContactDetail {
+function fakeContact(
+  contactId: string,
+  name: string,
+  contactPersons: ZohoContactDetail['contact_persons'] = [],
+): ZohoContactDetail {
   return {
     contact_id: contactId,
     contact_name: name,
     customer_sub_type: 'business',
+    contact_persons: contactPersons,
   };
 }
 
@@ -352,5 +357,73 @@ describeWithDb('ZohoPullService', () => {
     expect(zoho.getContactCalls).toBe(2);
 
     await redis.invalidate(floorKey);
+  });
+
+  it('pulls contact persons, then updates and trims them on a re-pull', async () => {
+    const zoho = new FakeZohoBooksAdapter();
+    const contactId = `persons-contact-${randomUUID()}`;
+    zoho.contacts.set(
+      contactId,
+      fakeContact(contactId, 'Persons Test Co', [
+        {
+          contact_person_id: 'cp-keep',
+          first_name: 'Alex',
+          last_name: 'Rivera',
+          email: 'alex@example.com',
+          designation: 'Controller',
+          is_primary_contact: true,
+        },
+        {
+          contact_person_id: 'cp-drop',
+          first_name: 'Sam',
+          last_name: 'Lee',
+          email: 'sam@example.com',
+        },
+      ]),
+    );
+
+    const svc = service(zoho);
+    await svc.pullOneCustomer(scope, brandId, connection, contactId);
+
+    const customer = await owner.customer.findFirst({
+      where: { brandId, zohoContactId: contactId },
+    });
+    let persons = await owner.customerContactPerson.findMany({
+      where: { customerId: customer!.id },
+      orderBy: { zohoContactPersonId: 'asc' },
+    });
+    expect(persons.map((p) => p.zohoContactPersonId)).toEqual(['cp-drop', 'cp-keep']);
+    const keep = persons.find((p) => p.zohoContactPersonId === 'cp-keep')!;
+    expect(keep.firstName).toBe('Alex');
+    expect(keep.designation).toBe('Controller');
+    expect(keep.isPrimaryContact).toBe(true);
+
+    // Re-pull with cp-keep's designation changed, cp-drop gone, and a
+    // brand-new cp-new added — exercises update, trim, and insert all in
+    // the same pass.
+    zoho.contacts.set(
+      contactId,
+      fakeContact(contactId, 'Persons Test Co', [
+        {
+          contact_person_id: 'cp-keep',
+          first_name: 'Alex',
+          last_name: 'Rivera',
+          email: 'alex@example.com',
+          designation: 'VP Finance',
+          is_primary_contact: true,
+        },
+        { contact_person_id: 'cp-new', first_name: 'Priya', last_name: 'Nair' },
+      ]),
+    );
+    await svc.pullOneCustomer(scope, brandId, connection, contactId);
+
+    persons = await owner.customerContactPerson.findMany({
+      where: { customerId: customer!.id },
+      orderBy: { zohoContactPersonId: 'asc' },
+    });
+    expect(persons.map((p) => p.zohoContactPersonId)).toEqual(['cp-keep', 'cp-new']);
+    expect(persons.find((p) => p.zohoContactPersonId === 'cp-keep')!.designation).toBe(
+      'VP Finance',
+    );
   });
 });

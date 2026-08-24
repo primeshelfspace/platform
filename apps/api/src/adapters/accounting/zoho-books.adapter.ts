@@ -65,11 +65,35 @@ export interface ZohoContactListItem {
   last_modified_time?: string;
 }
 
-/** GET /contacts/{id} only — billing/shipping address is absent from the list response. */
+/**
+ * A named person at a contact — billing/invoice correspondence often goes to
+ * someone specific at the account, not the company's general line. Fields
+ * and limits confirmed against https://www.zoho.com/books/api/v3/contact-persons/,
+ * not assumed. enable_portal / is_added_in_portal / communication_preference
+ * are real Zoho fields too, but govern Zoho's own client portal — deliberately
+ * not carried, since this app has no equivalent of that portal.
+ */
+export interface ZohoContactPerson {
+  contact_person_id: string;
+  salutation?: string;
+  first_name: string;
+  last_name?: string;
+  email?: string;
+  phone?: string;
+  mobile?: string;
+  skype?: string;
+  designation?: string;
+  department?: string;
+  is_primary_contact?: boolean;
+}
+
+/** GET /contacts/{id} only — billing/shipping address and contact_persons are
+ * absent from the list response. */
 export interface ZohoContactDetail extends ZohoContactListItem {
   customer_sub_type?: string;
   billing_address?: ZohoAddressResponse;
   shipping_address?: ZohoAddressResponse;
+  contact_persons?: ZohoContactPerson[];
 }
 
 /** Fields present on every item in GET /invoices' list response. */
