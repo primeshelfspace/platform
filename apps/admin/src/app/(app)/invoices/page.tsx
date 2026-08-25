@@ -7,8 +7,6 @@ export const dynamic = 'force-dynamic';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
 
-const PAYMENT_PUBLIC_URL = process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
-
 /** Large enough that a brand's full invoice history fits in one fetch — the
  * tabs' counts and the date-range filter both need the complete set, not
  * just one page of it (the same "fetch the whole small thing" trade-off
@@ -57,7 +55,6 @@ export default async function InvoicesPage({
           tab={params.tab ?? 'all'}
           search={params.search ?? ''}
           range={params.range ?? '90'}
-          paymentPublicUrl={PAYMENT_PUBLIC_URL}
           brandsError={brandsError}
           hasBrands={brands.length > 0}
           invoicesError={invoicesError}

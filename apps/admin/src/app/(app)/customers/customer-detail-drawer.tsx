@@ -86,7 +86,7 @@ function drawerInvoiceStatus(invoice: Invoice): { label: string; dot: string; te
 
 function ComingSoonPanel({ label }: { label: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-10 text-center">
+    <div className="rounded-2xl border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-10 text-center">
       <p className="text-sm font-medium text-[#0F172A]">Not built yet</p>
       <p className="mx-auto mt-2 max-w-sm text-sm text-[#64748B]">
         {label} will show here once it&apos;s wired up.
@@ -251,7 +251,7 @@ export function CustomerDetailDrawer({
                       No invoices for this customer yet.
                     </p>
                   ) : (
-                    <div className="overflow-x-auto rounded-lg border border-[#E5E7EB]">
+                    <div className="overflow-x-auto rounded-2xl border border-[#E5E7EB]">
                       <table className="w-full text-sm">
                         <thead>
                           <tr

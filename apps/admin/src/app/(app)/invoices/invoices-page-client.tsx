@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown, Plus, ScrollText, Search } from 'lucide-react';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
-import type { Brand, Invoice } from '@/lib/api';
+import type { Brand, Invoice, InvoiceActivityEntry, InvoiceDetail } from '@/lib/api';
 import {
   invoiceListStatus,
   invoiceListStatusDot,
@@ -15,6 +15,8 @@ import {
   type InvoiceListStatus,
 } from '@/lib/invoice-presentation';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
+import { getInvoiceDetailAction } from './actions';
+import { InvoiceDetailDrawer } from './invoice-detail-drawer';
 
 /** How long the search box waits after the last keystroke before pushing a
  * new URL — matches CustomersPageClient's own debounce (FR-CUS list). The
@@ -53,7 +55,6 @@ export function InvoicesPageClient({
   tab,
   search,
   range,
-  paymentPublicUrl,
   brandsError,
   hasBrands,
   invoicesError,
@@ -64,7 +65,6 @@ export function InvoicesPageClient({
   tab: string;
   search: string;
   range: string;
-  paymentPublicUrl: string;
   brandsError: string | null;
   hasBrands: boolean;
   invoicesError: string | null;
@@ -81,6 +81,49 @@ export function InvoicesPageClient({
   const rangeMenuRef = useDismissablePanel<HTMLDivElement>(rangeMenuOpen, () =>
     setRangeMenuOpen(false),
   );
+
+  // The detail slide-over — same pattern as CustomersPageClient's own
+  // openCustomerDetail/closeCustomerDetail: `detailOpen` drives visibility
+  // instantly, `detail` is what the server action fills in once it resolves.
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [detailInvoice, setDetailInvoice] = useState<InvoiceDetail | null>(null);
+  const [detailActivity, setDetailActivity] = useState<InvoiceActivityEntry[]>([]);
+  const [detailPaymentTerms, setDetailPaymentTerms] = useState<string | null | undefined>(
+    undefined,
+  );
+
+  function openInvoiceDetail(invoiceId: string) {
+    if (!brand) return;
+    setDetailOpen(true);
+    setDetailInvoice(null);
+    setDetailActivity([]);
+    setDetailPaymentTerms(undefined);
+    setDetailError(null);
+    setDetailLoading(true);
+    getInvoiceDetailAction(brand.id, invoiceId)
+      .then((result) => {
+        if (result.invoice) {
+          setDetailInvoice(result.invoice);
+          setDetailActivity(result.activity ?? []);
+          setDetailPaymentTerms(result.paymentTermsLabel);
+        } else {
+          setDetailError(result.error ?? 'Could not load this invoice.');
+        }
+      })
+      .catch((error: unknown) => {
+        setDetailError(error instanceof Error ? error.message : 'Could not load this invoice.');
+      })
+      .finally(() => setDetailLoading(false));
+  }
+
+  function closeInvoiceDetail() {
+    setDetailOpen(false);
+    setDetailInvoice(null);
+    setDetailActivity([]);
+    setDetailError(null);
+  }
 
   // A brand switch or a searchParams change from elsewhere (browser back,
   // another tab) should still show up in the box, not just this box's own edits.
@@ -181,7 +224,7 @@ export function InvoicesPageClient({
           <p className="mt-1 font-mono text-xs">{brandsError}</p>
         </div>
       ) : !hasBrands ? (
-        <div className="rounded-lg border border-border bg-surface p-8 text-center">
+        <div className="rounded-2xl border border-border bg-surface p-8 text-center">
           <p className="text-sm text-ink-muted">No brands exist yet.</p>
           <Link
             href="/brands/new"
@@ -283,7 +326,7 @@ export function InvoicesPageClient({
             </div>
           </div>
 
-          <section className="overflow-x-auto rounded-lg border border-[#E5E7EB] bg-white shadow-sm">
+          <section className="overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
             {invoicesError ? (
               <div className="p-6 text-sm text-danger">
                 <p className="font-medium">Could not load invoices.</p>
@@ -359,15 +402,14 @@ export function InvoicesPageClient({
                         </span>
                       </td>
                       <td className="px-5 py-2 text-right">
-                        <a
-                          href={`${paymentPublicUrl}/i/${inv.publicToken}`}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
+                          type="button"
+                          onClick={() => openInvoiceDetail(inv.id)}
                           className="inline-flex h-8 items-center rounded-md border border-[#0F172A] bg-white px-3
                                      text-xs font-bold text-[#0F172A] transition-colors hover:bg-slate-50"
                         >
                           View
-                        </a>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -377,6 +419,18 @@ export function InvoicesPageClient({
           </section>
         </>
       )}
+
+      <InvoiceDetailDrawer
+        open={detailOpen}
+        onClose={closeInvoiceDetail}
+        brand={brand}
+        loading={detailLoading}
+        error={detailError}
+        invoice={detailInvoice}
+        activity={detailActivity}
+        paymentTermsLabel={detailPaymentTerms}
+        onChanged={() => detailInvoice && openInvoiceDetail(detailInvoice.id)}
+      />
     </div>
   );
 }

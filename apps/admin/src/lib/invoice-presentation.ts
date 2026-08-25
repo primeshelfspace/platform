@@ -63,3 +63,46 @@ export function invoiceListStatusDot(status: InvoiceListStatus): string {
   if (status === 'UNPAID') return 'bg-warning';
   return 'bg-ink-subtle';
 }
+
+/**
+ * The Invoice Details screen's own, more specific grouping — it has room for
+ * a badge per real status rather than the list's four tab buckets, so
+ * PARTIALLY_PAID gets its own "Partial" (folded into "Unpaid" on the list)
+ * and SENT/VIEWED stay distinguishable instead of both reading as "Unpaid".
+ * The `overdue` overlay still wins over all of those, same as the list.
+ */
+export type InvoiceDetailStatus =
+  | 'DRAFT'
+  | 'SENT'
+  | 'VIEWED'
+  | 'PARTIAL'
+  | 'OVERDUE'
+  | 'PAID'
+  | 'CANCELLED';
+
+export function invoiceDetailStatus(invoice: {
+  status: string;
+  overdue: boolean;
+}): InvoiceDetailStatus {
+  if (invoice.status === 'DRAFT') return 'DRAFT';
+  if (invoice.status === 'PAID') return 'PAID';
+  if (invoice.status === 'CANCELLED') return 'CANCELLED';
+  if (invoice.overdue) return 'OVERDUE';
+  if (invoice.status === 'PARTIALLY_PAID') return 'PARTIAL';
+  if (invoice.status === 'VIEWED') return 'VIEWED';
+  return 'SENT'; // SENT or PENDING_PAYMENT, neither overdue yet
+}
+
+export function invoiceDetailStatusLabel(status: InvoiceDetailStatus): string {
+  return status.charAt(0) + status.slice(1).toLowerCase();
+}
+
+/** Pill background + text — the header badge next to the invoice number.
+ * Same three-colour vocabulary as the list (success/warning/danger), plus a
+ * muted surface for the states that are neither an amount owed nor overdue. */
+export function invoiceDetailStatusBadgeClass(status: InvoiceDetailStatus): string {
+  if (status === 'PAID') return 'bg-success-surface text-success';
+  if (status === 'OVERDUE') return 'bg-danger-surface text-danger';
+  if (status === 'PARTIAL') return 'bg-warning-surface text-warning';
+  return 'bg-surface-muted text-ink-muted';
+}

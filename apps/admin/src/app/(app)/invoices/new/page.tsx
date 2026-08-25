@@ -69,7 +69,7 @@ export default async function NewInvoicePage({
             Could not load customers: {customersError}
           </div>
         ) : customers.length === 0 ? (
-          <div className="rounded-lg border border-border bg-surface p-6 text-sm text-ink-muted">
+          <div className="rounded-2xl border border-border bg-surface p-6 text-sm text-ink-muted">
             {brandName} has no customers yet.{' '}
             <Link href={`/customers/new?brandId=${brandId}`} className="underline">
               Add one first

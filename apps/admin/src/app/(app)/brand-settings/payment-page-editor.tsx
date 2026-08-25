@@ -677,7 +677,7 @@ export function PaymentPageEditor({
                   aria-checked={selected}
                   onClick={() => setDevice(key)}
                   className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    selected ? 'bg-black text-white' : 'text-ink-muted hover:text-ink-strong'
+                    selected ? 'bg-[#404040] text-white' : 'text-ink-muted hover:text-ink-strong'
                   }`}
                 >
                   <Icon className="h-3.5 w-3.5" aria-hidden />

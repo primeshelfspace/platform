@@ -30,7 +30,7 @@ export function PageContainer({
 }) {
   return (
     <main
-      className={`w-full px-6 pb-10 sm:px-10 ${compact ? 'pt-4' : 'pt-10'} ${narrow ? 'mx-auto max-w-2xl' : ''} ${className}`.trim()}
+      className={`w-full px-6 pb-10 sm:px-10 ${compact ? 'pt-2' : 'pt-10'} ${narrow ? 'mx-auto max-w-2xl' : ''} ${className}`.trim()}
     >
       {children}
     </main>

@@ -56,6 +56,14 @@ export class CustomersService {
     return this.prisma.withScope(scope, async (tx) => {
       const where: Prisma.CustomerWhereInput = { brandId };
 
+      // Customers Zoho no longer reports (deleted or marked inactive there)
+      // are archived, never deleted, by ZohoPullService — hidden here by
+      // default so a brand's list doesn't silently fill up with them, but
+      // never actually gone.
+      if (!query.includeArchived) {
+        where.status = 'ACTIVE';
+      }
+
       if (query.search) {
         const search = query.search;
         where.OR = [

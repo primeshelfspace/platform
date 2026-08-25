@@ -259,7 +259,7 @@ export function GatewayMarketplace() {
       </p>
 
       {filtered.length === 0 ? (
-        <div className="mt-8 rounded-lg border border-dashed border-border bg-surface-muted p-8 text-center">
+        <div className="mt-8 rounded-2xl border border-dashed border-border bg-surface-muted p-8 text-center">
           <p className="text-sm text-ink-muted">No gateways match your filters.</p>
         </div>
       ) : (

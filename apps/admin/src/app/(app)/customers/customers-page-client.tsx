@@ -22,6 +22,7 @@ export function CustomersPageClient({
   total,
   search,
   outstandingOnly,
+  includeArchived,
   brandsError,
   hasBrands,
   customersError,
@@ -31,6 +32,7 @@ export function CustomersPageClient({
   total: number;
   search: string;
   outstandingOnly: boolean;
+  includeArchived: boolean;
   brandsError: string | null;
   hasBrands: boolean;
   customersError: string | null;
@@ -108,6 +110,10 @@ export function CustomersPageClient({
     pushParams({ outstanding: checked ? '1' : null });
   }
 
+  function onIncludeArchivedChange(checked: boolean) {
+    pushParams({ archived: checked ? '1' : null });
+  }
+
   function toggleAll(checked: boolean) {
     setSelected(checked ? new Set(customers.map((c) => c.id)) : new Set());
   }
@@ -159,7 +165,7 @@ export function CustomersPageClient({
           <p className="mt-1 font-mono text-xs">{brandsError}</p>
         </div>
       ) : !hasBrands ? (
-        <div className="rounded-lg border border-border bg-surface p-8 text-center">
+        <div className="rounded-2xl border border-border bg-surface p-8 text-center">
           <p className="text-sm text-ink-muted">No brands exist yet.</p>
           <Link
             href="/brands/new"
@@ -179,7 +185,7 @@ export function CustomersPageClient({
           <div className="mb-3 flex items-center justify-between gap-4">
             <div className="relative max-w-xs flex-1">
               <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94A3B8]"
+                className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#737373]"
                 aria-hidden
               />
               <input
@@ -188,8 +194,8 @@ export function CustomersPageClient({
                 value={searchTerm}
                 onChange={(event) => onSearchChange(event.target.value)}
                 placeholder="Search"
-                className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white pl-9 pr-3 text-sm text-[#0F172A]
-                           shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-[#94A3B8]
+                className="h-8 w-full appearance-none rounded-lg bg-[#E7EDF5] pl-9 pr-3 text-sm text-[#0F172A]
+                           placeholder:text-[#737373]
                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900
                            focus-visible:ring-offset-1"
               />
@@ -202,7 +208,7 @@ export function CustomersPageClient({
                 than the shared Toggle component, so other call sites (e.g.
                 payment-methods) keep their own plain-row appearance. */}
             <div
-              className="flex items-center rounded-lg border border-[#D4D4D4] bg-white px-4 py-2
+              className="flex items-center gap-4 rounded-lg border border-[#D4D4D4] bg-white px-4 py-2
                          shadow-[0_1px_1px_rgba(0,0,0,0.05)] [&>label]:border-0 [&>label]:py-0"
             >
               <Toggle
@@ -211,10 +217,16 @@ export function CustomersPageClient({
                 onChange={onOutstandingChange}
                 label="Outstanding only"
               />
+              <Toggle
+                layout="row"
+                checked={includeArchived}
+                onChange={onIncludeArchivedChange}
+                label="Show archived"
+              />
             </div>
           </div>
 
-          <section className="overflow-x-auto rounded-lg border border-[#E5E7EB] bg-white shadow-sm">
+          <section className="overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
             {customersError ? (
               <div className="p-6 text-sm text-danger">
                 <p className="font-medium">Could not load customers.</p>
@@ -267,7 +279,29 @@ export function CustomersPageClient({
                           className="h-4 w-4 accent-black"
                         />
                       </td>
-                      <td className="px-3 py-2 font-medium text-ink-strong">{c.displayName}</td>
+                      <td className="px-3 py-2 font-medium text-ink-strong">
+                        <span className="inline-flex items-center gap-2">
+                          {c.displayName}
+                          {c.zohoContactId && (
+                            <span
+                              title="Synced from Zoho Books"
+                              className="rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[10px] font-bold
+                                         uppercase tracking-wide text-[#4338CA]"
+                            >
+                              Zoho
+                            </span>
+                          )}
+                          {c.status === 'ARCHIVED' && (
+                            <span
+                              title="No longer active in Zoho — kept for its invoice history"
+                              className="rounded-full bg-[#F5F5F6] px-2 py-0.5 text-[10px] font-bold
+                                         uppercase tracking-wide text-[#8C919B]"
+                            >
+                              Archived
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-ink-muted">{c.email ?? '—'}</td>
                       <td className="px-3 py-2 text-ink-muted">{c.phone ?? '—'}</td>
                       <td className="px-3 py-2">

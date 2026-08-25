@@ -1,23 +1,37 @@
 import Link from 'next/link';
 import {
   ApiError,
-  getStripeAccountStatus,
+  getPaymentMethodSettings,
   getZohoActivity,
   getZohoStatus,
   listBrands,
+  listPaymentGateways,
+  listPaymentTransactions,
   stripeConnectUrl,
   type Brand,
-  type StripeAccountStatus,
+  type PaymentGatewayProvider,
+  type PaymentGatewaySummary,
+  type PaymentMethodSettings,
+  type PaymentTransactionListResponse,
   type ZohoActivityEntry,
   type ZohoConnectionStatus,
 } from '@/lib/api';
-import { StripeForm } from '../stripe/stripe-form';
+import { PaymentGatewaysPanel } from './payment-gateways-panel';
 import { ZohoPanel } from './zoho-panel';
 import { PageContainer } from '@/components/page-container';
 
 export const dynamic = 'force-dynamic';
 
 type Tab = 'zoho' | 'payments';
+
+const PAYMENT_GATEWAY_PROVIDERS = ['STRIPE', 'PAYPAL', 'SQUARE', 'AUTHORIZE_NET'] as const;
+
+function parseGatewayProvider(value: string | undefined): PaymentGatewayProvider | null {
+  const upper = value?.toUpperCase();
+  return (PAYMENT_GATEWAY_PROVIDERS as readonly string[]).includes(upper ?? '')
+    ? (upper as PaymentGatewayProvider)
+    : null;
+}
 
 const ZOHO_ERROR_MESSAGES: Record<string, string> = {
   missing_brand: 'No brand was selected.',
@@ -48,6 +62,7 @@ export default async function IntegrationsPage({
   searchParams: Promise<{
     brandId?: string;
     tab?: string;
+    gateway?: string;
     connected?: string;
     error?: string;
     stripeConnected?: string;
@@ -57,6 +72,7 @@ export default async function IntegrationsPage({
 }) {
   const params = await searchParams;
   const tab: Tab = params.tab === 'payments' ? 'payments' : 'zoho';
+  const selectedGateway = parseGatewayProvider(params.gateway);
 
   let brands: Brand[] = [];
   let brandsError: string | null = null;
@@ -71,8 +87,10 @@ export default async function IntegrationsPage({
   let zohoStatus: ZohoConnectionStatus | null = null;
   let zohoActivity: ZohoActivityEntry[] = [];
   let zohoError: string | null = null;
-  let stripeStatus: StripeAccountStatus | null = null;
-  let stripeError: string | null = null;
+  let gateways: PaymentGatewaySummary[] = [];
+  let gatewaysError: string | null = null;
+  let methodSettings: PaymentMethodSettings | null = null;
+  let transactions: PaymentTransactionListResponse | null = null;
 
   if (activeBrand && tab === 'zoho') {
     try {
@@ -87,9 +105,21 @@ export default async function IntegrationsPage({
   }
   if (activeBrand && tab === 'payments') {
     try {
-      stripeStatus = await getStripeAccountStatus(activeBrand.id);
+      gateways = await listPaymentGateways(activeBrand.id);
     } catch (cause) {
-      stripeError = cause instanceof ApiError ? cause.message : String(cause);
+      gatewaysError = cause instanceof ApiError ? cause.message : String(cause);
+    }
+
+    // The detail view's own sections only matter once that gateway is
+    // actually connected — a selected-but-disconnected provider (e.g. a
+    // stale link) just falls back to the list.
+    const detail = selectedGateway && gateways.find((g) => g.provider === selectedGateway);
+    if (detail?.connected) {
+      // Neither call depends on the other's result — fetched together.
+      [methodSettings, transactions] = await Promise.all([
+        getPaymentMethodSettings(activeBrand.id),
+        listPaymentTransactions(activeBrand.id, { pageSize: 50 }),
+      ]);
     }
   }
 
@@ -135,7 +165,7 @@ export default async function IntegrationsPage({
             Could not load brands: {brandsError}
           </div>
         ) : brands.length === 0 ? (
-          <div className="rounded-lg border border-border bg-surface p-8 text-center">
+          <div className="rounded-2xl border border-border bg-surface p-8 text-center">
             <p className="text-sm text-ink-muted">No brands exist yet.</p>
             <Link
               href="/brands/new"
@@ -163,6 +193,11 @@ export default async function IntegrationsPage({
             ) : (
               zohoStatus && (
                 <ZohoPanel
+                  // See IntegrationsPanel's own key comment (brand-settings
+                  // page) — same fix, same reason: ZohoPanel keeps
+                  // connection status in client state that a brand switch
+                  // via router.push does not otherwise reset.
+                  key={activeBrand.id}
                   brandId={activeBrand.id}
                   brandDisplayName={activeBrand.displayName}
                   connectHref={`/settings/zoho/connect?brandId=${activeBrand.id}`}
@@ -190,40 +225,24 @@ export default async function IntegrationsPage({
               </div>
             )}
 
-            {stripeError ? (
+            {gatewaysError ? (
               <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
-                Could not load Stripe status: {stripeError}
+                Could not load payment gateways: {gatewaysError}
               </div>
             ) : (
-              stripeStatus && (
-                <div className="rounded-xl border border-border bg-surface p-5 shadow-sm sm:p-6">
-                  <div className="mb-6">
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-lg font-bold text-ink-strong">Stripe</h2>
-                      <span
-                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                          stripeStatus.connected ? 'bg-success' : 'bg-ink-subtle'
-                        }`}
-                        aria-hidden
-                      />
-                    </div>
-                    <p className="mt-1 text-sm text-ink-muted">
-                      {stripeStatus.connected
-                        ? `Connected${stripeStatus.displayName ? ` — ${stripeStatus.displayName}` : ''}`
-                        : 'Not connected — card payments will fail until this brand connects its Stripe account.'}
-                    </p>
-                  </div>
-
-                  <StripeForm
-                    brandId={activeBrand.id}
-                    connected={stripeStatus.connected}
-                    connectUrl={stripeConnectUrl(activeBrand.id)}
-                    displayName={stripeStatus.displayName}
-                    accountId={stripeStatus.accountId}
-                    chargesEnabled={stripeStatus.chargesEnabled}
-                  />
-                </div>
-              )
+              <PaymentGatewaysPanel
+                // Same stale-client-state fix as ZohoPanel above — this
+                // panel's gateway list and its Payment Methods toggles are
+                // also held in useState(initial...).
+                key={activeBrand.id}
+                brandId={activeBrand.id}
+                brandDisplayName={activeBrand.displayName}
+                stripeConnectUrl={stripeConnectUrl(activeBrand.id)}
+                initialGateways={gateways}
+                selected={selectedGateway}
+                initialMethodSettings={methodSettings}
+                initialTransactions={transactions}
+              />
             )}
           </>
         )}

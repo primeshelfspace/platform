@@ -31,6 +31,18 @@ body {
   outline-offset: 2px;
 }
 
+/* Hides the scrollbar on the main content pane (admin-shell.tsx) while
+   keeping it scrollable — the design calls for a clean edge instead of a
+   visible browser scrollbar track. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Drives the top navigation progress bar (components/top-progress.tsx).
    Eases quickly to most of the width, then crawls — the real duration is
    unknown, so it must never look finished while the page is still loading. */

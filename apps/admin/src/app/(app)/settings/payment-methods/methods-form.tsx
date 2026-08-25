@@ -27,7 +27,7 @@ export function MethodsForm({
     <form action={formAction}>
       <input type="hidden" name="brandId" value={brandId} />
 
-      <div className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <Toggle
           layout="row"
           name="cardEnabled"

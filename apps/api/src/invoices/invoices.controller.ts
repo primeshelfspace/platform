@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import {
   idSchema,
   invoiceDraftSchema,
@@ -11,6 +11,8 @@ import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import {
   InvoicesService,
+  type InvoiceActivityEntry,
+  type InvoiceDetail,
   type InvoiceListResult,
   type InvoiceSummary,
   type InvoiceWithLines,
@@ -49,8 +51,19 @@ export class InvoicesController {
     @CurrentScope() scope: Scope,
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('id', zodPipe(idSchema)) id: string,
-  ): Promise<InvoiceWithLines> {
+  ): Promise<InvoiceDetail> {
     return this.invoices.findOne(scope, brandId, id);
+  }
+
+  /** The Invoice Details screen's "Activity" tab. */
+  @Get(':id/events')
+  @RequirePermission('INVOICES', 'READ')
+  events(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Param('id', zodPipe(idSchema)) id: string,
+  ): Promise<InvoiceActivityEntry[]> {
+    return this.invoices.getActivity(scope, brandId, id);
   }
 
   @Post()
@@ -71,5 +84,19 @@ export class InvoicesController {
     @Param('id', zodPipe(idSchema)) id: string,
   ): Promise<InvoiceWithLines> {
     return this.invoices.issue(scope, brandId, id);
+  }
+
+  /** The Invoice Details screen's "Resend" button — a real send to the
+   * customer's actual email, not a status change (see InvoicesService). */
+  @Post(':id/resend')
+  @HttpCode(200)
+  @RequirePermission('INVOICE_SEND', 'WRITE')
+  async resend(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Param('id', zodPipe(idSchema)) id: string,
+  ): Promise<{ sent: true }> {
+    await this.invoices.resendEmail(scope, brandId, id);
+    return { sent: true };
   }
 }

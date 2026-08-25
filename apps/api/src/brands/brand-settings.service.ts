@@ -280,7 +280,13 @@ export class BrandSettingsService {
         '',
         'This is a test send — no payment is due and this email was not sent to a real customer.',
       ].join('\n'),
-      html: renderEmailReceiptHtml({ themeColor: brand.themeColor, body, variables }),
+      html: renderEmailReceiptHtml({
+        themeColor: brand.themeColor,
+        body,
+        variables,
+        linkUrl: '#',
+        badgeLabel: 'Test send',
+      }),
       messageTag: { brandId, templateKey: 'email-receipt.test' },
       // Every click is a deliberate, distinct send — a merchant testing three
       // wording changes in a row expects three emails, not one.
@@ -292,7 +298,10 @@ export class BrandSettingsService {
 /** Resolves the stored override columns against the brand's own record —
  * the one place that fallback decision gets made, so get and update always
  * agree on what "unset" resolves to. */
-function toInvoicePdfSettings(settings: BrandSettings, brand: Brand): InvoicePdfSettings {
+/** Exported for PublicInvoicesService — the public invoice page renders per
+ * these same resolved settings, and must resolve "unset" exactly the way
+ * this does rather than re-deriving its own notion of the fallback. */
+export function toInvoicePdfSettings(settings: BrandSettings, brand: Brand): InvoicePdfSettings {
   return {
     invoicePdfLayout: settings.invoicePdfLayout,
     showCompanyAddress: settings.invoicePdfShowCompanyAddress,
@@ -308,8 +317,11 @@ function toInvoicePdfSettings(settings: BrandSettings, brand: Brand): InvoicePdf
 
 /** Brand.mailingAddress is a loosely-typed Json column (see BrandsService) —
  * this reads it defensively rather than assuming the CustomerAddress shape
- * always holds, since nothing enforces that at the database level. */
-function formatBrandAddress(address: Prisma.JsonValue): string {
+ * always holds, since nothing enforces that at the database level. Exported
+ * for PublicInvoicesService, which formats a customer's billing address the
+ * same defensive way (Customer.billingAddress is the identical loose Json
+ * shape) rather than a second copy of this. */
+export function formatBrandAddress(address: Prisma.JsonValue): string {
   if (!address || typeof address !== 'object' || Array.isArray(address)) return '';
   const a = address as Record<string, unknown>;
   const str = (key: string): string => (typeof a[key] === 'string' ? (a[key] as string) : '');
@@ -323,17 +335,23 @@ function formatBrandAddress(address: Prisma.JsonValue): string {
 
 /** `"Prime Shelf Space Inc. <billing@localhost>"` -> name and address. Mirrors
  * AuthMailService's own parseFrom — duplicated rather than shared because a
- * third caller isn't due yet and the two are one line each. */
-function parseFrom(value: string): { name: string; address: string } {
+ * third caller isn't due yet and the two are one line each. Exported for
+ * InvoicesService's resend, which sends through this same MAIL_FROM. */
+export function parseFrom(value: string): { name: string; address: string } {
   const match = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(value);
   if (match?.[1] && match[2]) return { name: match[1].trim(), address: match[2].trim() };
   return { name: 'Prime Shelf Space Inc.', address: value.trim() };
 }
 
-function renderEmailReceiptHtml(input: {
+/** Exported for InvoicesService's resend — same template, a real
+ * `linkUrl`/`badgeLabel` in place of the test send's placeholder link and
+ * fixed "Test send" banner. */
+export function renderEmailReceiptHtml(input: {
   themeColor: string;
   body: string;
   variables: { invoiceNumber: string; amountDue: string; dueDate: string };
+  linkUrl: string;
+  badgeLabel: string;
 }): string {
   const paragraphs = input.body
     .split('\n')
@@ -349,11 +367,11 @@ function renderEmailReceiptHtml(input: {
   <body style="margin:0;padding:24px;background:#F8FAFC;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
     <table role="presentation" style="max-width:520px;margin:0 auto;background:#FFFFFF;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;">
       <tr><td style="background:${escapeHtml(input.themeColor)};padding:20px 32px;">
-        <span style="font-size:12px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.85);">Test send</span>
+        <span style="font-size:12px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:rgba(255,255,255,0.85);">${escapeHtml(input.badgeLabel)}</span>
       </td></tr>
       <tr><td style="padding:32px;">
         ${paragraphs}
-        <a href="#" style="display:inline-block;margin-top:12px;background:#171717;color:#FFFFFF;text-decoration:none;padding:12px 20px;border-radius:10px;font-size:15px;font-weight:600;">
+        <a href="${escapeHtml(input.linkUrl)}" style="display:inline-block;margin-top:12px;background:#171717;color:#FFFFFF;text-decoration:none;padding:12px 20px;border-radius:10px;font-size:15px;font-weight:600;">
           View &amp; Pay Invoice
         </a>
         <table role="presentation" style="width:100%;margin-top:24px;border-top:1px solid #E2E8F0;padding-top:16px;font-size:13px;color:#475569;">

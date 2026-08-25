@@ -53,7 +53,7 @@ export function CustomerForm({ brandId }: { brandId: string }) {
     <form action={formAction} className="space-y-8">
       <input type="hidden" name="brandId" value={brandId} />
 
-      <fieldset className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <fieldset className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <legend className="px-1 text-sm font-medium text-ink-strong">Customer type</legend>
         <div className="mt-3 flex gap-4">
           {(['BUSINESS', 'INDIVIDUAL'] as const).map((option) => (
@@ -71,7 +71,7 @@ export function CustomerForm({ brandId }: { brandId: string }) {
         </div>
       </fieldset>
 
-      <fieldset className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <fieldset className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <legend className="px-1 text-sm font-medium text-ink-strong">Identity</legend>
         <div className="mt-3 grid grid-cols-2 gap-3">
           {type === 'BUSINESS' ? (
@@ -97,14 +97,14 @@ export function CustomerForm({ brandId }: { brandId: string }) {
         </div>
       </fieldset>
 
-      <fieldset className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <fieldset className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <legend className="px-1 text-sm font-medium text-ink-strong">Billing address</legend>
         <div className="mt-3">
           <AddressFields prefix="billing" />
         </div>
       </fieldset>
 
-      <fieldset className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <fieldset className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <legend className="px-1 text-sm font-medium text-ink-strong">Shipping address</legend>
         <label className="mt-3 mb-3 flex items-center gap-2 text-sm text-ink-muted">
           <input

@@ -296,6 +296,16 @@ export const zohoSyncSettingsSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'nothing to update' });
 export type ZohoSyncSettingsInput = z.infer<typeof zohoSyncSettingsSchema>;
 
+// --- Payment gateways (Brand Settings → Payment Gateways) -------------------
+
+/** The four gateways the Payment Gateways tab can connect. STRIPE alone
+ * completes real OAuth (StripeAccountService); the other three have no
+ * credential handshake behind them yet, so connecting one just records the
+ * brand's choice (PaymentGatewaysService). */
+export const PAYMENT_GATEWAY_PROVIDERS = ['STRIPE', 'PAYPAL', 'SQUARE', 'AUTHORIZE_NET'] as const;
+export type PaymentGatewayProvider = (typeof PAYMENT_GATEWAY_PROVIDERS)[number];
+export const paymentGatewayProviderSchema = z.enum(PAYMENT_GATEWAY_PROVIDERS);
+
 // --- Customer --------------------------------------------------------------
 
 export const customerTypeSchema = z.enum(['BUSINESS', 'INDIVIDUAL']);
@@ -373,6 +383,10 @@ export const customerListQuerySchema = paginationSchema.extend({
   hasOutstanding: z.coerce.boolean().optional(),
   search: z.string().trim().max(200).optional(),
   dateRange: dateRangeSchema.optional(),
+  // Customers pulled from Zoho are archived, not deleted, when Zoho no
+  // longer reports them (ZohoPullService.archiveMissingCustomers) — this
+  // keeps the default list view free of them without losing the record.
+  includeArchived: z.coerce.boolean().optional(),
 });
 export type CustomerListQuery = z.infer<typeof customerListQuerySchema>;
 

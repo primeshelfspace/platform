@@ -3,6 +3,7 @@ import Link from 'next/link';
 export const BRAND_SETTINGS_TABS = [
   { key: 'details', label: 'Brand Details' },
   { key: 'branding', label: 'Branding' },
+  { key: 'integrations', label: 'Integrations' },
 ] as const;
 
 export type BrandSettingsTab = (typeof BRAND_SETTINGS_TABS)[number]['key'];
@@ -30,13 +31,14 @@ function tabHref(brandId: string | undefined, query: Record<string, string>): st
 }
 
 /**
- * Top-level sections of Brand Settings. Brand Details and Branding render in
- * this page (a query-param tab, same convention as everywhere else brand-
- * scoped pages in this app carry state — shareable, bookmarkable, survives a
- * refresh). Integrations and Payment Gateways already have real standalone
- * pages elsewhere in the app; rather than duplicate them, these two are
- * plain links out to those pages so there is exactly one place each setting
- * lives.
+ * Top-level sections of Brand Settings. Brand Details, Branding and
+ * Integrations render in this page (a query-param tab, same convention as
+ * everywhere else brand-scoped pages in this app carry state — shareable,
+ * bookmarkable, survives a refresh). Payment Gateways already has a real
+ * standalone page elsewhere in the app (Settings → Integrations' "Payment
+ * Gateways" tab, the connect/disconnect flow for Stripe, PayPal, Square and
+ * Authorize.net) — rather than duplicate it, this one is a plain link out to
+ * that page so there is exactly one place it lives.
  */
 export function BrandSettingsTabs({
   active,
@@ -45,13 +47,11 @@ export function BrandSettingsTabs({
   active: BrandSettingsTab;
   brandId: string | undefined;
 }) {
-  function hrefFor(path: string): string {
-    return brandId ? `${path}?brandId=${brandId}` : path;
-  }
-
   const linkOutTabs = [
-    { href: hrefFor('/settings/integrations'), label: 'Integrations' },
-    { href: hrefFor('/settings/payment-methods'), label: 'Payment Gateways' },
+    {
+      href: `/settings/integrations?tab=payments${brandId ? `&brandId=${brandId}` : ''}`,
+      label: 'Payment Gateways',
+    },
   ];
 
   const tabClass = (selected: boolean) =>

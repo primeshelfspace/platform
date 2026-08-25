@@ -413,11 +413,20 @@ export interface CustomerListResponse {
 
 export function listCustomers(
   brandId: string,
-  params: { search?: string; hasOutstanding?: boolean } = {},
+  params: {
+    search?: string;
+    hasOutstanding?: boolean;
+    includeArchived?: boolean;
+    page?: number;
+    pageSize?: number;
+  } = {},
 ): Promise<CustomerListResponse> {
   const qs = new URLSearchParams();
   if (params.search) qs.set('search', params.search);
   if (params.hasOutstanding !== undefined) qs.set('hasOutstanding', String(params.hasOutstanding));
+  if (params.includeArchived) qs.set('includeArchived', 'true');
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return apiFetch<CustomerListResponse>(`/brands/${brandId}/customers${suffix}`);
 }
@@ -480,6 +489,10 @@ export interface Invoice {
   totalMinor: number;
   balanceMinor: number;
   publicToken: string;
+  /** Set once ZohoPullService/ZohoSyncService has actually pushed or pulled
+   * this exact invoice — null means it has never touched Zoho, whether or
+   * not the brand is connected. */
+  zohoInvoiceId: string | null;
   lineItems: LineItem[];
   /** Only present on list rows — a single-invoice fetch has no need for it. */
   customer?: { displayName: string };
@@ -547,6 +560,38 @@ export function createInvoice(brandId: string, input: InvoiceFormInput): Promise
 
 export function issueInvoice(brandId: string, id: string): Promise<Invoice> {
   return apiFetch<Invoice>(`/brands/${brandId}/invoices/${id}/issue`, { method: 'POST' });
+}
+
+/** What the Invoice Details screen's single-invoice fetch returns —
+ * Invoice's customer is fully resolved (email, formatted billing address),
+ * where the list row above only carries a display name. */
+export interface InvoiceDetail extends Invoice {
+  customer: { displayName: string; email: string | null; billingAddress: string };
+}
+
+export function getInvoice(brandId: string, id: string): Promise<InvoiceDetail> {
+  return apiFetch<InvoiceDetail>(`/brands/${brandId}/invoices/${id}`);
+}
+
+/** One row of the Invoice Details screen's "Activity" tab — verbatim off
+ * InvoiceEvent, newest first. */
+export interface InvoiceActivityEntry {
+  eventType: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  actor: string;
+  occurredAt: string;
+}
+
+export function getInvoiceEvents(brandId: string, id: string): Promise<InvoiceActivityEntry[]> {
+  return apiFetch<InvoiceActivityEntry[]>(`/brands/${brandId}/invoices/${id}/events`);
+}
+
+/** "Resend" on the Invoice Details screen — a real send to the customer's
+ * actual email through the brand's Email Receipt template, not a status
+ * change (issueInvoice already owns that transition). */
+export function resendInvoiceEmail(brandId: string, id: string): Promise<{ sent: true }> {
+  return apiFetch<{ sent: true }>(`/brands/${brandId}/invoices/${id}/resend`, { method: 'POST' });
 }
 
 // --- Payment method settings (FR-PAY-005) -------------------------------------
@@ -686,21 +731,6 @@ export function updateInvoicePdfSettings(
 
 // --- Stripe Connect (one connected account per brand) ------------------------
 
-export interface StripeAccountStatus {
-  connected: boolean;
-  /** The connected account id (acct_…). Not a secret. */
-  accountId: string | null;
-  /** What Stripe knows this business as; null until Stripe onboarding finishes. */
-  displayName: string | null;
-  /** False while Stripe is still collecting details — linked, but cannot yet
-   * accept a live charge. */
-  chargesEnabled: boolean;
-}
-
-export function getStripeAccountStatus(brandId: string): Promise<StripeAccountStatus> {
-  return apiFetch<StripeAccountStatus>(`/brands/${brandId}/integrations/stripe/status`);
-}
-
 /**
  * Where to send the browser to start the Connect handshake.
  *
@@ -710,16 +740,88 @@ export function getStripeAccountStatus(brandId: string): Promise<StripeAccountSt
  * since the token lives in an httpOnly cookie here and is only ever replayed
  * server-side. Linking straight at the API arrives unauthenticated and 401s.
  * The route handler attaches the token and forwards the redirect to Stripe.
+ *
+ * Status and disconnect for Stripe itself go through the same
+ * listPaymentGateways / disconnectPaymentGateway calls every other gateway
+ * uses below — only the connect leg is Stripe-specific, since it alone
+ * completes a real OAuth authorisation.
  */
 export function stripeConnectUrl(brandId: string): string {
   return `/settings/stripe/connect?brandId=${encodeURIComponent(brandId)}`;
 }
 
-/** Revokes the platform's authorisation at Stripe and clears the connection. */
-export function disconnectStripe(brandId: string): Promise<{ ok: true }> {
-  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/stripe/disconnect`, {
+// --- Payment gateways (Brand Settings > Payment Gateways) --------------------
+
+export type PaymentGatewayProvider = 'STRIPE' | 'PAYPAL' | 'SQUARE' | 'AUTHORIZE_NET';
+
+export interface PaymentGatewaySummary {
+  provider: PaymentGatewayProvider;
+  displayName: string;
+  connected: boolean;
+  /** Stripe's own account label; null for a manual gateway. */
+  accountLabel: string | null;
+  connectedAt: string | null;
+}
+
+export function listPaymentGateways(brandId: string): Promise<PaymentGatewaySummary[]> {
+  return apiFetch<PaymentGatewaySummary[]>(`/brands/${brandId}/integrations/gateways`);
+}
+
+/** PayPal, Square and Authorize.net only — Stripe connects through
+ * stripeConnectUrl's OAuth redirect instead. */
+export function connectPaymentGateway(
+  brandId: string,
+  provider: Exclude<PaymentGatewayProvider, 'STRIPE'>,
+): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/gateways/${provider}/connect`, {
     method: 'POST',
   });
+}
+
+/** Any of the four — dispatches to Stripe's own deauthorisation server-side
+ * when provider is STRIPE. */
+export function disconnectPaymentGateway(
+  brandId: string,
+  provider: PaymentGatewayProvider,
+): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/gateways/${provider}/disconnect`, {
+    method: 'POST',
+  });
+}
+
+// --- Transaction log (Brand Settings > Payment Gateways) --------------------
+
+/** One settled-or-attempted charge. Not scoped to any one gateway — see the
+ * API's PaymentsService.list for why switching gateways must not make this
+ * history disappear. */
+export interface PaymentTransaction {
+  id: string;
+  invoiceNumber: string;
+  customerName: string;
+  method: 'CARD' | 'WALLET' | 'ACH' | 'CHECK' | 'MANUAL';
+  amountMinor: number;
+  currency: string;
+  status: 'INITIATED' | 'PROCESSING' | 'SETTLED' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'CANCELLED';
+  createdAt: string;
+  settledAt: string | null;
+}
+
+export interface PaymentTransactionListResponse {
+  data: PaymentTransaction[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export function listPaymentTransactions(
+  brandId: string,
+  params: { page?: number; pageSize?: number } = {},
+): Promise<PaymentTransactionListResponse> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<PaymentTransactionListResponse>(`/brands/${brandId}/payments${suffix}`);
 }
 
 // --- Zoho integration (FR-ZHO) ------------------------------------------------

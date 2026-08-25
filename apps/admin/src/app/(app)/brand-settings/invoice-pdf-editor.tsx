@@ -180,7 +180,6 @@ function InvoicePreviewBody({
   companyAddress,
   showCompanyAddress,
   showPaymentTerms,
-  showTaxBreakdown,
   showNotes,
   paymentTerms,
   notes,
@@ -195,7 +194,6 @@ function InvoicePreviewBody({
   companyAddress: string;
   showCompanyAddress: boolean;
   showPaymentTerms: boolean;
-  showTaxBreakdown: boolean;
   showNotes: boolean;
   paymentTerms: InvoicePdfPaymentTerms;
   notes: string;
@@ -250,8 +248,8 @@ function InvoicePreviewBody({
     <table className="mt-6 w-full text-sm">
       <thead>
         <tr
-          className={`text-left text-xs font-semibold uppercase tracking-wide text-ink-subtle ${
-            decorated ? 'bg-surface-muted' : 'border-b border-[#E5E7EB]'
+          className={`text-left text-xs font-bold uppercase tracking-wide text-black ${
+            decorated ? 'bg-[#E7EDF5]' : 'border-b border-[#E5E7EB]'
           }`}
         >
           {decorated && <th className="w-10 py-2 pl-4">#</th>}
@@ -291,12 +289,6 @@ function InvoicePreviewBody({
             <span className="text-ink-muted">Subtotal</span>
             <span className="font-medium text-ink-strong">{invoice.subtotalLabel}</span>
           </div>
-          {showTaxBreakdown && invoice.taxLabel && (
-            <div className="flex justify-between px-4 py-2.5">
-              <span className="text-ink-muted">Tax</span>
-              <span className="font-medium text-ink-strong">{invoice.taxLabel}</span>
-            </div>
-          )}
           <div className="flex justify-between border-t border-[#E5E7EB] px-4 py-2.5 font-bold text-ink-strong">
             <span>Total</span>
             <span>{invoice.totalLabel}</span>
@@ -314,12 +306,6 @@ function InvoicePreviewBody({
             <span className="text-ink-muted">Subtotal</span>
             <span className="font-medium text-ink-strong">{invoice.subtotalLabel}</span>
           </div>
-          {showTaxBreakdown && invoice.taxLabel && (
-            <div className="flex justify-between">
-              <span className="text-ink-muted">Tax</span>
-              <span className="font-medium text-ink-strong">{invoice.taxLabel}</span>
-            </div>
-          )}
           {/* The bold rule sits between Total and Balance Due, not above
               Total — Total keeps the regular thin #E5E7EB weight like
               every other line above it. Balance Due's text is black
@@ -497,15 +483,19 @@ function InvoicePreviewBody({
               used to be — kept as an inline SVG rather than a font so the
               letterforms render identically to the design regardless of
               which fonts are installed.
-              Height matches the reference's 38px frame; width is left to
-              scale naturally off the viewBox's own 125:24 ratio (~198px)
-              instead of being forced to the frame's 128px — forcing both
-              stretched the letters noticeably (preserveAspectRatio="none"
-              on a 125:24 shape squeezed into a 128:38 box is a real
-              distortion, not a rounding error), which is what looked wrong. */}
+              Height is set well below the viewBox's natural 24px-per-38px
+              scale — the 38px frame this originally shipped at read as
+              oversized next to "# {invoice.number}" below it, dwarfing the
+              rest of the header; 20px brings it in line with the other
+              layout's small "Invoice" label treatment. Width still scales
+              naturally off the viewBox's own 125:24 ratio rather than being
+              forced to a fixed frame — forcing both stretched the letters
+              noticeably (preserveAspectRatio="none" on a 125:24 shape
+              squeezed into a fixed box is a real distortion, not a rounding
+              error), which is what looked wrong. */}
             <svg
               viewBox="0 0 125 24"
-              height={38}
+              height={20}
               style={{ transform: 'rotate(0deg)', opacity: 1 }}
               className="ml-auto w-auto"
               fill="none"
@@ -572,7 +562,11 @@ export function InvoicePdfEditor({
   const [layout, setLayout] = useState<InvoicePdfLayout>(settings.invoicePdfLayout);
   const [showCompanyAddress, setShowCompanyAddress] = useState(settings.showCompanyAddress);
   const [showPaymentTerms, setShowPaymentTerms] = useState(settings.showPaymentTerms);
-  const [showTaxBreakdown, setShowTaxBreakdown] = useState(settings.showTaxBreakdown);
+  // No UI to toggle this on anymore (see Invoice Fields below) — kept as
+  // read-only state so the hidden input still round-trips whatever value
+  // is already saved, rather than silently flipping a brand's stored
+  // setting the moment this component renders.
+  const [showTaxBreakdown] = useState(settings.showTaxBreakdown);
   const [showNotes, setShowNotes] = useState(settings.showNotes);
   const [companyName, setCompanyName] = useState(settings.companyName);
   const [companyAddress, setCompanyAddress] = useState(settings.companyAddress);
@@ -758,14 +752,6 @@ export function InvoicePdfEditor({
                 <Toggle
                   layout="row"
                   divided={false}
-                  checked={showTaxBreakdown}
-                  onChange={setShowTaxBreakdown}
-                  label="Tax breakdown"
-                  hint="Show tax as line item separately"
-                />
-                <Toggle
-                  layout="row"
-                  divided={false}
                   checked={showNotes}
                   onChange={setShowNotes}
                   label="Notes"
@@ -913,7 +899,6 @@ export function InvoicePdfEditor({
             companyAddress={companyAddress}
             showCompanyAddress={showCompanyAddress}
             showPaymentTerms={showPaymentTerms}
-            showTaxBreakdown={showTaxBreakdown}
             showNotes={showNotes}
             paymentTerms={paymentTerms}
             notes={notes}

@@ -53,7 +53,7 @@ export function InvoiceForm({
       <input type="hidden" name="currency" value={currency} />
       <input type="hidden" name="lineCount" value={rows.length} />
 
-      <div className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <label className="block">
           <span className={labelClass}>Customer</span>
           <select name="customerId" required className={inputClass} defaultValue="">
@@ -117,7 +117,7 @@ export function InvoiceForm({
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-surface p-6 shadow-sm">
+      <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-medium text-ink-strong">Line items</span>
           <button

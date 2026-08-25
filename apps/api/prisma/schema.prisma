@@ -145,6 +145,9 @@ enum IntegrationProvider {
   NUMBERS_GATEWAY
   SHOPIFY
   STRIPE
+  PAYPAL
+  SQUARE
+  AUTHORIZE_NET
 }
 
 enum ConnectionStatus {
