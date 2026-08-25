@@ -160,7 +160,7 @@ export class InvoicesService {
 
   /** The Invoice Details screen's "Activity" tab — every lifecycle event
    * this exact invoice has actually gone through (ISSUE, FIRST_VIEW,
-   * PAYMENT_SETTLED, PAYMENT_FAILED, EMAIL_RESENT), newest first, same
+   * PAYMENT_SETTLED, PAYMENT_FAILED, EMAIL_SENT), newest first, same
    * convention as ZohoConnectController's own activity log. */
   async getActivity(scope: Scope, brandId: string, id: string): Promise<InvoiceActivityEntry[]> {
     const invoice = await this.prisma.withScope(scope, (tx) =>
@@ -184,28 +184,28 @@ export class InvoicesService {
   }
 
   /**
-   * "Resend" on the Invoice Details screen — a real send to the customer's
-   * actual email, through the same Brand Settings > Branding > Email Receipt
-   * template and mail path sendEmailReceiptTest already exercises (renderEmailReceiptHtml,
-   * parseFrom — both exported from BrandSettingsService for exactly this
-   * reuse), except addressed to this real customer with a real, working
-   * "View & Pay Invoice" link rather than a placeholder.
+   * What the Invoice Details drawer's Send/Resend compose modal opens with —
+   * subject/body already substituted from the brand's Email Receipt
+   * template against this real invoice, `to` from the customer's email on
+   * file (empty if it has none, rather than throwing — the modal lets a
+   * merchant type one in for exactly that case).
    */
-  async resendEmail(scope: Scope, brandId: string, id: string): Promise<void> {
-    const { invoice, settings, customerEmail } = await this.prisma.withScope(scope, async (tx) => {
+  async prepareEmail(
+    scope: Scope,
+    brandId: string,
+    id: string,
+  ): Promise<{ to: string; subject: string; body: string }> {
+    const { invoice, settings } = await this.prisma.withScope(scope, async (tx) => {
       const invoiceRow = await tx.invoice.findFirst({
         where: { id, brandId },
         include: { customer: true, brand: true },
       });
       if (!invoiceRow) throw new NotFoundException('invoice not found');
-      if (!invoiceRow.customer.email) {
-        throw new ConflictException('this customer has no email on file');
-      }
 
       const settingsRow = await tx.brandSettings.findUnique({ where: { brandId } });
       if (!settingsRow) throw new NotFoundException('brand settings not found');
 
-      return { invoice: invoiceRow, settings: settingsRow, customerEmail: invoiceRow.customer.email };
+      return { invoice: invoiceRow, settings: settingsRow };
     });
 
     const currency = toCurrencyCode(invoice.currency);
@@ -216,41 +216,74 @@ export class InvoicesService {
       amountDue: formatMinorForDisplay(Number(invoice.balanceMinor), currency),
       dueDate: formatDateForDisplay(invoice.dueDate),
     };
-    const subject = renderEmailReceiptTemplate(settings.emailReceiptSubject, variables);
-    const body = renderEmailReceiptTemplate(settings.emailReceiptBody, variables);
+    return {
+      to: invoice.customer.email ?? '',
+      subject: renderEmailReceiptTemplate(settings.emailReceiptSubject, variables),
+      body: renderEmailReceiptTemplate(settings.emailReceiptBody, variables),
+    };
+  }
+
+  /**
+   * The Invoice Details drawer's "Send"/"Resend" — one real send either way,
+   * to whatever the compose modal actually shows on screen (see
+   * prepareEmail above for how that got pre-filled; the caller may have
+   * edited any of it, including typing in an email for a customer with none
+   * on file). Unlike the old resend-only version, this never reads the
+   * brand's Email Receipt settings or the customer's stored email itself —
+   * the caller already resolved both, and re-deriving them here would let
+   * this send disagree with what the merchant reviewed before clicking Send.
+   */
+  async sendEmail(
+    scope: Scope,
+    brandId: string,
+    id: string,
+    input: { to: string; cc?: string; subject: string; body: string },
+  ): Promise<void> {
+    const invoice = await this.prisma.withScope(scope, (tx) =>
+      tx.invoice.findFirst({ where: { id, brandId }, include: { brand: true } }),
+    );
+    if (!invoice) throw new NotFoundException('invoice not found');
+
+    const currency = toCurrencyCode(invoice.currency);
+    const summary = {
+      invoiceNumber: invoice.number,
+      amountDue: formatMinorForDisplay(Number(invoice.balanceMinor), currency),
+      dueDate: formatDateForDisplay(invoice.dueDate),
+    };
     const linkUrl = `${this.env.PAYMENT_PUBLIC_URL}/i/${invoice.publicToken}`;
 
     await this.mail.send({
-      to: [customerEmail],
+      to: [input.to],
+      cc: input.cc ? [input.cc] : undefined,
       from: parseFrom(this.env.MAIL_FROM),
-      subject,
+      subject: input.subject,
       text: [
-        body,
+        input.body,
         '',
-        `Invoice ${variables.invoiceNumber}`,
-        `Amount due: ${variables.amountDue}`,
-        `Due date: ${variables.dueDate}`,
+        `Invoice ${summary.invoiceNumber}`,
+        `Amount due: ${summary.amountDue}`,
+        `Due date: ${summary.dueDate}`,
         '',
         `View and pay: ${linkUrl}`,
       ].join('\n'),
       html: renderEmailReceiptHtml({
         themeColor: invoice.brand.themeColor,
-        body,
-        variables,
+        body: input.body,
+        variables: summary,
         linkUrl,
         badgeLabel: invoice.brand.displayName,
       }),
-      messageTag: { brandId, invoiceId: id, templateKey: 'email-receipt.resend' },
-      // Every click is a deliberate resend — a merchant clicking twice in a
-      // row (e.g. after fixing a bounced address) expects two emails.
-      idempotencyKey: `invoice-resend:${id}:${Date.now()}`,
+      messageTag: { brandId, invoiceId: id, templateKey: 'email-receipt.invoice-send' },
+      // Every click is a deliberate send — a merchant clicking twice in a
+      // row (e.g. after fixing a typo'd address) expects two emails.
+      idempotencyKey: `invoice-send:${id}:${Date.now()}`,
     });
 
     await this.prisma.withScope(scope, (tx) =>
       tx.invoiceEvent.create({
         data: {
           invoiceId: id,
-          eventType: 'EMAIL_RESENT',
+          eventType: 'EMAIL_SENT',
           actor: isPublicScope(scope) ? 'system' : scope.userId,
         },
       }),

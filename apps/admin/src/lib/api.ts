@@ -587,11 +587,37 @@ export function getInvoiceEvents(brandId: string, id: string): Promise<InvoiceAc
   return apiFetch<InvoiceActivityEntry[]>(`/brands/${brandId}/invoices/${id}/events`);
 }
 
-/** "Resend" on the Invoice Details screen — a real send to the customer's
- * actual email through the brand's Email Receipt template, not a status
- * change (issueInvoice already owns that transition). */
-export function resendInvoiceEmail(brandId: string, id: string): Promise<{ sent: true }> {
-  return apiFetch<{ sent: true }>(`/brands/${brandId}/invoices/${id}/resend`, { method: 'POST' });
+/** What the Send/Resend compose modal opens with — subject/body already
+ * substituted from the brand's Email Receipt template against this real
+ * invoice; `to` is the customer's email on file, or '' if it has none. */
+export interface InvoiceEmailDraft {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+export function getInvoiceEmailPreview(brandId: string, id: string): Promise<InvoiceEmailDraft> {
+  return apiFetch<InvoiceEmailDraft>(`/brands/${brandId}/invoices/${id}/email-preview`);
+}
+
+export interface InvoiceEmailSendInput extends InvoiceEmailDraft {
+  /** '' (not omitted) means no CC — the compose modal's CC field is blank
+   * by default and always sent, same as `to`/`subject`/`body`. */
+  cc: string;
+}
+
+/** The Send/Resend compose modal's actual submit — sends exactly what's on
+ * screen (not a status change; issueInvoice owns the draft → sent
+ * transition, called separately first when this is a first send). */
+export function sendInvoiceEmail(
+  brandId: string,
+  id: string,
+  input: InvoiceEmailSendInput,
+): Promise<{ sent: true }> {
+  return apiFetch<{ sent: true }>(`/brands/${brandId}/invoices/${id}/send-email`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 // --- Payment method settings (FR-PAY-005) -------------------------------------

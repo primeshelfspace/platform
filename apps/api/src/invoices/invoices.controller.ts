@@ -3,9 +3,11 @@ import {
   idSchema,
   invoiceDraftSchema,
   invoiceListQuerySchema,
+  sendInvoiceEmailSchema,
   type InvoiceDraftInput,
   type InvoiceListQuery,
   type Scope,
+  type SendInvoiceEmailInput,
 } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
@@ -86,17 +88,32 @@ export class InvoicesController {
     return this.invoices.issue(scope, brandId, id);
   }
 
-  /** The Invoice Details screen's "Resend" button — a real send to the
-   * customer's actual email, not a status change (see InvoicesService). */
-  @Post(':id/resend')
-  @HttpCode(200)
-  @RequirePermission('INVOICE_SEND', 'WRITE')
-  async resend(
+  /** The Invoice Details drawer's compose modal opening a Send/Resend —
+   * pre-filled subject/body/to for this exact invoice. */
+  @Get(':id/email-preview')
+  @RequirePermission('INVOICES', 'READ')
+  emailPreview(
     @CurrentScope() scope: Scope,
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('id', zodPipe(idSchema)) id: string,
+  ): Promise<{ to: string; subject: string; body: string }> {
+    return this.invoices.prepareEmail(scope, brandId, id);
+  }
+
+  /** The Invoice Details drawer's "Send"/"Resend" button — one real send
+   * either way, to whatever the compose modal actually shows (see
+   * InvoicesService.sendEmail). Not a status change; the drawer calls
+   * :id/issue separately first when sending a draft for the first time. */
+  @Post(':id/send-email')
+  @HttpCode(200)
+  @RequirePermission('INVOICE_SEND', 'WRITE')
+  async sendEmail(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Param('id', zodPipe(idSchema)) id: string,
+    @Body(zodPipe(sendInvoiceEmailSchema)) body: SendInvoiceEmailInput,
   ): Promise<{ sent: true }> {
-    await this.invoices.resendEmail(scope, brandId, id);
+    await this.invoices.sendEmail(scope, brandId, id, body);
     return { sent: true };
   }
 }

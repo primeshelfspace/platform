@@ -248,6 +248,23 @@ export const emailReceiptTestSendSchema = z.object({
 });
 export type EmailReceiptTestSendInput = z.infer<typeof emailReceiptTestSendSchema>;
 
+/** The Invoice Details drawer's Send/Resend compose modal — the caller
+ * supplies the exact, already-substituted subject/body/recipient it showed
+ * on screen (pre-filled from Email Receipt settings, editable from there),
+ * the same way emailReceiptTestSendSchema's caller does. `to` is not
+ * required to match the customer's own email on file — a customer with none
+ * on file starts this field blank and types one in, which this schema
+ * accepts the same as any other address. */
+export const sendInvoiceEmailSchema = z.object({
+  to: emailSchema,
+  /** '' (not omitted) means no CC — the compose modal always sends this
+   * field, blank by default, same as `to` is never optional either. */
+  cc: z.union([emailSchema, z.literal('')]).optional(),
+  subject: z.string().trim().min(1, 'subject is required').max(200),
+  body: z.string().trim().min(1, 'body is required').max(5000),
+});
+export type SendInvoiceEmailInput = z.infer<typeof sendInvoiceEmailSchema>;
+
 /** Brand Settings > Branding > Invoice PDF: layout and which optional
  * sections appear on the invoice PDF a customer receives/downloads.
  * companyName/companyAddress are nullable — null means "use the brand's own
