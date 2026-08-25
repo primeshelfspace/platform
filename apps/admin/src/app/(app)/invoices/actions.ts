@@ -3,13 +3,16 @@
 import { revalidatePath } from 'next/cache';
 import {
   getInvoice,
+  getInvoiceEmailPreview,
   getInvoiceEvents,
   getInvoicePdfSettings,
   issueInvoice,
-  resendInvoiceEmail,
+  sendInvoiceEmail,
   type Invoice,
   type InvoiceActivityEntry,
   type InvoiceDetail,
+  type InvoiceEmailDraft,
+  type InvoiceEmailSendInput,
 } from '@/lib/api';
 import { describeActionError } from '@/lib/form';
 
@@ -64,7 +67,8 @@ export type ActionResult<T> =
   { readonly ok: true; readonly data: T } | { readonly ok: false; readonly error: string };
 
 /** The drawer's "Send" button (draft only) — Draft → Sent, the same
- * transition the "New Invoice" flow already triggers on create. */
+ * transition the "New Invoice" flow already triggers on create. Fires
+ * before sendInvoiceEmailAction on a first send, never on a resend. */
 export async function issueInvoiceAction(brandId: string, id: string): Promise<ActionResult<Invoice>> {
   try {
     const invoice = await issueInvoice(brandId, id);
@@ -75,16 +79,32 @@ export async function issueInvoiceAction(brandId: string, id: string): Promise<A
   }
 }
 
-/** The drawer's "Resend" button (everything past draft) — a real send to
- * the customer's actual email, not a status change. */
-export async function resendInvoiceEmailAction(
+/** Opens the Send/Resend compose modal — fresh each time (not cached off
+ * the drawer's own initial load), so an Email Receipt template edited since
+ * the drawer opened, or a customer email added since, shows up here too. */
+export async function getInvoiceEmailDraftAction(
   brandId: string,
   id: string,
+): Promise<ActionResult<InvoiceEmailDraft>> {
+  try {
+    const draft = await getInvoiceEmailPreview(brandId, id);
+    return { ok: true, data: draft };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not prepare this email.') };
+  }
+}
+
+/** The compose modal's "Send Invoice" — one real send either way (first
+ * send or resend), of exactly what the modal shows on screen. */
+export async function sendInvoiceEmailAction(
+  brandId: string,
+  id: string,
+  input: InvoiceEmailSendInput,
 ): Promise<ActionResult<{ sent: true }>> {
   try {
-    const result = await resendInvoiceEmail(brandId, id);
+    const result = await sendInvoiceEmail(brandId, id, input);
     return { ok: true, data: result };
   } catch (error) {
-    return { ok: false, error: describeActionError(error, 'Could not resend this invoice.') };
+    return { ok: false, error: describeActionError(error, 'Could not send this invoice.') };
   }
 }

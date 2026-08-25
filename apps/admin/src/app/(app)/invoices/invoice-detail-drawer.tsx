@@ -13,7 +13,7 @@ import {
   invoiceDetailStatusBadgeClass,
   invoiceDetailStatusLabel,
 } from '@/lib/invoice-presentation';
-import { issueInvoiceAction, resendInvoiceEmailAction } from './actions';
+import { SendInvoiceModal } from './send-invoice-modal';
 
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
@@ -28,7 +28,10 @@ const EVENT_LABEL: Record<string, string> = {
   FIRST_VIEW: 'Customer viewed the invoice',
   PAYMENT_SETTLED: 'Payment received',
   PAYMENT_FAILED: 'Payment attempt failed',
-  EMAIL_RESENT: 'Invoice resent',
+  EMAIL_SENT: 'Invoice emailed',
+  // Recorded by the old resend-only endpoint, before it merged into
+  // sendEmail — kept so already-recorded history still reads nicely.
+  EMAIL_RESENT: 'Invoice emailed',
 };
 
 function eventLabel(entry: InvoiceActivityEntry): string {
@@ -74,39 +77,16 @@ export function InvoiceDetailDrawer({
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<'items' | 'activity'>('items');
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [resending, setResending] = useState(false);
-  const [resendError, setResendError] = useState<string | null>(null);
-  const [resendSent, setResendSent] = useState(false);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
 
   if (!open) return null;
 
   const status = invoice ? invoiceDetailStatus(invoice) : null;
   const currency = toCurrencyCode(invoice?.currency);
 
-  async function handleSend() {
-    if (!brand || !invoice) return;
-    setSending(true);
-    setSendError(null);
-    const result = await issueInvoiceAction(brand.id, invoice.id);
-    setSending(false);
-    if (result.ok) {
-      router.refresh(); // the list row behind this drawer needs the new status too
-      onChanged();
-    }
-    else setSendError(result.error);
-  }
-
-  async function handleResend() {
-    if (!brand || !invoice) return;
-    setResending(true);
-    setResendError(null);
-    setResendSent(false);
-    const result = await resendInvoiceEmailAction(brand.id, invoice.id);
-    setResending(false);
-    if (result.ok) setResendSent(true);
-    else setResendError(result.error);
+  function handleSent() {
+    router.refresh(); // the list row behind this drawer needs the new status too
+    onChanged();
   }
 
   // Portalled straight to <body> — same reason CustomerDetailDrawer's own
@@ -140,25 +120,23 @@ export function InvoiceDetailDrawer({
             {status === 'DRAFT' && (
               <button
                 type="button"
-                onClick={() => void handleSend()}
-                disabled={sending}
+                onClick={() => setSendModalOpen(true)}
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white
-                           transition-colors hover:bg-neutral-800 disabled:opacity-60"
+                           transition-colors hover:bg-neutral-800"
               >
                 <Send className="h-4 w-4" aria-hidden />
-                {sending ? 'Sending…' : 'Send'}
+                Send
               </button>
             )}
             {status && status !== 'DRAFT' && (
               <button
                 type="button"
-                onClick={() => void handleResend()}
-                disabled={resending}
+                onClick={() => setSendModalOpen(true)}
                 className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#D4D4D4] bg-white px-4
-                           text-sm font-bold text-ink-strong transition-colors hover:bg-surface-muted disabled:opacity-60"
+                           text-sm font-bold text-ink-strong transition-colors hover:bg-surface-muted"
               >
-                <RefreshCw className={`h-4 w-4 ${resending ? 'animate-spin' : ''}`} aria-hidden />
-                {resending ? 'Resending…' : 'Resend'}
+                <RefreshCw className="h-4 w-4" aria-hidden />
+                Resend
               </button>
             )}
             <button
@@ -209,22 +187,6 @@ export function InvoiceDetailDrawer({
             </div>
           ) : (
             <>
-              {sendError && (
-                <div className="mb-4 rounded-md bg-danger-surface p-3 text-sm text-danger">
-                  {sendError}
-                </div>
-              )}
-              {resendError && (
-                <div className="mb-4 rounded-md bg-danger-surface p-3 text-sm text-danger">
-                  {resendError}
-                </div>
-              )}
-              {resendSent && !resendError && (
-                <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
-                  Invoice resent to {invoice.customer.email}.
-                </div>
-              )}
-
               <div className="grid gap-x-16 gap-y-6 sm:grid-cols-2">
                 <div>
                   <p className="text-sm text-ink-muted">Customer</p>
@@ -392,6 +354,17 @@ export function InvoiceDetailDrawer({
           )}
         </div>
       </div>
+
+      {invoice && brand && status && (
+        <SendInvoiceModal
+          open={sendModalOpen}
+          onClose={() => setSendModalOpen(false)}
+          brand={brand}
+          invoice={invoice}
+          isFirstSend={status === 'DRAFT'}
+          onSent={handleSent}
+        />
+      )}
     </div>,
     document.body,
   );
