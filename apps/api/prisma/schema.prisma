@@ -457,13 +457,56 @@ model Customer {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  brand    Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  invoices Invoice[]
+  brand          Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  invoices       Invoice[]
+  contactPersons CustomerContactPerson[]
 
   @@index([brandId])
   @@index([brandId, status])
-  @@index([zohoContactId])
+  /// Real uniqueness, not just an index: ZohoPullService now runs its
+  /// per-record detail fetches with several in flight at once
+  /// (mapWithConcurrency), so two concurrent pulls racing to create the same
+  /// not-yet-seen Zoho contact (e.g. two invoices for one new customer,
+  /// pulled in the same batch) must fail one of them at the database rather
+  /// than silently doubling the customer — pullOneCustomer upserts on this.
+  @@unique([brandId, zohoContactId])
   @@map("customer")
+}
+
+/// A named person at a customer — Zoho's own "contact person": billing and
+/// invoice questions often go to someone specific at the account, not the
+/// company's general line. Fields and their limits are confirmed against
+/// https://www.zoho.com/books/api/v3/contact-persons/, not assumed.
+/// Deliberately not carried: enable_portal / is_added_in_portal /
+/// communication_preference — those govern Zoho's own client portal, which
+/// this app has no equivalent of and no use for.
+model CustomerContactPerson {
+  id                  String  @id @default(uuid()) @db.Uuid
+  customerId          String  @map("customer_id") @db.Uuid
+  zohoContactPersonId String? @map("zoho_contact_person_id")
+  salutation          String?
+  firstName           String  @map("first_name")
+  lastName            String? @map("last_name")
+  email               String?
+  phone               String?
+  mobile              String?
+  skype               String?
+  designation         String?
+  department          String?
+  isPrimaryContact    Boolean @default(false) @map("is_primary_contact")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  /// Same reasoning as Customer.zohoContactId above: ZohoPullService upserts
+  /// each contact person on this rather than a naive delete-then-recreate,
+  /// which is exactly what made line items unsafe under concurrent pulls of
+  /// the same customer (see pullOneInvoice's own comment on that).
+  @@unique([customerId, zohoContactPersonId])
+  @@map("customer_contact_person")
 }
 
 model Invoice {
@@ -520,6 +563,13 @@ model Invoice {
   @@index([brandId, status])
   @@index([brandId, dueDate])
   @@index([customerId])
+  /// Real uniqueness, not just an index — same reason as
+  /// Customer.zohoContactId above: pullOneInvoice now upserts on this rather
+  /// than findFirst-then-create, because pullOnePayment's cascade can have
+  /// two concurrently-pulled payments reference the same not-yet-seen
+  /// invoice (e.g. two partial payments on it) in the same
+  /// mapWithConcurrency batch.
+  @@unique([brandId, zohoInvoiceId])
   @@map("invoice")
 }
 
@@ -578,6 +628,10 @@ model Payment {
 
   @@index([invoiceId])
   @@index([brandId, status])
+  /// Looked up once per listed payment on every Zoho pull, to skip
+  /// re-fetching detail for one already pulled (ZohoPullService.pullPayments)
+  /// — same reason Customer.zohoContactId is indexed below.
+  @@index([zohoPaymentId])
   @@map("payment")
 }
 

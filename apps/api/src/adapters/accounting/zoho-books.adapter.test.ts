@@ -7,9 +7,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AccountingConnection } from '@fenwick/shared';
 import type { Env } from '../../config/env.js';
+import type { RedisService } from '../../infra/redis/redis.service.js';
 import { ZohoBooksAdapter } from './zoho-books.adapter.js';
 
-const adapter = new ZohoBooksAdapter({} as Env);
+// None of the methods under test call request() (the only thing that reads
+// this), so an empty stub is enough — same reasoning as the {} as Env below.
+const adapter = new ZohoBooksAdapter({} as Env, {} as RedisService);
 
 describe('ZohoBooksAdapter.reverseMapPaymentMode', () => {
   it('maps creditcard to CARD', () => {

@@ -377,14 +377,8 @@ export function EmailReceiptEditor({
    * failed, in which case the button disables rather than sending nowhere. */
   userEmail: string | null;
 }) {
-  // The Brand Elements / Email Layout / Email Content panel no longer has a
-  // Save Changes control (removed at the user's request) — saveFormAction
-  // still wires the fields' hidden inputs into the server action via the
-  // <form>'s action attribute, but there's currently no submit trigger for
-  // it, and saveState/savePending (the status message + pending flag that
-  // used to sit under that button) are gone with it.
   const saveAction = saveEmailReceiptSettingsAction.bind(null, brand);
-  const [, saveFormAction] = useActionState(saveAction, initialSaveState);
+  const [saveState, saveFormAction, savePending] = useActionState(saveAction, initialSaveState);
 
   const sendAction = sendTestEmailAction.bind(null, brand);
   const [sendState, sendFormAction, sendPending] = useActionState(sendAction, initialSendState);
@@ -635,6 +629,30 @@ export function EmailReceiptEditor({
               )}
             </div>
           </div>
+
+          {saveState.error && (
+            <p
+              role="alert"
+              className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {saveState.error}
+            </p>
+          )}
+          {saveState.success && (
+            <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              Saved.
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={savePending}
+            className="mt-6 rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
+                       hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          >
+            {savePending ? 'Saving…' : 'Save Changes'}
+          </button>
         </form>
 
         {/* A separate <form> — HTML forbids nesting one inside Save Changes'

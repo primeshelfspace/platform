@@ -494,7 +494,7 @@ export function PaymentPageEditor({
   previewInvoice: PaymentPagePreviewInvoice | null;
 }) {
   const action = savePaymentPageDisplayAction.bind(null, brand);
-  const [state, formAction] = useActionState(action, initialState);
+  const [state, formAction, pending] = useActionState(action, initialState);
 
   const [themeColor, setThemeColor] = useState(brand.themeColor);
   const [accentColor, setAccentColor] = useState(display.accentColor);
@@ -635,6 +635,16 @@ export function PaymentPageEditor({
             Saved.
           </p>
         )}
+
+        <button
+          type="submit"
+          disabled={pending}
+          className="mt-6 rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
+                     hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+        >
+          {pending ? 'Saving…' : 'Save Changes'}
+        </button>
       </section>
 
       <section className="min-w-0 w-[744px] max-w-full p-6">

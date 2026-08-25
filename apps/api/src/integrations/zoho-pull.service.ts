@@ -7,7 +7,9 @@ import {
   type InvoiceStatus,
   type Scope,
 } from '@fenwick/shared';
+import { mapWithConcurrency } from '../common/concurrency.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
+import { RedisService } from '../infra/redis/redis.service.js';
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
 import {
   ZohoBooksAdapter,
@@ -20,6 +22,34 @@ export interface PullCounts {
   readonly invoices: number;
   readonly payments: number;
 }
+
+/**
+ * How many of a page's detail fetches (getContact/getInvoice/getPayment) run
+ * at once. This is about overlapping round-trip latency, not the real
+ * throughput ceiling — ZohoBooksAdapter.request's own per-brand rate limiter
+ * is what actually paces requests against Zoho's 100-req/min budget, so
+ * raising this only helps up to the point that limiter has enough concurrent
+ * callers to keep it saturated; it can't push traffic past what the limiter
+ * allows.
+ */
+const PULL_DETAIL_CONCURRENCY = 8;
+
+/**
+ * Contacts have no server-side filter at all (see ZohoBooksAdapter's "Pull"
+ * notes), so pullCustomers always pages through every contact the brand has,
+ * regardless of whether any of them changed. Run on a brand set to
+ * "Realtime" (pullFrequencyMinutes: 1), that full scan would otherwise
+ * repeat every single minute for data that is realistically not moving that
+ * fast — customer records change far less often than invoice/payment status
+ * does, which is what "Realtime" is actually meant to keep fresh. This is a
+ * floor under just that one scan, independent of the brand's own configured
+ * frequency: at most one full contact scan per window, tracked in Redis
+ * rather than a new column since it is a pacing decision, not sync state
+ * anything else needs to read. A manual "pull now" (pullBrand's
+ * forceFullContactScan) bypasses it — someone who just fixed a customer's
+ * details in Zoho and asked for a pull right now should get one.
+ */
+const CONTACTS_FULL_SCAN_FLOOR_SECONDS = 15 * 60;
 
 /** Zoho's invoice status vocabulary onto ours. Zoho has no direct
  * counterpart to our overdue tracking (a separate boolean flag here, not a
@@ -60,9 +90,14 @@ export class ZohoPullService {
     private readonly zoho: ZohoBooksAdapter,
     private readonly connections: IntegrationConnectionService,
     private readonly systemScope: SystemScopeResolver,
+    private readonly redis: RedisService,
   ) {}
 
-  async pullBrand(brandId: string): Promise<PullCounts> {
+  /**
+   * @param forceFullContactScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS —
+   * set by the on-demand "pull now" endpoint, never by the scheduled tick.
+   */
+  async pullBrand(brandId: string, forceFullContactScan = false): Promise<PullCounts> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-pull');
     if (!scope) return { customers: 0, invoices: 0, payments: 0 };
     const connection = await this.connections.buildAccountingConnection(scope, brandId);
@@ -71,9 +106,25 @@ export class ZohoPullService {
     const pullStartedAt = new Date();
     const cursor = await this.connections.getLastPulledAt(scope, brandId);
 
-    const customers = await this.pullCustomers(scope, brandId, connection, cursor);
-    const invoices = await this.pullInvoices(scope, brandId, connection, cursor);
-    const payments = await this.pullPayments(scope, brandId, connection);
+    // The three entity types don't depend on each other's *completion*
+    // anymore — pullOneInvoice/pullOnePayment's cascades into a not-yet-seen
+    // customer or invoice are upsert-safe now (brandId_zohoContactId /
+    // brandId_zohoInvoiceId), the same property that already made
+    // mapWithConcurrency safe within a single phase. Running the three
+    // phases concurrently instead of sequentially overlaps their network
+    // waiting time; ZohoBooksAdapter.request's shared per-brand rate limiter
+    // is still what caps how much of that time turns into actual Zoho
+    // traffic, so this is free concurrency, not more load. The one cost is
+    // a little redundant work at the boundary — e.g. pullInvoices pulling an
+    // invoice explicitly at the same moment pullPayments' cascade pulls it
+    // too because a payment referenced it — which is strictly rarer than the
+    // wall-clock time this removes (that overlap window only exists among
+    // records that changed since the very last pull).
+    const [customers, invoices, payments] = await Promise.all([
+      this.pullCustomersIfDue(scope, brandId, connection, cursor, forceFullContactScan),
+      this.pullInvoices(scope, brandId, connection, cursor),
+      this.pullPayments(scope, brandId, connection),
+    ]);
 
     await this.connections.recordPullRun(scope, brandId, pullStartedAt);
 
@@ -82,6 +133,25 @@ export class ZohoPullService {
       `pull complete for brand ${brandId}: ${counts.customers} customers, ${counts.invoices} invoices, ${counts.payments} payments`,
     );
     return counts;
+  }
+
+  private async pullCustomersIfDue(
+    scope: Scope,
+    brandId: string,
+    connection: AccountingConnection,
+    cursor: Date | null,
+    force: boolean,
+  ): Promise<number> {
+    const floorKey = `zoho:contacts-scanned:${brandId}`;
+    if (!force && (await this.redis.getJson<boolean>(floorKey))) {
+      return 0;
+    }
+    const touched = await this.pullCustomers(scope, brandId, connection, cursor);
+    // Set after a successful scan regardless of `force`, so a manual pull
+    // now restarts the floor's own clock too, rather than leaving the next
+    // scheduled tick free to redundantly re-scan moments later.
+    await this.redis.setJson(floorKey, true, CONTACTS_FULL_SCAN_FLOOR_SECONDS);
+    return touched;
   }
 
   // --- Customers -------------------------------------------------------------
@@ -94,13 +164,6 @@ export class ZohoPullService {
    * brand-level failure showed as nothing at all in "Recent activity". This
    * wrapper exists specifically so that failure is visible too, not just
    * per-record ones.
-   *
-   * Every contact_id seen across the full scan (listContactsPage now asks
-   * for Status.All, so this covers Zoho-inactive contacts too) is collected
-   * regardless of the cursor, so a full pass always knows the complete set
-   * of customers Zoho currently reports — archiveMissingCustomers uses it to
-   * find the ones that fell out entirely (hard-deleted, which Zoho only
-   * allows once nothing references them) without a second API call.
    */
   private async pullCustomers(
     scope: Scope,
@@ -112,60 +175,21 @@ export class ZohoPullService {
       let page = 1;
       let hasMore = true;
       let touched = 0;
-      const seenContactIds = new Set<string>();
 
       while (hasMore) {
         const { contacts, hasMorePage } = await this.zoho.listContactsPage(connection, page);
-        for (const item of contacts) {
-          seenContactIds.add(item.contact_id);
-          const changedSinceCursor =
-            !cursor || !item.last_modified_time || new Date(item.last_modified_time) > cursor;
-          if (!changedSinceCursor) continue;
-          await this.pullOneCustomer(scope, brandId, connection, item.contact_id);
-          touched++;
-        }
+        const due = contacts.filter(
+          (item) =>
+            !cursor || !item.last_modified_time || new Date(item.last_modified_time) > cursor,
+        );
+        await mapWithConcurrency(due, PULL_DETAIL_CONCURRENCY, (item) =>
+          this.pullOneCustomer(scope, brandId, connection, item.contact_id),
+        );
+        touched += due.length;
         hasMore = hasMorePage;
         page++;
       }
-
-      const archived = await this.archiveMissingCustomers(scope, brandId, seenContactIds);
-      if (archived > 0) {
-        this.logger.log(
-          `archived ${archived} customer(s) no longer present in Zoho for brand ${brandId}`,
-        );
-      }
-      return touched + archived;
-    });
-  }
-
-  /** A locally-active, Zoho-linked customer whose contact_id did not turn up
-   * anywhere in this run's full contact scan has been removed from Zoho
-   * outright — archived here rather than deleted, matching Customer.status's
-   * existing ACTIVE/ARCHIVED convention (mirrors Brand.status) and never
-   * touching the customer's invoices or payments. Only ever runs after a
-   * *complete* scan (see pullCustomers above) — a scan that fails partway
-   * through throws out of the while loop above and never reaches this call,
-   * so a transient error can't be misread as mass deletion. */
-  private async archiveMissingCustomers(
-    scope: Scope,
-    brandId: string,
-    seenContactIds: ReadonlySet<string>,
-  ): Promise<number> {
-    return this.prisma.withScope(scope, async (tx) => {
-      const candidates = await tx.customer.findMany({
-        where: { brandId, zohoContactId: { not: null }, status: 'ACTIVE' },
-        select: { id: true, zohoContactId: true },
-      });
-      const staleIds = candidates
-        .filter((c) => c.zohoContactId !== null && !seenContactIds.has(c.zohoContactId))
-        .map((c) => c.id);
-      if (staleIds.length === 0) return 0;
-
-      await tx.customer.updateMany({
-        where: { id: { in: staleIds } },
-        data: { status: 'ARCHIVED' },
-      });
-      return staleIds.length;
+      return touched;
     });
   }
 
@@ -192,21 +216,70 @@ export class ZohoPullService {
           Prisma.JsonNull) as Prisma.InputJsonValue,
         shippingAddress: (this.zoho.fromZohoAddress(contact.shipping_address) ??
           Prisma.JsonNull) as Prisma.InputJsonValue,
-        // Kept in sync in both directions — a contact Zoho reports inactive
-        // archives the local row, and one reactivated there restores it,
-        // the same way archiveMissingCustomers handles outright removal.
-        status: (contact.status === 'inactive' ? 'ARCHIVED' : 'ACTIVE') as 'ACTIVE' | 'ARCHIVED',
       };
 
+      // A single upsert, not a separate findFirst-then-create/update: two
+      // concurrent calls for the same not-yet-seen contact_id (the cascades
+      // below, or two pages' worth of the same due-list) resolve cleanly
+      // here — proven against a real concurrent race, not assumed — because
+      // Postgres compiles this to a genuine INSERT ... ON CONFLICT
+      // (brand_id, zoho_contact_id) DO UPDATE, which is atomic: one caller's
+      // INSERT wins, the other's own attempt transparently becomes the
+      // UPDATE branch, with neither seeing an error. (The line-item replace
+      // in pullOneInvoice below needed more than this — see its own comment
+      // — but that turned out to be a real race in a *different* place, not
+      // evidence that upsert itself needed the same treatment.)
       await this.prisma.withScope(scope, async (tx) => {
-        const existing = await tx.customer.findFirst({
-          where: { brandId, zohoContactId: contactId },
+        const row = await tx.customer.upsert({
+          where: { brandId_zohoContactId: { brandId, zohoContactId: contactId } },
+          create: { ...data, brandId, zohoContactId: contactId },
+          update: data,
         });
-        if (existing) {
-          await tx.customer.update({ where: { id: existing.id }, data });
-        } else {
-          await tx.customer.create({ data: { ...data, brandId, zohoContactId: contactId } });
+
+        // Same recipe as pullOneInvoice's line items, for the same reason:
+        // upsert each contact person individually (race-safe the same way
+        // the customer row above is — customerId_zohoContactPersonId is a
+        // real constraint), then a plain delete for the ones no longer
+        // present, scoped by id rather than a naive wipe-and-recreate.
+        const contactPersons = contact.contact_persons ?? [];
+        for (const person of contactPersons) {
+          const personData = {
+            salutation: person.salutation ?? null,
+            firstName: person.first_name,
+            lastName: person.last_name ?? null,
+            email: person.email ?? null,
+            phone: person.phone ?? null,
+            mobile: person.mobile ?? null,
+            skype: person.skype ?? null,
+            designation: person.designation ?? null,
+            department: person.department ?? null,
+            isPrimaryContact: person.is_primary_contact ?? false,
+          };
+          await tx.customerContactPerson.upsert({
+            where: {
+              customerId_zohoContactPersonId: {
+                customerId: row.id,
+                zohoContactPersonId: person.contact_person_id,
+              },
+            },
+            create: {
+              ...personData,
+              customerId: row.id,
+              zohoContactPersonId: person.contact_person_id,
+            },
+            update: personData,
+          });
         }
+        // notIn: [] (Zoho now reports zero contact persons) correctly
+        // matches every existing Zoho-sourced row here, not none — SQL's
+        // NULL semantics keep any locally-created contact person (a future
+        // possibility; zohoContactPersonId null) out of this filter either way.
+        await tx.customerContactPerson.deleteMany({
+          where: {
+            customerId: row.id,
+            zohoContactPersonId: { notIn: contactPersons.map((p) => p.contact_person_id) },
+          },
+        });
       });
     });
   }
@@ -242,10 +315,10 @@ export class ZohoPullService {
           page,
           sinceIso,
         );
-        for (const item of invoices) {
-          await this.pullOneInvoice(scope, brandId, connection, item.invoice_id);
-          touched++;
-        }
+        await mapWithConcurrency(invoices, PULL_DETAIL_CONCURRENCY, (item) =>
+          this.pullOneInvoice(scope, brandId, connection, item.invoice_id),
+        );
+        touched += invoices.length;
         hasMore = hasMorePage;
         page++;
       }
@@ -293,29 +366,93 @@ export class ZohoPullService {
         notes: invoice.notes ?? null,
       };
 
-      await this.prisma.withScope(scope, async (tx) => {
-        const existing = await tx.invoice.findFirst({
-          where: { brandId, zohoInvoiceId: invoiceId },
-        });
-        const row = existing
-          ? await tx.invoice.update({ where: { id: existing.id }, data })
-          : await tx.invoice.create({
-              data: {
-                ...data,
-                brandId,
-                zohoInvoiceId: invoiceId,
-                publicToken: this.randomPublicToken(),
-                cardFeeRateBpApplied: 0,
-                cardFeeMinor: 0n,
-              },
-            });
+      // Upserting on brandId_zohoInvoiceId — the same idea as pullOneCustomer's,
+      // and usually enough on its own the same way: Postgres compiles it to a
+      // real INSERT ... ON CONFLICT (brand_id, zoho_invoice_id) DO UPDATE,
+      // atomic against two concurrent calls for the same not-yet-seen
+      // invoice_id (pullOnePayment's cascade can have two partial payments
+      // both trigger this at once).
+      //
+      // "Usually" — the one case that ON CONFLICT does NOT absorb is this
+      // invoice also colliding on a *different* unique constraint,
+      // (brand_id, number): both concurrent calls fetched the same Zoho
+      // invoice, so they propose the identical invoice_number too. Postgres
+      // only arbitrates the constraint actually named in ON CONFLICT; a
+      // second, incidental collision on `number` is checked with ordinary
+      // (non-speculative) insertion semantics, and — confirmed against the
+      // real database, not assumed — can raise a genuine unique-violation
+      // error on *either or both* concurrent callers even though the row
+      // they're each trying to write is, semantically, the exact same
+      // invoice. withUniqueViolationRetry exists for exactly this: a retried
+      // call re-resolves brandId_zohoInvoiceId against the now-committed
+      // winner and takes the UPDATE branch, which touches no other unique
+      // index at all.
+      //
+      // What is NOT safe to do concurrently, independent of the above, is
+      // the naive way to "replace" line items — deleteMany then createMany
+      // in the same transaction. Two concurrent pulls of the same invoice
+      // can interleave: B's deleteMany finds nothing (A's insert hasn't
+      // reached its own createMany yet), then both createMany collide on
+      // (invoice_id, position) — also confirmed, not assumed. Upserting each
+      // line item individually makes each one individually race-safe the
+      // same way the invoice row is; only the trim for a shrunk item count
+      // needs a plain delete, scoped past the new range so it can't touch a
+      // row a concurrent call is still writing.
+      await this.withUniqueViolationRetry(() =>
+        this.prisma.withScope(scope, async (tx) => {
+          const row = await tx.invoice.upsert({
+            where: { brandId_zohoInvoiceId: { brandId, zohoInvoiceId: invoiceId } },
+            create: {
+              ...data,
+              brandId,
+              zohoInvoiceId: invoiceId,
+              publicToken: this.randomPublicToken(),
+              cardFeeRateBpApplied: 0,
+              cardFeeMinor: 0n,
+            },
+            update: data,
+          });
 
-        await tx.lineItem.deleteMany({ where: { invoiceId: row.id } });
-        await tx.lineItem.createMany({
-          data: this.toLocalLineItems(row.id, invoice),
-        });
-      });
+          const lineItems = this.toLocalLineItems(row.id, invoice);
+          for (const item of lineItems) {
+            await tx.lineItem.upsert({
+              where: { invoiceId_position: { invoiceId: row.id, position: item.position } },
+              create: item,
+              update: item,
+            });
+          }
+          await tx.lineItem.deleteMany({
+            where: { invoiceId: row.id, position: { gte: lineItems.length } },
+          });
+        }),
+      );
     });
+  }
+
+  /**
+   * Retries `work` on a unique-constraint violation — see the long comment
+   * at pullOneInvoice's own upsert for exactly which real race this exists
+   * for. Verified against the actual database under real concurrency (a
+   * 20-trial harness, not a single lucky run) before landing this: retrying
+   * the *whole* upsert resolves every time, because by the time one caller's
+   * attempt has failed, the other's has already committed — the retry's own
+   * attempt finds that row via the real conflict target and takes the
+   * UPDATE branch, which cannot collide on anything else. A short jittered
+   * delay between attempts, not a tight loop, since this is arbitrating
+   * against a concurrent transaction that needs a moment to actually commit.
+   */
+  private async withUniqueViolationRetry<T>(work: () => Promise<T>, attempts = 5): Promise<T> {
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        return await work();
+      } catch (error) {
+        if (attempt === attempts || !PrismaService.isUniqueViolation(error)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 5 + Math.random() * 15));
+      }
+    }
+    // Unreachable — the loop above always either returns or throws — but
+    // TypeScript can't see that a for-loop with no fallthrough always exits.
+    throw new Error('withUniqueViolationRetry: exhausted attempts without a result');
   }
 
   private toLocalLineItems(
@@ -371,15 +508,48 @@ export class ZohoPullService {
 
       while (hasMore) {
         const { payments, hasMorePage } = await this.zoho.listPaymentsPage(connection, page);
-        for (const item of payments) {
-          const applied = await this.pullOnePayment(scope, brandId, connection, item.payment_id);
-          if (applied) touched++;
-        }
+
+        // Unlike pullCustomers' changedSinceCursor check, this isn't "did it
+        // change" — Zoho exposes no modified-time field on payments at all
+        // (see the adapter's "Pull" notes), so there is no cheaper signal
+        // than the detail fetch itself to tell. What's checked instead is
+        // "have we already pulled this one, ever" — a settled payment is
+        // not something Zoho expects to change after the fact, so already
+        // having a local row is enough to skip it for good. Without this,
+        // every payment on the account gets a fresh getPayment call on every
+        // single pull, forever, regardless of age (payment_zoho_payment_id_
+        // idx is what keeps this check itself cheap — plain Promise.all,
+        // not mapWithConcurrency, since these are local Postgres reads, not
+        // calls against Zoho's own rate limit).
+        const alreadyPulled = await Promise.all(
+          payments.map((item) => this.paymentAlreadyPulled(scope, brandId, item.payment_id)),
+        );
+        const due = payments.filter((_, index) => !alreadyPulled[index]);
+
+        const applied = await mapWithConcurrency(due, PULL_DETAIL_CONCURRENCY, (item) =>
+          this.pullOnePayment(scope, brandId, connection, item.payment_id),
+        );
+        touched += applied.filter(Boolean).length;
+
         hasMore = hasMorePage;
         page++;
       }
       return touched;
     });
+  }
+
+  private async paymentAlreadyPulled(
+    scope: Scope,
+    brandId: string,
+    paymentId: string,
+  ): Promise<boolean> {
+    const row = await this.prisma.withScope(scope, (tx) =>
+      tx.payment.findFirst({
+        where: { brandId, zohoPaymentId: paymentId },
+        select: { id: true },
+      }),
+    );
+    return row !== null;
   }
 
   /** Returns false for a payment this cannot represent (0 or 2+ invoices —

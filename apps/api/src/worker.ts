@@ -52,7 +52,10 @@ async function bootstrap(): Promise<void> {
     'zoho-push-customer': (job) => zohoSync.pushCustomer(job.data.brandId, job.data.customerId),
     'zoho-push-invoice': (job) => zohoSync.pushInvoice(job.data.brandId, job.data.invoiceId),
     'zoho-push-payment': (job) => zohoSync.pushPayment(job.data.brandId, job.data.paymentId),
-    'zoho-pull-brand': (job) => zohoPull.pullBrand(job.data.brandId),
+    // force is set only by the on-demand "pull now" endpoint
+    // (zoho-connect.controller.ts) — it bypasses pullBrand's contacts
+    // full-scan floor, which the scheduled tick below must never do.
+    'zoho-pull-brand': (job) => zohoPull.pullBrand(job.data.brandId, job.data.force === true),
   };
 
   // The 'scheduled-sync' repeatable job (queues.ts, registered by the API

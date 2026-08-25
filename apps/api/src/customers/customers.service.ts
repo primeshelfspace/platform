@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type Customer } from '@prisma/client';
+import { Prisma, type Customer, type CustomerContactPerson } from '@prisma/client';
 import type { CustomerInput, CustomerListQuery, Scope } from '@fenwick/shared';
 import { PrismaService, type ScopedClient } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
@@ -15,6 +15,14 @@ export interface CustomerListRow extends Customer {
   readonly outstandingMinor: number;
   readonly invoiceCount: number;
   readonly paymentCount: number;
+}
+
+/** Mirrors InvoiceWithLines' own shape (invoices.service.ts) for the same
+ * reason: a small, bounded child collection that always travels with its
+ * parent on a single fetch, not a separately-paginated list of its own —
+ * Zoho-sourced (FR-ZHO-030), read-only from this app's side today. */
+export interface CustomerWithContacts extends Customer {
+  readonly contactPersons: CustomerContactPerson[];
 }
 
 export interface CustomerListResult {
@@ -164,9 +172,17 @@ export class CustomersService {
     }));
   }
 
-  async findOne(scope: Scope, brandId: string, id: string): Promise<Customer> {
+  async findOne(scope: Scope, brandId: string, id: string): Promise<CustomerWithContacts> {
     const customer = await this.prisma.withScope(scope, (tx) =>
-      tx.customer.findFirst({ where: { id, brandId } }),
+      tx.customer.findFirst({
+        where: { id, brandId },
+        // Primary contact first, then whatever order Zoho returned the rest
+        // in (createdAt asc, since contact_persons carries no ordering hint
+        // of its own from the API).
+        include: {
+          contactPersons: { orderBy: [{ isPrimaryContact: 'desc' }, { createdAt: 'asc' }] },
+        },
+      }),
     );
     if (!customer) throw new NotFoundException('customer not found');
     return customer;

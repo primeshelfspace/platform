@@ -10,7 +10,11 @@ import {
 import type { Customer } from '@prisma/client';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
-import { CustomersService, type CustomerListResult } from './customers.service.js';
+import {
+  CustomersService,
+  type CustomerListResult,
+  type CustomerWithContacts,
+} from './customers.service.js';
 
 /**
  * FR-CUS. Nested under the brand so the guard's default brandFrom: 'params'
@@ -37,7 +41,7 @@ export class CustomersController {
     @CurrentScope() scope: Scope,
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('id', zodPipe(idSchema)) id: string,
-  ): Promise<Customer> {
+  ): Promise<CustomerWithContacts> {
     return this.customers.findOne(scope, brandId, id);
   }
 

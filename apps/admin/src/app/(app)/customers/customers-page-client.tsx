@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Users } from 'lucide-react';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { Toggle } from '@/components/ui/toggle';
-import type { Brand, Customer, CustomerListRow, Invoice } from '@/lib/api';
+import type { Brand, Customer, CustomerListRow, CustomerWithContacts, Invoice } from '@/lib/api';
 import { AddCustomerModal } from './add-customer-modal';
 import { CustomerDetailDrawer } from './customer-detail-drawer';
 import { getCustomerDetailAction } from './actions';
@@ -53,7 +53,10 @@ export function CustomersPageClient({
   // it already knows rather than waiting on a round-trip first.
   const [detailRow, setDetailRow] = useState<CustomerListRow | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [detail, setDetail] = useState<{ customer: Customer; invoices: Invoice[] } | null>(null);
+  const [detail, setDetail] = useState<{
+    customer: CustomerWithContacts;
+    invoices: Invoice[];
+  } | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
 
   function openCustomerDetail(row: CustomerListRow) {

@@ -7,6 +7,7 @@ import {
   type Customer,
   type CustomerAddress,
   type CustomerFormInput,
+  type CustomerWithContacts,
   type Invoice,
 } from '@/lib/api';
 import { addressFromForm, describeActionError, emptyToNull } from '@/lib/form';
@@ -69,7 +70,7 @@ export async function createCustomerAction(
 }
 
 export interface CustomerDetailResult {
-  readonly customer?: Customer;
+  readonly customer?: CustomerWithContacts;
   readonly invoices?: Invoice[];
   readonly error?: string;
 }
