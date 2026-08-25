@@ -827,7 +827,14 @@ export interface PaymentTransaction {
   method: 'CARD' | 'WALLET' | 'ACH' | 'CHECK' | 'MANUAL';
   amountMinor: number;
   currency: string;
-  status: 'INITIATED' | 'PROCESSING' | 'SETTLED' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | 'CANCELLED';
+  status:
+    | 'INITIATED'
+    | 'PROCESSING'
+    | 'SETTLED'
+    | 'FAILED'
+    | 'REFUNDED'
+    | 'PARTIALLY_REFUNDED'
+    | 'CANCELLED';
   createdAt: string;
   settledAt: string | null;
 }

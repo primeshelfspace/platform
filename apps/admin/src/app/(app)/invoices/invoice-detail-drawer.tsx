@@ -45,7 +45,10 @@ function SyncBadge({ synced }: { synced: boolean }) {
         synced ? 'bg-success-surface text-success' : 'bg-danger-surface text-danger'
       }`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${synced ? 'bg-success' : 'bg-danger'}`} aria-hidden />
+      <span
+        className={`h-1.5 w-1.5 rounded-full ${synced ? 'bg-success' : 'bg-danger'}`}
+        aria-hidden
+      />
       {synced ? 'Synced' : 'Not Synced'}
     </span>
   );
@@ -234,7 +237,9 @@ export function InvoiceDetailDrawer({
                 {paymentTermsLabel && (
                   <div>
                     <p className="text-sm text-ink-muted">Payment Terms</p>
-                    <p className="mt-1 text-sm font-semibold text-ink-strong">{paymentTermsLabel}</p>
+                    <p className="mt-1 text-sm font-semibold text-ink-strong">
+                      {paymentTermsLabel}
+                    </p>
                   </div>
                 )}
                 <div>
@@ -339,7 +344,10 @@ export function InvoiceDetailDrawer({
                   ) : (
                     <ul className="divide-y divide-[#E5E7EB]">
                       {activity.map((entry, i) => (
-                        <li key={i} className="flex items-center justify-between gap-4 py-3.5 text-sm">
+                        <li
+                          key={i}
+                          className="flex items-center justify-between gap-4 py-3.5 text-sm"
+                        >
                           <span className="font-medium text-ink-strong">{eventLabel(entry)}</span>
                           <span className="shrink-0 text-xs text-ink-muted">
                             {new Date(entry.occurredAt).toLocaleString()}

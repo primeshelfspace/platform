@@ -69,7 +69,10 @@ export type ActionResult<T> =
 /** The drawer's "Send" button (draft only) — Draft → Sent, the same
  * transition the "New Invoice" flow already triggers on create. Fires
  * before sendInvoiceEmailAction on a first send, never on a resend. */
-export async function issueInvoiceAction(brandId: string, id: string): Promise<ActionResult<Invoice>> {
+export async function issueInvoiceAction(
+  brandId: string,
+  id: string,
+): Promise<ActionResult<Invoice>> {
   try {
     const invoice = await issueInvoice(brandId, id);
     revalidatePath('/invoices');

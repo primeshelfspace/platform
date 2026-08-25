@@ -8,8 +8,7 @@ import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import type { Brand, InvoiceDetail } from '@/lib/api';
 import { getInvoiceEmailDraftAction, issueInvoiceAction, sendInvoiceEmailAction } from './actions';
 
-const PAYMENT_PUBLIC_URL =
-  process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
+const PAYMENT_PUBLIC_URL = process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
 
 // Deliberately not RFC-5322-exact — same tradeoff every other email field in
 // this app makes (the server's emailSchema is the real gate; this is just
@@ -70,9 +69,15 @@ function EmailPreview({
       <div className="p-6">
         <p className="text-base font-bold text-ink-strong">{subject}</p>
         <div className="mt-3 space-y-3 text-sm text-ink-muted">
-          {body.split('\n').map((line, index) =>
-            line.trim() ? <p key={index}>{line}</p> : <div key={index} className="h-1" aria-hidden />,
-          )}
+          {body
+            .split('\n')
+            .map((line, index) =>
+              line.trim() ? (
+                <p key={index}>{line}</p>
+              ) : (
+                <div key={index} className="h-1" aria-hidden />
+              ),
+            )}
         </div>
 
         <a
@@ -100,9 +105,7 @@ function EmailPreview({
             </div>
             <div className="flex justify-between px-4 py-2.5">
               <dt className="text-ink-muted">Due date</dt>
-              <dd className="font-bold text-ink-strong">
-                {formatDateForDisplay(invoice.dueDate)}
-              </dd>
+              <dd className="font-bold text-ink-strong">{formatDateForDisplay(invoice.dueDate)}</dd>
             </div>
           </dl>
         </div>
@@ -236,7 +239,11 @@ export function SendInvoiceModal({
   const ccHasError = composeError?.kind === 'invalid-cc';
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
         <div className="flex items-start justify-between gap-4 border-b border-[#E5E7EB] px-6 py-4">
           <div className="min-w-0">
@@ -270,7 +277,13 @@ export function SendInvoiceModal({
               <p className="mt-1 font-mono text-xs">{loadError}</p>
             </div>
           ) : view === 'preview' ? (
-            <EmailPreview brand={brand} subject={subject} body={body} invoice={invoice} viewUrl={viewUrl} />
+            <EmailPreview
+              brand={brand}
+              subject={subject}
+              body={body}
+              invoice={invoice}
+              viewUrl={viewUrl}
+            />
           ) : (
             <div className="space-y-4">
               <div className="flex items-center gap-2 text-sm">
@@ -315,7 +328,9 @@ export function SendInvoiceModal({
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-ink-strong">CC (optional)</span>
+                <span className="mb-1 block text-sm font-medium text-ink-strong">
+                  CC (optional)
+                </span>
                 <input
                   type="email"
                   value={cc}
@@ -405,7 +420,11 @@ export function SendInvoiceModal({
                 className="inline-flex h-9 items-center rounded-lg bg-black px-4 text-sm font-bold text-white
                            transition-colors hover:bg-neutral-800 disabled:opacity-60"
               >
-                {sending ? 'Sending…' : composeError?.kind === 'send-failed' ? 'Retry Send' : sendLabel}
+                {sending
+                  ? 'Sending…'
+                  : composeError?.kind === 'send-failed'
+                    ? 'Retry Send'
+                    : sendLabel}
               </button>
             </div>
           </div>

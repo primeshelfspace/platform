@@ -43,7 +43,10 @@ const METHOD_LABEL: Record<PaymentTransaction['method'], string> = {
   MANUAL: 'Manual',
 };
 
-const STATUS_STYLE: Record<PaymentTransaction['status'], { dot: string; text: string; label: string }> = {
+const STATUS_STYLE: Record<
+  PaymentTransaction['status'],
+  { dot: string; text: string; label: string }
+> = {
   SETTLED: { dot: 'bg-success', text: 'text-success', label: 'Success' },
   REFUNDED: { dot: 'bg-success', text: 'text-success', label: 'Refunded' },
   PARTIALLY_REFUNDED: { dot: 'bg-warning', text: 'text-warning', label: 'Partially refunded' },
@@ -177,9 +180,7 @@ function GatewayList({
 
   return (
     <div className="mt-4 space-y-3">
-      {error && (
-        <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">{error}</div>
-      )}
+      {error && <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">{error}</div>}
       {gateways.map((gateway) => (
         <div
           key={gateway.provider}
@@ -224,7 +225,9 @@ function GatewayList({
           ) : (
             <button
               type="button"
-              onClick={() => void connect(gateway.provider as Exclude<PaymentGatewayProvider, 'STRIPE'>)}
+              onClick={() =>
+                void connect(gateway.provider as Exclude<PaymentGatewayProvider, 'STRIPE'>)
+              }
               disabled={connecting === gateway.provider}
               className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black disabled:opacity-60"
             >
@@ -543,9 +546,7 @@ function TransactionLog({ initial }: { initial: PaymentTransactionListResponse }
       </div>
 
       {transactions.length === 0 ? (
-        <p className="px-5 py-8 text-center text-sm text-ink-muted sm:px-6">
-          No transactions yet.
-        </p>
+        <p className="px-5 py-8 text-center text-sm text-ink-muted sm:px-6">No transactions yet.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
