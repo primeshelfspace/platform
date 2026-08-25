@@ -45,9 +45,7 @@ function makeController(overrides: { queueEnqueue?: ReturnType<typeof vi.fn> } =
       apiDomain: 'https://www.zohoapis.com',
       expiresAt: new Date(Date.now() + 3600_000),
     }),
-    listOrganizations: vi
-      .fn()
-      .mockResolvedValue([{ organizationId: 'org-1', name: 'Test Org' }]),
+    listOrganizations: vi.fn().mockResolvedValue([{ organizationId: 'org-1', name: 'Test Org' }]),
   } as unknown as ZohoBooksAdapter;
 
   const connections = {

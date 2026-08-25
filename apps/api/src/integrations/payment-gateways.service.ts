@@ -93,7 +93,11 @@ export class PaymentGatewaysService {
 
   /** Marks a manual gateway connected. Rejects STRIPE — that one goes through
    * StripeAccountController's real OAuth redirect instead. */
-  async connectManual(scope: Scope, brandId: string, provider: PaymentGatewayProvider): Promise<void> {
+  async connectManual(
+    scope: Scope,
+    brandId: string,
+    provider: PaymentGatewayProvider,
+  ): Promise<void> {
     if (!isManualProvider(provider)) {
       throw new BadRequestException(
         `${provider} connects through its own authorisation flow, not this endpoint`,

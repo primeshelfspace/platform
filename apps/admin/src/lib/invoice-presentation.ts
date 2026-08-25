@@ -72,13 +72,7 @@ export function invoiceListStatusDot(status: InvoiceListStatus): string {
  * The `overdue` overlay still wins over all of those, same as the list.
  */
 export type InvoiceDetailStatus =
-  | 'DRAFT'
-  | 'SENT'
-  | 'VIEWED'
-  | 'PARTIAL'
-  | 'OVERDUE'
-  | 'PAID'
-  | 'CANCELLED';
+  'DRAFT' | 'SENT' | 'VIEWED' | 'PARTIAL' | 'OVERDUE' | 'PAID' | 'CANCELLED';
 
 export function invoiceDetailStatus(invoice: {
   status: string;

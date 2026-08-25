@@ -117,26 +117,32 @@ describe('ZohoBooksAdapter.listContactsPage', () => {
     expiresAt: null,
   };
 
-  it('asks Zoho for every contact status, not just active ones — a customer\'s ' +
-    'sync-status archiving depends on seeing it even after Zoho deactivates it', async () => {
-    const requestedUrls: string[] = [];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: URL) => {
-        requestedUrls.push(url.toString());
-        return new Response(JSON.stringify({ contacts: [], page_context: { has_more_page: false } }), {
-          status: 200,
-        });
-      }),
-    );
+  it(
+    "asks Zoho for every contact status, not just active ones — a customer's " +
+      'sync-status archiving depends on seeing it even after Zoho deactivates it',
+    async () => {
+      const requestedUrls: string[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: URL) => {
+          requestedUrls.push(url.toString());
+          return new Response(
+            JSON.stringify({ contacts: [], page_context: { has_more_page: false } }),
+            {
+              status: 200,
+            },
+          );
+        }),
+      );
 
-    await envAdapter.listContactsPage(connection, 1);
+      await envAdapter.listContactsPage(connection, 1);
 
-    expect(requestedUrls).toHaveLength(1);
-    const url = new URL(requestedUrls[0]!);
-    expect(url.pathname).toBe('/books/v3/contacts');
-    expect(url.searchParams.get('filter_by')).toBe('Status.All');
-    expect(url.searchParams.get('page')).toBe('1');
-    expect(url.searchParams.get('organization_id')).toBe('org-1');
-  });
+      expect(requestedUrls).toHaveLength(1);
+      const url = new URL(requestedUrls[0]!);
+      expect(url.pathname).toBe('/books/v3/contacts');
+      expect(url.searchParams.get('filter_by')).toBe('Status.All');
+      expect(url.searchParams.get('page')).toBe('1');
+      expect(url.searchParams.get('organization_id')).toBe('org-1');
+    },
+  );
 });

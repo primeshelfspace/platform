@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ChevronDown, ChevronRight, Link2, Loader2, RefreshCw, Unlink } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  Link2,
+  Loader2,
+  RefreshCw,
+  Unlink,
+} from 'lucide-react';
 import type { ZohoActivityEntry, ZohoConnectionStatus, ZohoSyncSettingsPatch } from '@/lib/api';
 import { Toggle } from '@/components/ui/toggle';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';

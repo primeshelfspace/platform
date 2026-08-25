@@ -1,4 +1,9 @@
-import type { MailPort, MailDeliveryEvent, RenderPreviewInput, SendMailInput } from '@fenwick/shared';
+import type {
+  MailPort,
+  MailDeliveryEvent,
+  RenderPreviewInput,
+  SendMailInput,
+} from '@fenwick/shared';
 
 /**
  * Zero-op stand-in for tests that need an InvoicesService instance but have

@@ -78,7 +78,9 @@ export class PaymentsService {
       const [rows, total] = await Promise.all([
         tx.payment.findMany({
           where,
-          include: { invoice: { select: { number: true, customer: { select: { displayName: true } } } } },
+          include: {
+            invoice: { select: { number: true, customer: { select: { displayName: true } } } },
+          },
           orderBy: { createdAt: 'desc' },
           skip: (query.page - 1) * query.pageSize,
           take: query.pageSize,

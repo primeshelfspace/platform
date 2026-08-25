@@ -18,7 +18,11 @@ import {
   type MailPort,
   type Scope,
 } from '@fenwick/shared';
-import { formatBrandAddress, parseFrom, renderEmailReceiptHtml } from '../brands/brand-settings.service.js';
+import {
+  formatBrandAddress,
+  parseFrom,
+  renderEmailReceiptHtml,
+} from '../brands/brand-settings.service.js';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
