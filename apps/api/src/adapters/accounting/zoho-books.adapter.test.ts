@@ -100,8 +100,14 @@ describe('ZohoBooksAdapter.listContactsPage', () => {
   // The shared `adapter` above has no ZOHO_API_DOMAIN (env is `{}`), which
   // request() needs as the base URL for a real HTTP call — this test is the
   // one in the file that actually issues one (against a stubbed fetch), so
-  // it needs a real-shaped env.
-  const envAdapter = new ZohoBooksAdapter({ ZOHO_API_DOMAIN: 'https://www.zohoapis.com' } as Env);
+  // it needs a real-shaped env. request() also gates every call through
+  // RedisService's rate-limit token bucket (see waitForRateSlot), so unlike
+  // the shared `adapter` above, this one needs a real (if stubbed) redis
+  // whose acquireRateToken always grants a slot.
+  const envAdapter = new ZohoBooksAdapter(
+    { ZOHO_API_DOMAIN: 'https://www.zohoapis.com' } as Env,
+    { acquireRateToken: vi.fn().mockResolvedValue(true) } as unknown as RedisService,
+  );
 
   const connection: AccountingConnection = {
     brandId: 'brand-1',
