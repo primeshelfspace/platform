@@ -224,6 +224,12 @@ describeWithDb('ZohoPullService', () => {
         brandId: string,
         connection: AccountingConnection,
       ) => Promise<number>;
+      pullPaymentsIfDue: (
+        scope: RequestScope,
+        brandId: string,
+        connection: AccountingConnection,
+        force: boolean,
+      ) => Promise<number>;
     };
   }
 
@@ -357,6 +363,76 @@ describeWithDb('ZohoPullService', () => {
     expect(zoho.getContactCalls).toBe(2);
 
     await redis.invalidate(floorKey);
+  });
+
+  it('floors the full payments scan, but a forced pull always bypasses it', async () => {
+    const zoho = new FakeZohoBooksAdapter();
+    const contactId = `pay-floor-contact-${randomUUID()}`;
+    const invoiceId = `pay-floor-invoice-${randomUUID()}`;
+    const paymentId = `pay-floor-payment-${randomUUID()}`;
+
+    zoho.contacts.set(contactId, fakeContact(contactId, 'Payment Floor Test Co'));
+    zoho.invoices.set(
+      invoiceId,
+      fakeInvoice(invoiceId, `INV-PF-${randomUUID().slice(0, 8)}`, contactId),
+    );
+    zoho.payments.set(paymentId, fakePayment(paymentId, contactId, invoiceId));
+    zoho.listedPayments = [
+      { payment_id: paymentId, date: '2026-08-05', payment_mode: 'banktransfer', amount: 100 },
+    ];
+
+    // Same key ZohoPullService.pullPaymentsIfDue uses — cleared first so an
+    // earlier run against this same seeded brand can't leave the floor set.
+    const floorKey = `zoho:payments-scanned:${brandId}`;
+    await redis.invalidate(floorKey);
+
+    const svc = service(zoho, redis);
+
+    const first = await svc.pullPaymentsIfDue(scope, brandId, connection, false);
+    expect(first).toBe(1);
+    expect(zoho.getPaymentCalls).toBe(1);
+
+    // Same brand, unforced, immediately after — the scan is floored, so this
+    // must not touch Zoho again (no listPaymentsPage call either, but that's
+    // only observable indirectly here via getPaymentCalls staying put).
+    const second = await svc.pullPaymentsIfDue(scope, brandId, connection, false);
+    expect(second).toBe(0);
+    expect(zoho.getPaymentCalls).toBe(1);
+
+    // force: true is what the on-demand "pull now" endpoint sets — it must
+    // get a real scan even though the floor is still active. The payment was
+    // already pulled above, so this re-scans but finds nothing new to fetch.
+    const third = await svc.pullPaymentsIfDue(scope, brandId, connection, true);
+    expect(third).toBe(0);
+    expect(zoho.getPaymentCalls).toBe(1);
+
+    await redis.invalidate(floorKey);
+  });
+
+  it('archives a customer whose Zoho contact is inactive, and re-activates it if Zoho flips back', async () => {
+    const zoho = new FakeZohoBooksAdapter();
+    const contactId = `status-contact-${randomUUID()}`;
+    zoho.contacts.set(contactId, {
+      ...fakeContact(contactId, 'Status Test Co'),
+      status: 'inactive',
+    });
+
+    const svc = service(zoho);
+    await svc.pullOneCustomer(scope, brandId, connection, contactId);
+
+    let customer = await owner.customer.findFirst({ where: { brandId, zohoContactId: contactId } });
+    expect(customer?.status).toBe('ARCHIVED');
+
+    // Zoho flips the contact back to active on a re-pull — status must
+    // follow it back, not stay stuck archived.
+    zoho.contacts.set(contactId, {
+      ...fakeContact(contactId, 'Status Test Co'),
+      status: 'active',
+    });
+    await svc.pullOneCustomer(scope, brandId, connection, contactId);
+
+    customer = await owner.customer.findFirst({ where: { brandId, zohoContactId: contactId } });
+    expect(customer?.status).toBe('ACTIVE');
   });
 
   it('pulls contact persons, then updates and trims them on a re-pull', async () => {

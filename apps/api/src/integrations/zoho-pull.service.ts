@@ -46,10 +46,33 @@ const PULL_DETAIL_CONCURRENCY = 8;
  * frequency: at most one full contact scan per window, tracked in Redis
  * rather than a new column since it is a pacing decision, not sync state
  * anything else needs to read. A manual "pull now" (pullBrand's
- * forceFullContactScan) bypasses it — someone who just fixed a customer's
+ * forceFullScan) bypasses it — someone who just fixed a customer's
  * details in Zoho and asked for a pull right now should get one.
  */
 const CONTACTS_FULL_SCAN_FLOOR_SECONDS = 15 * 60;
+
+/**
+ * Same problem, same fix, for customer payments: Zoho exposes no
+ * modified-time field on payments at all (see ZohoBooksAdapter's "Pull"
+ * notes), so pullPayments must page through every payment the brand has on
+ * every single pull, regardless of frequency. pullOnePayment's own
+ * already-pulled check (payment_zoho_payment_id_idx) already skips the
+ * per-record getPayment call for anything seen before, but that does
+ * nothing about the listPaymentsPage calls themselves - for a brand with a
+ * large payment history on a "Realtime" (1-minute) schedule, those list
+ * calls alone are the real recurring cost. Floored the same way contacts
+ * is, independent of the brand's configured frequency, with the same
+ * force-bypass for an on-demand "pull now".
+ */
+const PAYMENTS_FULL_SCAN_FLOOR_SECONDS = 15 * 60;
+
+/** Zoho's contact archive flag ('active' | 'inactive', ZohoContactListItem.status)
+ * onto our Customer.status. Undefined is a defensive fallback only - Status.All
+ * (see listContactsPage) should always return one - and reads as ACTIVE, the
+ * same default the column itself has. */
+function mapContactStatus(status: string | undefined): 'ACTIVE' | 'ARCHIVED' {
+  return status === 'inactive' ? 'ARCHIVED' : 'ACTIVE';
+}
 
 /** Zoho's invoice status vocabulary onto ours. Zoho has no direct
  * counterpart to our overdue tracking (a separate boolean flag here, not a
@@ -94,10 +117,11 @@ export class ZohoPullService {
   ) {}
 
   /**
-   * @param forceFullContactScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS —
-   * set by the on-demand "pull now" endpoint, never by the scheduled tick.
+   * @param forceFullScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS and
+   * PAYMENTS_FULL_SCAN_FLOOR_SECONDS — set by the on-demand "pull now"
+   * endpoint, never by the scheduled tick.
    */
-  async pullBrand(brandId: string, forceFullContactScan = false): Promise<PullCounts> {
+  async pullBrand(brandId: string, forceFullScan = false): Promise<PullCounts> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-pull');
     if (!scope) return { customers: 0, invoices: 0, payments: 0 };
     const connection = await this.connections.buildAccountingConnection(scope, brandId);
@@ -121,9 +145,9 @@ export class ZohoPullService {
     // wall-clock time this removes (that overlap window only exists among
     // records that changed since the very last pull).
     const [customers, invoices, payments] = await Promise.all([
-      this.pullCustomersIfDue(scope, brandId, connection, cursor, forceFullContactScan),
+      this.pullCustomersIfDue(scope, brandId, connection, cursor, forceFullScan),
       this.pullInvoices(scope, brandId, connection, cursor),
-      this.pullPayments(scope, brandId, connection),
+      this.pullPaymentsIfDue(scope, brandId, connection, forceFullScan),
     ]);
 
     await this.connections.recordPullRun(scope, brandId, pullStartedAt);
@@ -212,6 +236,7 @@ export class ZohoPullService {
         lastName: contact.last_name ?? null,
         email: contact.email ?? null,
         phone: contact.phone ?? null,
+        status: mapContactStatus(contact.status),
         billingAddress: (this.zoho.fromZohoAddress(contact.billing_address) ??
           Prisma.JsonNull) as Prisma.InputJsonValue,
         shippingAddress: (this.zoho.fromZohoAddress(contact.shipping_address) ??
@@ -495,6 +520,23 @@ export class ZohoPullService {
   }
 
   // --- Customer payments ---------------------------------------------------
+
+  /** Same shape as pullCustomersIfDue, for the same reason — see
+   * PAYMENTS_FULL_SCAN_FLOOR_SECONDS. */
+  private async pullPaymentsIfDue(
+    scope: Scope,
+    brandId: string,
+    connection: AccountingConnection,
+    force: boolean,
+  ): Promise<number> {
+    const floorKey = `zoho:payments-scanned:${brandId}`;
+    if (!force && (await this.redis.getJson<boolean>(floorKey))) {
+      return 0;
+    }
+    const touched = await this.pullPayments(scope, brandId, connection);
+    await this.redis.setJson(floorKey, true, PAYMENTS_FULL_SCAN_FLOOR_SECONDS);
+    return touched;
+  }
 
   private async pullPayments(
     scope: Scope,

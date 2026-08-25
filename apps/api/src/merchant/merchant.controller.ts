@@ -14,7 +14,7 @@ import {
   companyDetailsSchema,
   type BrandStructureChoiceInput,
   type CompanyDetailsInput,
-  type Scope,
+  type Scope, 
 } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
