@@ -164,9 +164,14 @@ export class ZohoConnectController {
     @Res() response: Response,
   ): Promise<void> {
     const adminUrl = this.env.ADMIN_PUBLIC_URL;
+    // The Zoho integration now lives on Brand Settings' Integrations tab
+    // (IntegrationsPanel's new list/detail design), not the old standalone
+    // /settings/integrations page — every redirect below must land back on
+    // that same screen, not the design it replaced.
+    const settingsUrl = `${adminUrl}/brand-settings?tab=integrations&integration=zoho`;
 
     if (error) {
-      response.redirect(`${adminUrl}/settings/integrations?error=${encodeURIComponent(error)}`);
+      response.redirect(`${settingsUrl}&error=${encodeURIComponent(error)}`);
       return;
     }
     if (!code || !state) {
@@ -175,7 +180,7 @@ export class ZohoConnectController {
 
     const verified = verifyOAuthState(state, 'zoho', this.env.SESSION_SECRET);
     if (!verified) {
-      response.redirect(`${adminUrl}/settings/integrations?error=invalid_or_expired_state`);
+      response.redirect(`${settingsUrl}&error=invalid_or_expired_state`);
       return;
     }
     const { brandId } = verified;
@@ -185,9 +190,7 @@ export class ZohoConnectController {
       const organizations = await this.zoho.listOrganizations(tokens.accessToken, tokens.apiDomain);
 
       if (organizations.length === 0) {
-        response.redirect(
-          `${adminUrl}/settings/integrations?brandId=${brandId}&error=no_organizations`,
-        );
+        response.redirect(`${settingsUrl}&brandId=${brandId}&error=no_organizations`);
         return;
       }
       // More than one organization on the authorizing account picks the
@@ -197,7 +200,7 @@ export class ZohoConnectController {
 
       const scope = await this.systemScope.forBrand(brandId, 'zoho-oauth-callback');
       if (!scope) {
-        response.redirect(`${adminUrl}/settings/integrations?error=unknown_brand`);
+        response.redirect(`${settingsUrl}&brandId=${brandId}&error=unknown_brand`);
         return;
       }
 
@@ -235,12 +238,10 @@ export class ZohoConnectController {
         );
       }
 
-      response.redirect(`${adminUrl}/settings/integrations?brandId=${brandId}&connected=1`);
+      response.redirect(`${settingsUrl}&brandId=${brandId}&connected=1`);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
-      response.redirect(
-        `${adminUrl}/settings/integrations?brandId=${brandId}&error=${encodeURIComponent(message)}`,
-      );
+      response.redirect(`${settingsUrl}&brandId=${brandId}&error=${encodeURIComponent(message)}`);
     }
   }
 }

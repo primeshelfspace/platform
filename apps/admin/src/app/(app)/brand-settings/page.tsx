@@ -148,12 +148,33 @@ async function loadInvoicePdfPreview(brandId: string): Promise<InvoicePdfPreview
  * All three Branding sub-tabs (Payment Page, Email Receipt, Invoice PDF) are
  * built.
  */
+/** Mirrors the old /settings/integrations page's own map — the Zoho OAuth
+ * callback (zoho-connect.controller.ts) now redirects here instead, and its
+ * `error` codes are unchanged. */
+const ZOHO_ERROR_MESSAGES: Record<string, string> = {
+  missing_brand: 'No brand was selected.',
+  connect_failed: 'Could not reach the API to start the Zoho connection.',
+  invalid_or_expired_state: 'That connection link expired — start again.',
+  no_organizations: 'That Zoho account has no organizations in Zoho Books to connect.',
+  unknown_brand: 'This brand could not be resolved.',
+};
+
 export default async function BrandSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brandId?: string; tab?: string; sub?: string; integration?: string }>;
+  searchParams: Promise<{
+    brandId?: string;
+    tab?: string;
+    sub?: string;
+    integration?: string;
+    connected?: string;
+    error?: string;
+  }>;
 }) {
   const params = await searchParams;
+  const zohoErrorMessage = params.error
+    ? (ZOHO_ERROR_MESSAGES[params.error] ?? params.error)
+    : null;
 
   // Unguarded, this threw straight to the root error boundary's generic
   // "Something went wrong" on anything from a dropped connection to a
@@ -260,24 +281,36 @@ export default async function BrandSettingsPage({
             Could not load connection status: {integrationsError}
           </div>
         ) : (
-          <IntegrationsPanel
-            // Forces a fresh mount on every brand switch — the panel's own
-            // ZohoDetail keeps its connection status in client state
-            // (useState(initialStatus)), which React does not reset just
-            // because a prop changed. Without this key, switching brands via
-            // the sidebar's client-side navigation (admin-shell.tsx's
-            // onBrandChange, a router.push with no full reload) left the
-            // PREVIOUS brand's Zoho status on screen — looking exactly like
-            // one brand's connection had bled into another's, even though
-            // every query underneath is already correctly scoped by brandId.
-            key={brand.id}
-            brandId={brand.id}
-            brandDisplayName={brand.displayName}
-            connectHref={`/settings/zoho/connect?brandId=${brand.id}`}
-            initialStatus={integrationsProps!.status}
-            initialActivity={integrationsProps!.activity}
-            selected={params.integration === 'zoho' ? 'zoho' : null}
-          />
+          <>
+            {params.connected && (
+              <div className="mt-3 rounded-md bg-success-surface p-3 text-sm text-success">
+                Connected.
+              </div>
+            )}
+            {zohoErrorMessage && (
+              <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">
+                {zohoErrorMessage}
+              </div>
+            )}
+            <IntegrationsPanel
+              // Forces a fresh mount on every brand switch — the panel's own
+              // ZohoDetail keeps its connection status in client state
+              // (useState(initialStatus)), which React does not reset just
+              // because a prop changed. Without this key, switching brands via
+              // the sidebar's client-side navigation (admin-shell.tsx's
+              // onBrandChange, a router.push with no full reload) left the
+              // PREVIOUS brand's Zoho status on screen — looking exactly like
+              // one brand's connection had bled into another's, even though
+              // every query underneath is already correctly scoped by brandId.
+              key={brand.id}
+              brandId={brand.id}
+              brandDisplayName={brand.displayName}
+              connectHref={`/settings/zoho/connect?brandId=${brand.id}`}
+              initialStatus={integrationsProps!.status}
+              initialActivity={integrationsProps!.activity}
+              selected={params.integration === 'zoho' ? 'zoho' : null}
+            />
+          </>
         )
       ) : (
         <>
