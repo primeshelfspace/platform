@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@fenwick/shared';
+import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -28,7 +29,7 @@ describeWithDb('PublicInvoicesService', () => {
   const prisma = new PrismaService(env!);
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
-  const invoices = new InvoicesService(prisma, queue);
+  const invoices = new InvoicesService(prisma, queue, createFakeMailPort(), env!);
   // Local disk is the right storage here: these tests assert invoice data, and
   // a real bucket would make them depend on credentials and the network.
   const publicInvoices = new PublicInvoicesService(

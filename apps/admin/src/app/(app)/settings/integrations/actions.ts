@@ -1,8 +1,13 @@
 'use server';
 
 import {
+  connectPaymentGateway,
+  disconnectPaymentGateway,
   disconnectZoho,
+  updatePaymentMethodSettings,
   updateZohoSyncSettings,
+  type PaymentGatewayProvider,
+  type PaymentMethodSettings,
   type ZohoConnectionStatus,
   type ZohoSyncSettingsPatch,
 } from '@/lib/api';
@@ -37,5 +42,51 @@ export async function disconnectZohoAction(brandId: string): Promise<ActionResul
     return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: describeActionError(error, 'Could not disconnect Zoho Books.') };
+  }
+}
+
+/** PayPal, Square or Authorize.net's "Connect" button on the Payment
+ * Gateways list — Stripe instead links straight to stripeConnectUrl's OAuth
+ * redirect, so it never calls this. */
+export async function connectPaymentGatewayAction(
+  brandId: string,
+  provider: Exclude<PaymentGatewayProvider, 'STRIPE'>,
+): Promise<ActionResult<{ ok: true }>> {
+  try {
+    const result = await connectPaymentGateway(brandId, provider);
+    return { ok: true, data: result };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not connect this gateway.') };
+  }
+}
+
+/** Behind the "Disconnect ⟨gateway⟩?" confirmation dialog, for any of the
+ * four gateways — the API dispatches to Stripe's own deauthorisation
+ * server-side when provider is STRIPE. */
+export async function disconnectPaymentGatewayAction(
+  brandId: string,
+  provider: PaymentGatewayProvider,
+): Promise<ActionResult<{ ok: true }>> {
+  try {
+    const result = await disconnectPaymentGateway(brandId, provider);
+    return { ok: true, data: result };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not disconnect this gateway.') };
+  }
+}
+
+/** Called directly from each Payment Methods toggle's onChange, same
+ * immediate-save convention as updateZohoSyncSettingsAction above — the
+ * caller sends the full settings object (its own state merged with the one
+ * field that changed) since the API's PATCH replaces the whole record. */
+export async function updatePaymentMethodSettingsAction(
+  brandId: string,
+  settings: PaymentMethodSettings,
+): Promise<ActionResult<PaymentMethodSettings>> {
+  try {
+    const result = await updatePaymentMethodSettings(brandId, settings);
+    return { ok: true, data: result };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not save this setting.') };
   }
 }

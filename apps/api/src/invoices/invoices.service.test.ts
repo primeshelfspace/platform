@@ -7,6 +7,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CustomerInput, InvoiceDraftInput, RequestScope } from '@fenwick/shared';
+import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -23,7 +24,7 @@ describeWithDb('InvoicesService', () => {
   const prisma = new PrismaService(env!);
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
-  const invoices = new InvoicesService(prisma, queue);
+  const invoices = new InvoicesService(prisma, queue, createFakeMailPort(), env!);
   const owner = new PrismaClient({
     datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
   });

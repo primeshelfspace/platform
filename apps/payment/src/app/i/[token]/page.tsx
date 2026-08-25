@@ -1,20 +1,16 @@
-import { terminalStatusLabel } from '@fenwick/shared';
 import { brandThemeVariables } from '@fenwick/shared/tokens';
 import { lookupInvoice } from '@/lib/invoice';
-import { PaymentFlow } from './payment-flow';
-import { PaymentPageShell } from './payment-page-shell';
+import { InvoiceDocument } from './invoice-document';
 
 // Never cached, never statically rendered: a balance is not a static value.
 export const dynamic = 'force-dynamic';
 
 /**
- * The public invoice page (TDD-001 §12.1). Card, ACH, processing, success,
- * pending and failure all work against FakeGateway; Numbers Gateway itself
- * remains blocked on DEP-01, and check upload and wallets are not built yet.
- *
- * Brand chrome (PaymentPageShell) renders whichever of Banner/Centered/Split
- * this brand picked in Brand Settings > Branding > Payment Page — the same
- * setting the admin editor previews, actually applied here.
+ * The public invoice page — the invoice document alone (InvoiceDocument,
+ * sized and laid out exactly like the admin's Invoice PDF preview), at
+ * whatever status the invoice is actually in. No payment flow lives here
+ * anymore (PaymentPageShell/PaymentFlow, removed at the user's request);
+ * this is a view-only link, not a checkout page.
  */
 export default async function InvoicePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
@@ -38,24 +34,9 @@ export default async function InvoicePage({ params }: { params: Promise<{ token:
   const { invoice } = result;
   const theme = brandThemeVariables(invoice.brand.themeColor);
 
-  // FR-PAY-014: an invoice that is already settled or void gets the same
-  // terminal treatment as an unknown token — no payment form, ever.
-  const settledLabel = terminalStatusLabel(invoice.status);
-  if (settledLabel !== null) {
-    return (
-      <div style={theme as React.CSSProperties}>
-        <PaymentPageShell invoice={invoice}>
-          <p className="text-center text-sm font-medium text-ink-strong">{settledLabel}</p>
-        </PaymentPageShell>
-      </div>
-    );
-  }
-
   return (
-    <div style={theme as React.CSSProperties}>
-      <PaymentPageShell invoice={invoice}>
-        <PaymentFlow invoice={invoice} token={token} />
-      </PaymentPageShell>
+    <div className="min-h-full" style={theme as React.CSSProperties}>
+      <InvoiceDocument invoice={invoice} />
     </div>
   );
 }
@@ -77,7 +58,7 @@ function Terminal() {
 }
 
 /** Unbranded fallback for the two states above where no brand is known yet
- * (or ever will be) — PaymentPageShell needs a real invoice to lay out. */
+ * (or ever will be) — InvoiceDocument needs a real invoice to lay out. */
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto flex min-h-full max-w-md flex-col justify-center px-6 py-16">

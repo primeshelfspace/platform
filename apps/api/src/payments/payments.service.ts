@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
-import type { Payment } from '@prisma/client';
+import type { Payment, Prisma } from '@prisma/client';
 import {
   IntegrationError,
   PAYMENT_GATEWAY_PORT,
@@ -8,10 +8,12 @@ import {
   evaluateTransition,
   type CurrencyCode,
   type InvoiceStatus,
+  type Pagination,
   type PaymentGatewayPort,
   type PaymentIntentStatus,
   type PaymentMethod,
   type PublicScope,
+  type Scope,
 } from '@fenwick/shared';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService, type ScopedClient } from '../infra/prisma/prisma.service.js';
@@ -25,6 +27,20 @@ export interface PaymentAttemptResult {
    * only while the client still has to complete the payment itself, i.e.
    * REQUIRES_ACTION. Never populated for a synchronous fake-gateway result. */
   readonly clientToken: string | null;
+}
+
+/** A listing row — enough for the Payment Gateways tab's Transaction Log to
+ * render one line without a second round trip per row. */
+export type PaymentListRow = Payment & {
+  readonly invoiceNumber: string;
+  readonly customerName: string;
+};
+
+export interface PaymentListResult {
+  readonly data: PaymentListRow[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
 }
 
 /**
@@ -47,6 +63,40 @@ export class PaymentsService {
     @Inject(PAYMENT_GATEWAY_PORT) private readonly gateway: PaymentGatewayPort,
     private readonly queue: QueueService,
   ) {}
+
+  /**
+   * Brand Settings → Payment Gateways' Transaction Log. Deliberately not
+   * scoped to whichever gateway happens to be connected right now — nothing
+   * in this schema records which of the four gateways drove a given payment
+   * (only Stripe's own gatewayReference format hints at it), and a brand
+   * switching gateways must not make its settlement history disappear. So
+   * this is simply the brand's full payment history, newest first.
+   */
+  async list(scope: Scope, brandId: string, query: Pagination): Promise<PaymentListResult> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const where: Prisma.PaymentWhereInput = { brandId };
+      const [rows, total] = await Promise.all([
+        tx.payment.findMany({
+          where,
+          include: { invoice: { select: { number: true, customer: { select: { displayName: true } } } } },
+          orderBy: { createdAt: 'desc' },
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+        }),
+        tx.payment.count({ where }),
+      ]);
+      return {
+        data: rows.map(({ invoice, ...payment }) => ({
+          ...payment,
+          invoiceNumber: invoice.number,
+          customerName: invoice.customer.displayName,
+        })),
+        page: query.page,
+        pageSize: query.pageSize,
+        total,
+      };
+    });
+  }
 
   async createIntent(
     scope: PublicScope,

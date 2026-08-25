@@ -6,6 +6,18 @@ import { CustomersPageClient } from './customers-page-client';
 /** INK — used only when no brand exists yet, so bg-brand still resolves. */
 const FALLBACK_THEME_COLOUR = '#16261F';
 
+/**
+ * The API's own page-size ceiling (packages/shared paginationSchema) — the
+ * same "fetch the whole small-to-medium thing in one shot" trade-off
+ * InvoicesPage already makes (see its own INVOICE_FETCH_PAGE_SIZE comment).
+ * Without this, listCustomers silently fell back to the API's default of 25,
+ * which for a brand with more customers than that (a freshly Zoho-synced one
+ * easily has dozens) left everything past the first page completely
+ * unreachable — there is no pagination control on this page, only the
+ * "Showing X of Y" caption below the table.
+ */
+const CUSTOMER_FETCH_PAGE_SIZE = 200;
+
 export const dynamic = 'force-dynamic';
 
 export default async function CustomersPage({
@@ -41,6 +53,7 @@ export default async function CustomersPage({
         search: params.search,
         hasOutstanding,
         includeArchived,
+        pageSize: CUSTOMER_FETCH_PAGE_SIZE,
       });
       customers = result.data;
       total = result.total;

@@ -296,6 +296,16 @@ export const zohoSyncSettingsSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'nothing to update' });
 export type ZohoSyncSettingsInput = z.infer<typeof zohoSyncSettingsSchema>;
 
+// --- Payment gateways (Brand Settings → Payment Gateways) -------------------
+
+/** The four gateways the Payment Gateways tab can connect. STRIPE alone
+ * completes real OAuth (StripeAccountService); the other three have no
+ * credential handshake behind them yet, so connecting one just records the
+ * brand's choice (PaymentGatewaysService). */
+export const PAYMENT_GATEWAY_PROVIDERS = ['STRIPE', 'PAYPAL', 'SQUARE', 'AUTHORIZE_NET'] as const;
+export type PaymentGatewayProvider = (typeof PAYMENT_GATEWAY_PROVIDERS)[number];
+export const paymentGatewayProviderSchema = z.enum(PAYMENT_GATEWAY_PROVIDERS);
+
 // --- Customer --------------------------------------------------------------
 
 export const customerTypeSchema = z.enum(['BUSINESS', 'INDIVIDUAL']);

@@ -555,13 +555,8 @@ export function InvoicePdfEditor({
   settings: InvoicePdfSettings;
   previewInvoice: InvoicePdfPreviewInvoice | null;
 }) {
-  // No Save Changes control anymore (removed at the user's request, matching
-  // the Email Receipt editor) — formAction still wires the fields' hidden
-  // inputs into the server action via the <form>'s action attribute, but
-  // there's currently no submit trigger for it, so the status message +
-  // pending flag that used to sit under that button are gone with it.
   const saveAction = saveInvoicePdfSettingsAction.bind(null, brand);
-  const [, formAction] = useActionState(saveAction, initialState);
+  const [state, formAction, pending] = useActionState(saveAction, initialState);
 
   const [themeColor, setThemeColor] = useState(brand.themeColor);
   const [layout, setLayout] = useState<InvoicePdfLayout>(settings.invoicePdfLayout);
@@ -842,6 +837,29 @@ export function InvoicePdfEditor({
             )}
           </div>
 
+          {state.error && (
+            <p
+              role="alert"
+              className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {state.error}
+            </p>
+          )}
+          {state.success && (
+            <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              Saved.
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={pending}
+            className="mt-6 rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
+                       hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          >
+            {pending ? 'Saving…' : 'Save Changes'}
+          </button>
         </form>
       </section>
 

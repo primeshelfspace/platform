@@ -10,10 +10,27 @@
 import { type InvoiceStatus, publicTokenSchema } from '@fenwick/shared';
 import { API_URL } from './env';
 
+/** Brand Settings > Branding > Invoice PDF — the same settings the admin's
+ * Invoice PDF editor previews, mirrored here so the public invoice page can
+ * render the document per the actual saved layout/fields/notes rather than
+ * a fixed generic summary. */
+export interface PublicInvoicePdfSettings {
+  invoicePdfLayout: 'CLASSIC' | 'MODERN' | 'MINIMAL';
+  showCompanyAddress: boolean;
+  showPaymentTerms: boolean;
+  showTaxBreakdown: boolean;
+  showNotes: boolean;
+  companyName: string;
+  companyAddress: string;
+  paymentTerms: 'DUE_ON_RECEIPT' | 'NET_15' | 'NET_30' | 'NET_60';
+  notes: string;
+}
+
 export interface PublicInvoice {
   number: string;
   status: InvoiceStatus;
   currency: string;
+  invoiceDate: string;
   dueDate: string;
   totalMinor: number;
   balanceMinor: number;
@@ -22,10 +39,15 @@ export interface PublicInvoice {
    * layout and the colour of its actionable elements. */
   accentColor: string;
   paymentPageLayout: 'BANNER' | 'CENTERED' | 'SPLIT';
+  customerName: string;
+  /** Multi-line (newline-separated), possibly empty. */
+  customerAddress: string;
+  invoicePdf: PublicInvoicePdfSettings;
   lines: Array<{
     itemName: string;
     description: string | null;
     quantity: string;
+    unitPriceMinor: number;
     lineTotalMinor: number;
   }>;
   subtotalMinor: number;

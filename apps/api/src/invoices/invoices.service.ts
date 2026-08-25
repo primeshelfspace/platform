@@ -1,17 +1,25 @@
 import { randomBytes } from 'node:crypto';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Invoice, type LineItem } from '@prisma/client';
 import {
+  MAIL_PORT,
   PAYABLE_STATUSES,
   calculate,
   evaluateTransition,
+  formatDateForDisplay,
+  formatMinorForDisplay,
   isPublicScope,
   parseMinor,
   quantityFrom,
+  renderEmailReceiptTemplate,
+  toCurrencyCode,
   type InvoiceDraftInput,
   type InvoiceListQuery,
+  type MailPort,
   type Scope,
 } from '@fenwick/shared';
+import { formatBrandAddress, parseFrom, renderEmailReceiptHtml } from '../brands/brand-settings.service.js';
+import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
 
@@ -20,6 +28,13 @@ export type InvoiceWithLines = Invoice & { lineItems: LineItem[] };
 /** A listing row — InvoiceWithLines plus the customer name the invoices
  * table shows that a single invoice fetch has no need for. */
 export type InvoiceListRow = InvoiceWithLines & { customer: { displayName: string } };
+
+/** What the Invoice Details screen needs beyond InvoiceWithLines — the
+ * customer identity for its own "Bill To" block, which the list row above
+ * only carries a name for. */
+export type InvoiceDetail = InvoiceWithLines & {
+  customer: { displayName: string; email: string | null; billingAddress: string };
+};
 
 export interface InvoiceListResult {
   readonly data: InvoiceListRow[];
@@ -33,6 +48,16 @@ export interface InvoiceSummary {
   readonly openCount: number;
 }
 
+/** One row of the Invoice Details "Activity" tab — InvoiceEvent verbatim,
+ * not reinterpreted; the timeline is exactly what actually happened. */
+export interface InvoiceActivityEntry {
+  readonly eventType: string;
+  readonly fromStatus: string | null;
+  readonly toStatus: string | null;
+  readonly actor: string;
+  readonly occurredAt: Date;
+}
+
 /**
  * FR-INV. Draft creation and issue only — edit, cancel and duplicate follow
  * once this slice is proven end to end. CalculationService (TDD-001 §9.4) is
@@ -43,6 +68,8 @@ export class InvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
+    @Inject(MAIL_PORT) private readonly mail: MailPort,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   /**
@@ -108,15 +135,126 @@ export class InvoicesService {
     });
   }
 
-  async findOne(scope: Scope, brandId: string, id: string): Promise<InvoiceWithLines> {
+  /** The Invoice Details screen's own fetch — InvoiceWithLines plus the
+   * customer identity its "Bill To" block needs (see InvoiceDetail). */
+  async findOne(scope: Scope, brandId: string, id: string): Promise<InvoiceDetail> {
     const invoice = await this.prisma.withScope(scope, (tx) =>
       tx.invoice.findFirst({
         where: { id, brandId },
-        include: { lineItems: { orderBy: { position: 'asc' } } },
+        include: {
+          lineItems: { orderBy: { position: 'asc' } },
+          customer: { select: { displayName: true, email: true, billingAddress: true } },
+        },
       }),
     );
     if (!invoice) throw new NotFoundException('invoice not found');
-    return invoice;
+    return {
+      ...invoice,
+      customer: {
+        displayName: invoice.customer.displayName,
+        email: invoice.customer.email,
+        billingAddress: formatBrandAddress(invoice.customer.billingAddress),
+      },
+    };
+  }
+
+  /** The Invoice Details screen's "Activity" tab — every lifecycle event
+   * this exact invoice has actually gone through (ISSUE, FIRST_VIEW,
+   * PAYMENT_SETTLED, PAYMENT_FAILED, EMAIL_RESENT), newest first, same
+   * convention as ZohoConnectController's own activity log. */
+  async getActivity(scope: Scope, brandId: string, id: string): Promise<InvoiceActivityEntry[]> {
+    const invoice = await this.prisma.withScope(scope, (tx) =>
+      tx.invoice.findFirst({ where: { id, brandId }, select: { id: true } }),
+    );
+    if (!invoice) throw new NotFoundException('invoice not found');
+
+    const events = await this.prisma.withScope(scope, (tx) =>
+      tx.invoiceEvent.findMany({
+        where: { invoiceId: id },
+        orderBy: { occurredAt: 'desc' },
+      }),
+    );
+    return events.map((e) => ({
+      eventType: e.eventType,
+      fromStatus: e.fromStatus,
+      toStatus: e.toStatus,
+      actor: e.actor,
+      occurredAt: e.occurredAt,
+    }));
+  }
+
+  /**
+   * "Resend" on the Invoice Details screen — a real send to the customer's
+   * actual email, through the same Brand Settings > Branding > Email Receipt
+   * template and mail path sendEmailReceiptTest already exercises (renderEmailReceiptHtml,
+   * parseFrom — both exported from BrandSettingsService for exactly this
+   * reuse), except addressed to this real customer with a real, working
+   * "View & Pay Invoice" link rather than a placeholder.
+   */
+  async resendEmail(scope: Scope, brandId: string, id: string): Promise<void> {
+    const { invoice, settings, customerEmail } = await this.prisma.withScope(scope, async (tx) => {
+      const invoiceRow = await tx.invoice.findFirst({
+        where: { id, brandId },
+        include: { customer: true, brand: true },
+      });
+      if (!invoiceRow) throw new NotFoundException('invoice not found');
+      if (!invoiceRow.customer.email) {
+        throw new ConflictException('this customer has no email on file');
+      }
+
+      const settingsRow = await tx.brandSettings.findUnique({ where: { brandId } });
+      if (!settingsRow) throw new NotFoundException('brand settings not found');
+
+      return { invoice: invoiceRow, settings: settingsRow, customerEmail: invoiceRow.customer.email };
+    });
+
+    const currency = toCurrencyCode(invoice.currency);
+    const variables = {
+      brandName: invoice.brand.displayName,
+      customerName: invoice.customer.displayName,
+      invoiceNumber: invoice.number,
+      amountDue: formatMinorForDisplay(Number(invoice.balanceMinor), currency),
+      dueDate: formatDateForDisplay(invoice.dueDate),
+    };
+    const subject = renderEmailReceiptTemplate(settings.emailReceiptSubject, variables);
+    const body = renderEmailReceiptTemplate(settings.emailReceiptBody, variables);
+    const linkUrl = `${this.env.PAYMENT_PUBLIC_URL}/i/${invoice.publicToken}`;
+
+    await this.mail.send({
+      to: [customerEmail],
+      from: parseFrom(this.env.MAIL_FROM),
+      subject,
+      text: [
+        body,
+        '',
+        `Invoice ${variables.invoiceNumber}`,
+        `Amount due: ${variables.amountDue}`,
+        `Due date: ${variables.dueDate}`,
+        '',
+        `View and pay: ${linkUrl}`,
+      ].join('\n'),
+      html: renderEmailReceiptHtml({
+        themeColor: invoice.brand.themeColor,
+        body,
+        variables,
+        linkUrl,
+        badgeLabel: invoice.brand.displayName,
+      }),
+      messageTag: { brandId, invoiceId: id, templateKey: 'email-receipt.resend' },
+      // Every click is a deliberate resend — a merchant clicking twice in a
+      // row (e.g. after fixing a bounced address) expects two emails.
+      idempotencyKey: `invoice-resend:${id}:${Date.now()}`,
+    });
+
+    await this.prisma.withScope(scope, (tx) =>
+      tx.invoiceEvent.create({
+        data: {
+          invoiceId: id,
+          eventType: 'EMAIL_RESENT',
+          actor: isPublicScope(scope) ? 'system' : scope.userId,
+        },
+      }),
+    );
   }
 
   /**

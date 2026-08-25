@@ -6,6 +6,11 @@ import {
   type PublicScope,
   type StoragePort,
 } from '@fenwick/shared';
+import {
+  formatBrandAddress,
+  toInvoicePdfSettings,
+  type InvoicePdfSettings,
+} from '../brands/brand-settings.service.js';
 import { LOGO_URL_TTL_SECONDS } from '../common/logo-upload.js';
 import { StripeAccountService } from '../integrations/stripe-account.service.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -14,6 +19,7 @@ export interface PublicInvoiceView {
   number: string;
   status: string;
   currency: string;
+  invoiceDate: string;
   dueDate: string;
   totalMinor: number;
   balanceMinor: number;
@@ -24,10 +30,23 @@ export interface PublicInvoiceView {
    * renders it for a real customer. */
   accentColor: string;
   paymentPageLayout: 'BANNER' | 'CENTERED' | 'SPLIT';
+  /** Who the invoice is billed to — the "Bill To" block, same identity the
+   * admin's own Invoice PDF preview and this brand's issued PDF show. */
+  customerName: string;
+  /** Multi-line (newline-separated), possibly empty when the customer has
+   * no billing address on file — same convention as the admin's own
+   * formatAddressLines. */
+  customerAddress: string;
+  /** Brand Settings > Branding > Invoice PDF — the same settings the admin's
+   * Invoice PDF editor previews, applied here so a customer's public invoice
+   * page actually reflects the document layout/fields/notes a merchant
+   * configured, not a fixed generic summary. */
+  invoicePdf: InvoicePdfSettings;
   lines: Array<{
     itemName: string;
     description: string | null;
     quantity: string;
+    unitPriceMinor: number;
     lineTotalMinor: number;
   }>;
   subtotalMinor: number;
@@ -103,6 +122,7 @@ export class PublicInvoicesService {
         include: {
           lineItems: { orderBy: { position: 'asc' } },
           brand: { include: { settings: true } },
+          customer: { select: { displayName: true, billingAddress: true } },
         },
       });
       if (!invoice) return null;
@@ -151,10 +171,28 @@ export class PublicInvoicesService {
       const stripeAccountId = await this.stripeAccounts.getAccountIdForBrand(invoice.brandId);
       const stripePublishableKey = this.stripeAccounts.platformPublishableKey();
 
+      // A brand always gets a settings row at creation (see BrandsService) —
+      // this null-handling is the same defensive fallback the fields below
+      // already used before invoicePdf existed, not a real steady state.
+      const invoicePdf: InvoicePdfSettings = invoice.brand.settings
+        ? toInvoicePdfSettings(invoice.brand.settings, invoice.brand)
+        : {
+            invoicePdfLayout: 'CLASSIC',
+            showCompanyAddress: true,
+            showPaymentTerms: true,
+            showTaxBreakdown: true,
+            showNotes: true,
+            companyName: invoice.brand.displayName,
+            companyAddress: formatBrandAddress(invoice.brand.mailingAddress),
+            paymentTerms: 'DUE_ON_RECEIPT',
+            notes: 'Thank you for your business. Please contact us with any questions.',
+          };
+
       return {
         number: invoice.number,
         status: effectiveStatus,
         currency: invoice.currency,
+        invoiceDate: invoice.invoiceDate.toISOString().slice(0, 10),
         dueDate: invoice.dueDate.toISOString().slice(0, 10),
         totalMinor: Number(invoice.totalMinor),
         balanceMinor: Number(invoice.balanceMinor),
@@ -165,10 +203,14 @@ export class PublicInvoicesService {
         },
         accentColor: invoice.brand.settings?.accentColor ?? '#171717',
         paymentPageLayout: invoice.brand.settings?.paymentPageLayout ?? 'BANNER',
+        customerName: invoice.customer.displayName,
+        customerAddress: formatBrandAddress(invoice.customer.billingAddress),
+        invoicePdf,
         lines: invoice.lineItems.map((l) => ({
           itemName: l.itemName,
           description: l.description,
           quantity: formatQuantity(l.quantity),
+          unitPriceMinor: Number(l.unitPriceMinor),
           lineTotalMinor: Number(l.lineTotalMinor),
         })),
         subtotalMinor: Number(invoice.subtotalMinor),
