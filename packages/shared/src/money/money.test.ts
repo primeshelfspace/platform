@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MoneyError,
+  SUPPORTED_CURRENCIES,
   addMinor,
   allocate,
   applyBasisPoints,
@@ -9,7 +10,9 @@ import {
   formatBasisPoints,
   formatMinor,
   formatMinorForDisplay,
+  minorUnitExponent,
   isPositive,
+  isSupportedCurrency,
   isZero,
   maxMinor,
   minMinor,
@@ -194,5 +197,63 @@ describe('amount predicates', () => {
   it('refuses a non-integer amount', () => {
     expect(() => isZero(0.5)).toThrow(MoneyError);
     expect(() => isPositive(1.5)).toThrow(MoneyError);
+  });
+});
+
+describe('minorUnitExponent', () => {
+  it('reports the decimal places for every supported currency', () => {
+    // All four are 2-decimal today, so this asserts the lookup works rather
+    // than a difference between them. It matters because the Zoho adapter
+    // scales by this instead of a hardcoded 100 — adding JPY (0 decimals) or
+    // KWD (3) must not silently mis-scale every amount crossing that boundary.
+    expect(minorUnitExponent('USD')).toBe(2);
+    expect(minorUnitExponent('CAD')).toBe(2);
+    expect(minorUnitExponent('EUR')).toBe(2);
+    expect(minorUnitExponent('GBP')).toBe(2);
+  });
+
+  it('agrees with what formatMinor actually renders', () => {
+    // The guard against the table drifting from the formatter: a currency whose
+    // exponent said 2 but which rendered 3 decimals would corrupt every
+    // conversion while both functions individually looked correct.
+    for (const currency of SUPPORTED_CURRENCIES) {
+      const rendered = formatMinor(1, currency);
+      expect(rendered.split('.')[1]).toHaveLength(minorUnitExponent(currency));
+    }
+  });
+});
+
+describe('isSupportedCurrency', () => {
+  it('accepts every supported code', () => {
+    for (const currency of SUPPORTED_CURRENCIES) {
+      expect(isSupportedCurrency(currency)).toBe(true);
+    }
+  });
+
+  it('rejects currencies this platform cannot represent', () => {
+    // The two shapes that would corrupt an amount if waved through: JPY has no
+    // minor unit at all, KWD has three. ZohoPullService refuses an invoice in
+    // either rather than storing a number that is 100x or 10x wrong.
+    expect(isSupportedCurrency('JPY')).toBe(false);
+    expect(isSupportedCurrency('KWD')).toBe(false);
+    expect(isSupportedCurrency('BTC')).toBe(false);
+  });
+
+  it('rejects absent and malformed input', () => {
+    expect(isSupportedCurrency(null)).toBe(false);
+    expect(isSupportedCurrency(undefined)).toBe(false);
+    expect(isSupportedCurrency('')).toBe(false);
+    expect(isSupportedCurrency('usd')).toBe(false); // case-sensitive by design
+  });
+
+  it('narrows the type, not just the value', () => {
+    // The reason this exists alongside toCurrencyCode: that one substitutes a
+    // fallback, which is right for our own values and wrong for provider data.
+    const fromProvider: string = 'GBP';
+    if (isSupportedCurrency(fromProvider)) {
+      expect(minorUnitExponent(fromProvider)).toBe(2);
+    } else {
+      throw new Error('GBP should be supported');
+    }
   });
 });
