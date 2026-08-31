@@ -177,6 +177,47 @@ export class ZohoPullService {
    * place every path passes through. The cost is one wasted detail fetch per
    * pushed record per pull cycle, which is bounded by push volume.
    */
+  /**
+   * Runs one per-record pull and decides whether its failure should stop the
+   * phase around it.
+   *
+   * This exists because mapWithConcurrency propagates the first rejection, so
+   * before this a single unusable record failed its phase, which failed
+   * pullBrand's Promise.all, which meant recordPullRun never ran and the
+   * brand's cursor never advanced. The brand's entire sync then stalled
+   * permanently on one bad row — and every pull re-fetched the same window and
+   * failed the same way. Adding the currency and invoice-number validations
+   * made that far easier to trigger: one JPY invoice, or one number collision,
+   * was enough to stop a brand syncing at all.
+   *
+   * The split is by error class, because the two kinds of failure want opposite
+   * handling:
+   *
+   *  - AUTHENTICATION / TRANSIENT are systemic. Whatever is wrong will be wrong
+   *    for every remaining record too, and grinding through hundreds more would
+   *    hammer a rejected credential or burn the rate limit. These propagate.
+   *  - VALIDATION / CONFLICT / PERMANENT are specific to this record. recordPull
+   *    has already written a FAILED SyncJob with the provider's own message, so
+   *    it is visible in the activity feed; swallowing it here lets the phase
+   *    finish, the cursor advance, and every other record land.
+   */
+  private async pullRecordTolerantly(
+    work: () => Promise<boolean>,
+    describe: string,
+  ): Promise<boolean> {
+    try {
+      return await work();
+    } catch (error) {
+      const errorClass = error instanceof IntegrationError ? error.errorClass : 'PERMANENT';
+      if (errorClass === 'AUTHENTICATION' || errorClass === 'TRANSIENT') throw error;
+      this.logger.warn(
+        `continuing past ${describe}: ${errorClass} — ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
+  }
+
   private isOwnPushEcho(
     zohoLastModified: string | undefined,
     syncedVersion: Date | null | undefined,
@@ -223,7 +264,19 @@ export class ZohoPullService {
       // alongside the three phases above: it only ever acts on records that
       // predate its own scan by RECONCILE_CREATION_GRACE_MS, so nothing those
       // phases create during this run is in scope for it.
-      this.reconcileInvoicePresenceIfDue(scope, brandId, connection, forceFullScan),
+      // Non-fatal on purpose. This is a secondary, hourly concern, and its full
+      // unfiltered scan is the most likely of any phase to hit the rate limit —
+      // letting it reject would block recordPullRun below and freeze the cursor
+      // for the three phases that actually keep data fresh. Its own SyncJob row
+      // records the failure, and the next hour retries it.
+      this.reconcileInvoicePresenceIfDue(scope, brandId, connection, forceFullScan).catch(
+        (error: unknown) => {
+          this.logger.warn(
+            `invoice deletion reconciliation failed for brand ${brandId} (the pull itself was ` +
+              `unaffected): ${error instanceof Error ? error.message : String(error)}`,
+          );
+        },
+      ),
     ]);
 
     await this.connections.recordPullRun(scope, brandId, pullStartedAt);
@@ -255,7 +308,16 @@ export class ZohoPullService {
     // mapWithConcurrency and recordPull both propagate, so a partial scan
     // throws rather than returning short. That completeness is exactly the
     // precondition for treating a contact's absence as meaningful.
-    await this.reconcileContactPresence(scope, brandId, seen);
+    // Also non-fatal, and for the same reason: archiving is secondary to having
+    // pulled the contacts in the first place, and must not cost us the floor key
+    // below (which would make every subsequent pull redo the full scan) or the
+    // cursor advance.
+    await this.reconcileContactPresence(scope, brandId, seen).catch((error: unknown) => {
+      this.logger.warn(
+        `contact presence reconciliation failed for brand ${brandId} (the pull itself was ` +
+          `unaffected): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
 
     // Set after a successful scan regardless of `force`, so a manual pull
     // now restarts the floor's own clock too, rather than leaving the next
@@ -302,7 +364,10 @@ export class ZohoPullService {
         // our own push is fetched and then skipped, and reporting it as pulled
         // would overstate what the run did. Same shape pullPayments already uses.
         const applied = await mapWithConcurrency(due, PULL_DETAIL_CONCURRENCY, (item) =>
-          this.pullOneCustomer(scope, brandId, connection, item.contact_id),
+          this.pullRecordTolerantly(
+            () => this.pullOneCustomer(scope, brandId, connection, item.contact_id),
+            `Zoho contact ${item.contact_id}`,
+          ),
         );
         touched += applied.filter(Boolean).length;
         hasMore = hasMorePage;
@@ -656,7 +721,10 @@ export class ZohoPullService {
           sinceIso,
         );
         const applied = await mapWithConcurrency(invoices, PULL_DETAIL_CONCURRENCY, (item) =>
-          this.pullOneInvoice(scope, brandId, connection, item.invoice_id),
+          this.pullRecordTolerantly(
+            () => this.pullOneInvoice(scope, brandId, connection, item.invoice_id),
+            `Zoho invoice ${item.invoice_id}`,
+          ),
         );
         touched += applied.filter(Boolean).length;
         hasMore = hasMorePage;
@@ -956,7 +1024,10 @@ export class ZohoPullService {
         const due = payments.filter((_, index) => !alreadyPulled[index]);
 
         const applied = await mapWithConcurrency(due, PULL_DETAIL_CONCURRENCY, (item) =>
-          this.pullOnePayment(scope, brandId, connection, item.payment_id),
+          this.pullRecordTolerantly(
+            () => this.pullOnePayment(scope, brandId, connection, item.payment_id),
+            `Zoho payment ${item.payment_id}`,
+          ),
         );
         touched += applied.filter(Boolean).length;
 
@@ -1142,13 +1213,24 @@ export class ZohoPullService {
       // Same reasoning as the push path's own copy of this: a rejected
       // credential is the failure an operator has to act on, and it was
       // previously invisible behind a connection that still read "Healthy".
+      // Guarded so that recording *why* we failed can never replace *what*
+      // failed. Unguarded, a scope resolution or database hiccup in here would
+      // surface instead of the Zoho error the caller and the retry policy
+      // actually need to see.
       if (integrationError?.errorClass === 'AUTHENTICATION') {
-        const scope = await this.systemScope.forBrand(brandId, 'zoho-pull-health');
-        if (scope) {
-          await this.connections.markUnhealthy(
-            scope,
-            brandId,
-            integrationError.providerMessage ?? integrationError.message,
+        try {
+          const healthScope = await this.systemScope.forBrand(brandId, 'zoho-pull-health');
+          if (healthScope) {
+            await this.connections.markUnhealthy(
+              healthScope,
+              brandId,
+              integrationError.providerMessage ?? integrationError.message,
+            );
+          }
+        } catch (healthError) {
+          this.logger.warn(
+            `could not record unhealthy state for brand ${brandId}: ` +
+              `${healthError instanceof Error ? healthError.message : String(healthError)}`,
           );
         }
       }

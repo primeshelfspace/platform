@@ -22,6 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { IntegrationError } from '@fenwick/shared';
 import type { AccountingConnection, RequestScope } from '@fenwick/shared';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv, type Env } from '../config/env.js';
@@ -85,8 +86,13 @@ class FakeZohoBooksAdapter extends ZohoBooksAdapter {
     return { invoices: this.listedInvoices, hasMorePage: false };
   }
 
+  /** Lets a test make the detail fetch itself fail, to exercise how a phase
+   * reacts to a systemic error rather than a bad record. */
+  getInvoiceImpl: ((invoiceId: string) => ZohoInvoiceDetail) | undefined;
+
   override async getInvoice(_connection: AccountingConnection, invoiceId: string) {
     this.getInvoiceCalls++;
+    if (this.getInvoiceImpl) return this.getInvoiceImpl(invoiceId);
     const invoice = this.invoices.get(invoiceId);
     if (!invoice) throw new Error(`no fake invoice stubbed for ${invoiceId}`);
     return invoice;
@@ -239,6 +245,12 @@ describeWithDb('ZohoPullService', () => {
         brandId: string,
         connection: AccountingConnection,
       ) => Promise<void>;
+      pullInvoices: (
+        scope: RequestScope,
+        brandId: string,
+        connection: AccountingConnection,
+        cursor: Date | null,
+      ) => Promise<number>;
       reconcileContactPresence: (
         scope: RequestScope,
         brandId: string,
@@ -942,6 +954,81 @@ describeWithDb('ZohoPullService', () => {
         orderBy: { createdAt: 'desc' },
       });
       expect(job?.status).toBe('SUCCEEDED');
+    });
+  });
+
+  /**
+   * Resilience of a phase to one unusable record.
+   *
+   * mapWithConcurrency propagates the first rejection, so before
+   * pullRecordTolerantly a single bad record failed its phase, which failed
+   * pullBrand's Promise.all, which meant recordPullRun never ran and the
+   * brand's cursor never advanced — every subsequent pull then re-fetched the
+   * same window and failed identically. The brand stopped syncing entirely
+   * because of one row. The currency and invoice-number validations made that
+   * easy to trigger.
+   */
+  describe('one unusable record does not stall the phase', () => {
+    it('pulls the good invoices and skips one in an unsupported currency', async () => {
+      const contactId = `tolerant-contact-${randomUUID()}`;
+      const goodId = `tolerant-good-${randomUUID()}`;
+      const badId = `tolerant-bad-${randomUUID()}`;
+
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.contacts.set(contactId, fakeContact(contactId, 'Tolerant Co'));
+      zoho.listedInvoices = [
+        { ...fakeInvoice(goodId, `TG-${randomUUID().slice(0, 8)}`, contactId) },
+        { ...fakeInvoice(badId, `TB-${randomUUID().slice(0, 8)}`, contactId) },
+      ] as never[];
+      zoho.invoices.set(goodId, fakeInvoice(goodId, `TG-${randomUUID().slice(0, 8)}`, contactId));
+      zoho.invoices.set(badId, {
+        // JPY is genuinely unrepresentable here — every amount would be 100x
+        // wrong — so this invoice must be refused. The other one must not be.
+        ...fakeInvoice(badId, `TB-${randomUUID().slice(0, 8)}`, contactId),
+        currency_code: 'JPY',
+      });
+
+      // Resolves rather than rejecting: that is the whole point.
+      const touched = await service(zoho).pullInvoices(scope, brandId, connection, null);
+      expect(touched).toBe(1);
+
+      const good = await owner.invoice.findFirst({ where: { brandId, zohoInvoiceId: goodId } });
+      expect(good).not.toBeNull();
+      const bad = await owner.invoice.findFirst({ where: { brandId, zohoInvoiceId: badId } });
+      expect(bad).toBeNull();
+
+      // The refusal is not silent — it is a FAILED row naming the currency.
+      const job = await owner.syncJob.findFirst({
+        where: { brandId, direction: 'PULL', objectId: badId },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(job?.status).toBe('FAILED');
+      expect(job?.errorClass).toBe('VALIDATION');
+      expect(job?.lastError ?? '').toContain('JPY');
+    });
+
+    it('still aborts the phase on a systemic failure', async () => {
+      // The other half of the rule. An expired credential or a rate limit will
+      // fail every remaining record too, so grinding through hundreds more would
+      // hammer a rejected token or burn the rate limit for nothing.
+      const contactId = `systemic-contact-${randomUUID()}`;
+      const invoiceId = `systemic-invoice-${randomUUID()}`;
+
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.listedInvoices = [
+        { ...fakeInvoice(invoiceId, `SY-${randomUUID().slice(0, 8)}`, contactId) },
+      ] as never[];
+      zoho.getInvoiceImpl = () => {
+        throw new IntegrationError({
+          message: 'invalid oauth token',
+          errorClass: 'AUTHENTICATION',
+          provider: 'zoho-books',
+        });
+      };
+
+      await expect(service(zoho).pullInvoices(scope, brandId, connection, null)).rejects.toThrow(
+        /invalid oauth token/,
+      );
     });
   });
 });

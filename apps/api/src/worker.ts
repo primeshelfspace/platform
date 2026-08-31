@@ -84,23 +84,36 @@ async function bootstrap(): Promise<void> {
       // per-record pulls are single API calls, the list scans are bounded by the
       // rate limiter, and BullMQ's own retry budget for this queue is about the
       // same span — so anything still RUNNING past it is not slow, it is gone.
-      const reaped = await prisma.withoutScope(
-        'scheduled-sync: failing sync jobs orphaned by a crashed worker',
-        (client) =>
-          client.syncJob.updateMany({
-            where: {
-              status: 'RUNNING',
-              createdAt: { lt: new Date(Date.now() - STALE_SYNC_JOB_MS) },
-            },
-            data: {
-              status: 'FAILED',
-              errorClass: 'PERMANENT',
-              lastError: 'abandoned — the worker processing this job stopped before finishing it',
-            },
-          }),
-      );
-      if (reaped.count > 0) {
-        logger.warn(`scheduled-sync: failed ${reaped.count} sync job(s) orphaned by a crash`);
+      // Guarded: reaping is housekeeping, and it runs before the part of this
+      // tick that actually enqueues pulls. Letting it throw would mean no brand
+      // syncs at all this tick — trading a cosmetic backlog of stale rows for
+      // real data going stale.
+      let reapedCount = 0;
+      try {
+        const reaped = await prisma.withoutScope(
+          'scheduled-sync: failing sync jobs orphaned by a crashed worker',
+          (client) =>
+            client.syncJob.updateMany({
+              where: {
+                status: 'RUNNING',
+                createdAt: { lt: new Date(Date.now() - STALE_SYNC_JOB_MS) },
+              },
+              data: {
+                status: 'FAILED',
+                errorClass: 'PERMANENT',
+                lastError: 'abandoned — the worker processing this job stopped before finishing it',
+              },
+            }),
+        );
+        reapedCount = reaped.count;
+        if (reapedCount > 0) {
+          logger.warn(`scheduled-sync: failed ${reapedCount} sync job(s) orphaned by a crash`);
+        }
+      } catch (error) {
+        logger.warn(
+          `scheduled-sync: could not reap orphaned sync jobs, continuing to the pull scan: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
       }
 
       const connections = await prisma.withoutScope(
@@ -125,7 +138,7 @@ async function bootstrap(): Promise<void> {
       return {
         brandsConnected: connections.length,
         brandsEnqueued: due.length,
-        staleJobsReaped: reaped.count,
+        staleJobsReaped: reapedCount,
       };
     },
   };

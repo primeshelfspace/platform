@@ -428,7 +428,19 @@ export class ZohoSyncService {
       // reason. Until this call existed, lastSyncAt was written once by
       // saveZohoConnection and never again, so the "last sync" figure on the
       // integrations panel was really just the moment the brand connected.
-      await this.connections.recordSyncRun(scope, brandId);
+      //
+      // Guarded: the remote write has already happened and the SyncJob is
+      // already SUCCEEDED by this point, so letting a failure here escape would
+      // report a completed push as failed and have BullMQ retry it. A stale
+      // timestamp is a cosmetic problem; a spurious retry is not.
+      try {
+        await this.connections.recordSyncRun(scope, brandId);
+      } catch (bookkeepingError) {
+        this.logger.warn(
+          `push succeeded for brand ${brandId} but recording lastSyncAt failed: ` +
+            `${bookkeepingError instanceof Error ? bookkeepingError.message : bookkeepingError}`,
+        );
+      }
     } catch (error) {
       const integrationError = error instanceof IntegrationError ? error : null;
       await this.prisma.withoutScope(`recording sync job failure for brand ${brandId}`, (client) =>
@@ -454,12 +466,22 @@ export class ZohoSyncService {
       // only in a per-object activity row. markUnhealthy deliberately leaves
       // `status` alone — see its own comment for why halting here would be
       // worse than surfacing it.
+      // Guarded for the same reason as the pull path's copy: recording why we
+      // failed must never replace the error itself, which is what the queue's
+      // retry policy reads to decide whether to try again.
       if (integrationError?.errorClass === 'AUTHENTICATION') {
-        await this.connections.markUnhealthy(
-          scope,
-          brandId,
-          integrationError.providerMessage ?? integrationError.message,
-        );
+        try {
+          await this.connections.markUnhealthy(
+            scope,
+            brandId,
+            integrationError.providerMessage ?? integrationError.message,
+          );
+        } catch (healthError) {
+          this.logger.warn(
+            `could not record unhealthy state for brand ${brandId}: ` +
+              `${healthError instanceof Error ? healthError.message : String(healthError)}`,
+          );
+        }
       }
 
       // A non-retryable class (e.g. VALIDATION — "this customer already
