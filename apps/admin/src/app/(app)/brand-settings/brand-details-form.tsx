@@ -1,28 +1,18 @@
 'use client';
 
-import { useActionState, useId, useRef, useState } from 'react';
+import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS, COUNTRIES, regionsFor } from '@fenwick/shared';
 import type { Brand, CustomerAddress } from '@/lib/api';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
+import {
+  STATIC_FIELD_INPUT_CLASS as inputClass,
+  STATIC_FIELD_LABEL_CLASS as labelClass,
+} from '@/components/ui/form-styles';
 import { saveBrandDetailsAction, type BrandDetailsState } from './actions';
 
 const initialState: BrandDetailsState = {};
-
-// This form deliberately doesn't use the shared STATIC_FIELD_* classes from
-// form-styles.ts (still used by add-brand-modal.tsx) — with 15 fields across
-// three sections, the shared h-10/text-base/mb-2 sizing pushed the page past
-// one screen's height on common laptop resolutions. Sized down instead so
-// the whole tab fits without scrolling.
-const inputClass =
-  'w-full h-9 rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900 ' +
-  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-slate-400 focus-visible:outline-none ' +
-  'focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 transition-colors';
-// text-ink-strong, not the #0F172A this used to be — matches the Branding
-// tab's own tokenized headings/labels exactly (#0A0A0C vs #0F172A was a very
-// close but not identical near-black).
-const labelClass = 'mb-1 block text-xs font-bold text-ink-strong';
 
 const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES = ['image/jpeg', 'image/png', 'image/svg+xml'];
@@ -43,19 +33,116 @@ function addressEquals(a: CustomerAddress | null, b: CustomerAddress | null): bo
   );
 }
 
+interface AddressValues {
+  line1: string;
+  line2: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  country: string;
+}
+
+interface BrandDetailsValues {
+  legalName: string;
+  displayName: string;
+  businessType: string;
+  email: string;
+  phone: string;
+  taxId: string;
+  mailing: AddressValues;
+  billing: AddressValues;
+  sameAsMailing: boolean;
+}
+
+function addressValuesFrom(
+  address: CustomerAddress | null,
+  fallbackCountry: string,
+): AddressValues {
+  return {
+    line1: address?.line1 ?? '',
+    line2: address?.line2 ?? '',
+    city: address?.city ?? '',
+    region: address?.region ?? '',
+    postalCode: address?.postalCode ?? '',
+    country: address?.country ?? fallbackCountry,
+  };
+}
+
+function addressValuesEqual(a: AddressValues, b: AddressValues): boolean {
+  return (
+    a.line1 === b.line1 &&
+    a.line2 === b.line2 &&
+    a.city === b.city &&
+    a.region === b.region &&
+    a.postalCode === b.postalCode &&
+    a.country === b.country
+  );
+}
+
+function valuesFromBrand(brand: Brand): BrandDetailsValues {
+  const mailing = addressValuesFrom(brand.mailingAddress, 'US');
+  return {
+    legalName: brand.legalName,
+    displayName: brand.displayName,
+    businessType: brand.businessType ?? '',
+    email: brand.email ?? '',
+    phone: brand.phone ?? '',
+    taxId: brand.taxId ?? '',
+    mailing,
+    billing: addressValuesFrom(brand.billingAddress, mailing.country),
+    sameAsMailing:
+      brand.billingAddress === null || addressEquals(brand.billingAddress, brand.mailingAddress),
+  };
+}
+
+// Mirrors the server action's own rule (actions.ts): when "same as mailing"
+// is on, the billing fields are disabled and the mailing address is what
+// actually gets saved as the billing address — so dirty-checking has to
+// compare against that effective value, not the (possibly stale, disabled)
+// billing fields themselves.
+function effectiveBilling(values: BrandDetailsValues): AddressValues {
+  return values.sameAsMailing ? values.mailing : values.billing;
+}
+
+function valuesEqual(a: BrandDetailsValues, b: BrandDetailsValues): boolean {
+  return (
+    a.legalName === b.legalName &&
+    a.displayName === b.displayName &&
+    a.businessType === b.businessType &&
+    a.email === b.email &&
+    a.phone === b.phone &&
+    a.taxId === b.taxId &&
+    a.sameAsMailing === b.sameAsMailing &&
+    addressValuesEqual(a.mailing, b.mailing) &&
+    addressValuesEqual(effectiveBilling(a), effectiveBilling(b))
+  );
+}
+
 function Field({
   label,
   name,
-  defaultValue,
+  value,
+  onChange,
   ...rest
-}: { label: string; name: string; defaultValue?: string } & Omit<
+}: {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (value: string) => void;
+} & Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
-  'name' | 'className' | 'defaultValue'
+  'name' | 'className' | 'value' | 'onChange'
 >) {
   return (
     <label className="block">
       <span className={labelClass}>{label}</span>
-      <input name={name} defaultValue={defaultValue} className={inputClass} {...rest} />
+      <input
+        name={name}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={inputClass}
+        {...rest}
+      />
     </label>
   );
 }
@@ -64,26 +151,25 @@ function Field({
  * on — shared between Mailing and Billing, which are otherwise identical. */
 function AddressFields({
   prefix,
-  country,
-  onCountryChange,
+  value,
+  onChange,
   disabled,
-  defaults,
 }: {
   prefix: 'mailing' | 'billing';
-  country: string;
-  onCountryChange: (code: string) => void;
+  value: AddressValues;
+  onChange: (patch: Partial<AddressValues>) => void;
   disabled?: boolean;
-  defaults: CustomerAddress | null;
 }) {
-  const regions = regionsFor(country);
+  const regions = regionsFor(value.country);
 
   return (
-    <div className="space-y-2">
-      <div className="grid gap-2 sm:grid-cols-2">
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <input
           name={`${prefix}Line1`}
           placeholder="Address line 1"
-          defaultValue={defaults?.line1 ?? ''}
+          value={value.line1}
+          onChange={(event) => onChange({ line1: event.target.value })}
           disabled={disabled}
           required={!disabled}
           className={inputClass}
@@ -91,17 +177,19 @@ function AddressFields({
         <input
           name={`${prefix}Line2`}
           placeholder="Address line 2 (optional)"
-          defaultValue={defaults?.line2 ?? ''}
+          value={value.line2}
+          onChange={(event) => onChange({ line2: event.target.value })}
           disabled={disabled}
           className={inputClass}
         />
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         <input
           name={`${prefix}City`}
           placeholder="City"
-          defaultValue={defaults?.city ?? ''}
+          value={value.city}
+          onChange={(event) => onChange({ city: event.target.value })}
           disabled={disabled}
           required={!disabled}
           className={inputClass}
@@ -109,9 +197,9 @@ function AddressFields({
         {regions ? (
           <Select
             name={`${prefix}Region`}
-            defaultValue={defaults?.region ?? ''}
+            value={value.region}
+            onChange={(region) => onChange({ region })}
             placeholder="State/Province"
-            compact
           >
             {regions.map((region) => (
               <option key={region.code} value={region.code}>
@@ -123,7 +211,8 @@ function AddressFields({
           <input
             name={`${prefix}Region`}
             placeholder="State/Province"
-            defaultValue={defaults?.region ?? ''}
+            value={value.region}
+            onChange={(event) => onChange({ region: event.target.value })}
             disabled={disabled}
             className={inputClass}
           />
@@ -131,14 +220,19 @@ function AddressFields({
         <input
           name={`${prefix}PostalCode`}
           placeholder="Zip/Postal code"
-          defaultValue={defaults?.postalCode ?? ''}
+          value={value.postalCode}
+          onChange={(event) => onChange({ postalCode: event.target.value })}
           disabled={disabled}
           required={!disabled}
           className={inputClass}
         />
       </div>
 
-      <Select name={`${prefix}Country`} value={country} onChange={onCountryChange} compact>
+      <Select
+        name={`${prefix}Country`}
+        value={value.country}
+        onChange={(country) => onChange({ country })}
+      >
         {COUNTRIES.map((c) => (
           <option key={c.code} value={c.code}>
             {c.name}
@@ -155,24 +249,36 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | undefined>();
+  const [logoDirty, setLogoDirty] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoSrc = logoPreview ?? brand.logoUrl;
 
-  const [mailingCountry, setMailingCountry] = useState(brand.mailingAddress?.country ?? 'US');
-  const [billingCountry, setBillingCountry] = useState(
-    brand.billingAddress?.country ?? brand.mailingAddress?.country ?? 'US',
-  );
-  const [sameAsMailing, setSameAsMailing] = useState(
-    brand.billingAddress === null || addressEquals(brand.billingAddress, brand.mailingAddress),
-  );
+  // `savedValues` is the last-known-persisted state (seeded from `brand`,
+  // then re-seeded from whatever was just submitted the moment a save
+  // succeeds — see the effect below). `values` is the live, editable copy.
+  // Comparing the two is what drives the Save/Discard bar, independent of
+  // whether/when the server component above re-renders with a fresh `brand`.
+  const [savedValues, setSavedValues] = useState(() => valuesFromBrand(brand));
+  const [values, setValues] = useState(savedValues);
 
   const businessTypeId = useId();
+
+  const isDirty = logoDirty || !valuesEqual(values, savedValues);
+
+  function updateMailing(patch: Partial<AddressValues>) {
+    setValues((prev) => ({ ...prev, mailing: { ...prev.mailing, ...patch } }));
+  }
+
+  function updateBilling(patch: Partial<AddressValues>) {
+    setValues((prev) => ({ ...prev, billing: { ...prev.billing, ...patch } }));
+  }
 
   function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     if (!file) {
       setLogoPreview(null);
       setLogoError(undefined);
+      setLogoDirty(false);
       return;
     }
     if (!ALLOWED_LOGO_TYPES.includes(file.type)) {
@@ -187,41 +293,71 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
     }
     setLogoError(undefined);
     setLogoPreview(URL.createObjectURL(file));
+    setLogoDirty(true);
   }
+
+  function handleDiscard() {
+    setValues(savedValues);
+    setLogoPreview(null);
+    setLogoError(undefined);
+    setLogoDirty(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  // On a successful save, whatever was just submitted becomes the new
+  // baseline — this is what makes the buttons disappear rather than relying
+  // on the parent server component re-rendering with a fresh `brand` prop
+  // (which happens on its own timeline via revalidatePath).
+  useEffect(() => {
+    if (!state.success) return;
+    setSavedValues(values);
+    setLogoPreview(null);
+    setLogoDirty(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    // Intentionally keyed on `state` alone: this should fire once per
+    // successful dispatch, using whichever `values` were current at that
+    // point (submission is blocked mid-flight by the fieldset below), not
+    // re-fire on every subsequent keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   return (
     // Capped, not full width: a single-column-per-field form stretched across
     // a wide monitor is harder to scan, not easier — same reasoning as
     // PageContainer's own `narrow` variant, which this matches (max-w-2xl).
     //
-    // Card/divider treatment matches the Branding tab's editors (see
-    // email-receipt-editor.tsx's outer panel): rounded-2xl, border-[#E5E7EB],
-    // shadow-sm, with divide-y standing in for what used to be plain <hr>s —
-    // kept as a hand-rolled recipe here too since there's no shared Card
-    // component yet (the Branding editors don't share one either).
-    <form
-      action={formAction}
-      className="max-w-2xl overflow-hidden rounded-2xl border border-[#E5E7EB] bg-surface shadow-sm"
-    >
-      <input type="hidden" name="sameAsMailing" value={sameAsMailing ? '1' : ''} />
+    // No card: this tab renders directly on the page background, sections
+    // separated by plain <hr>s, matching the reference design exactly (the
+    // Branding tab's editors keep their own bordered/shadowed card — that's
+    // a separate, deliberately different treatment, not a shared convention
+    // to mirror here).
+    //
+    // The sticky Save/Discard bar has to be a real descendant of the <form>
+    // (not linked in via a `form="id"` attribute from outside it) — that
+    // cross-boundary association fires a native `submit` event just fine,
+    // but doesn't reliably drive this app's React 19 server-action wiring on
+    // <form action={formAction}>, so nothing was ever actually submitted.
+    // `<form>` itself is intentionally unconstrained (full main width) —
+    // max-w-2xl lives on each *section* instead, so a section's own <hr>
+    // sibling (and the sticky bar below) resolve their `auto` width against
+    // the page's true width rather than being boxed in by a 672px
+    // containing block that no negative margin can escape.
+    <form action={formAction}>
+      <input type="hidden" name="sameAsMailing" value={values.sameAsMailing ? '1' : ''} />
 
-      {/* #E5E7EB, not #F1F5F9 — corrected once the Branding tab's actual
-          divide-y color was confirmed straight from its own code
-          (email-receipt-editor.tsx) rather than a Figma export's rendering
-          of it, which turned out to read a shade lighter than the real
-          value. Same color as the card's outer border above, matching how
-          the Branding tab's own dividers reuse that one color everywhere
-          rather than a separate lighter shade for inner lines. */}
-      <div className="divide-y divide-[#E5E7EB]">
-        <section className="p-5">
-          <h2 className="mb-2 text-sm font-bold text-ink-strong">General Information</h2>
+      {/* Locks every field while a save is in flight — belt-and-braces
+          alongside the disabled Save button, since disabled form controls
+          also can't be edited or re-submitted mid-request. */}
+      <fieldset disabled={pending} className="space-y-8">
+        <section className="max-w-2xl">
+          <h2 className="mb-4 text-base font-bold text-[#0F172A]">General Information</h2>
 
           <div className="relative inline-block">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               aria-label="Upload business logo"
-              className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-lg
+              className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full text-2xl
                        font-bold text-white focus-visible:outline-none focus-visible:ring-2
                        focus-visible:ring-slate-900 focus-visible:ring-offset-2"
               style={{ backgroundColor: logoSrc ? undefined : brand.themeColor }}
@@ -239,10 +375,10 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
               onClick={() => fileInputRef.current?.click()}
               aria-hidden
               tabIndex={-1}
-              className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full
+              className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full
                        border-2 border-white bg-blue-600 text-white shadow-sm"
             >
-              <Pencil className="h-2.5 w-2.5" aria-hidden />
+              <Pencil className="h-3.5 w-3.5" aria-hidden />
             </button>
             <input
               ref={fileInputRef}
@@ -254,21 +390,18 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             />
           </div>
           {logoError && (
-            <p role="alert" className="mt-1 text-xs text-red-600">
+            <p role="alert" className="mt-2 text-sm text-red-600">
               {logoError}
             </p>
           )}
 
-          {/* 3 columns from lg up: on a common wide-but-short laptop screen
-            (1366x768, 1440x900) that turns 3 rows into 2 and buys back real
-            vertical room; 2 columns below that keeps fields legible on
-            narrower windows. */}
-          <div className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-6 grid gap-x-6 gap-y-5 sm:grid-cols-2">
             <Field
               label="Legal Business Name"
               name="legalName"
               required
-              defaultValue={brand.legalName}
+              value={values.legalName}
+              onChange={(legalName) => setValues((prev) => ({ ...prev, legalName }))}
               placeholder="Enter legal business name"
             />
             {/* The brand's trading name — what customers see — distinct from the
@@ -277,7 +410,8 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
               label="DBA (doing business as)"
               name="displayName"
               required
-              defaultValue={brand.displayName}
+              value={values.displayName}
+              onChange={(displayName) => setValues((prev) => ({ ...prev, displayName }))}
               placeholder="Enter DBA"
             />
             <label className="block" htmlFor={businessTypeId}>
@@ -286,9 +420,9 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
                 id={businessTypeId}
                 name="businessType"
                 required
-                defaultValue={brand.businessType ?? ''}
+                value={values.businessType}
+                onChange={(businessType) => setValues((prev) => ({ ...prev, businessType }))}
                 placeholder="Select type"
-                compact
               >
                 {BUSINESS_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -301,77 +435,113 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
               label="Business Email"
               name="email"
               type="email"
-              defaultValue={brand.email ?? ''}
+              value={values.email}
+              onChange={(email) => setValues((prev) => ({ ...prev, email }))}
               placeholder="Enter business email"
             />
             <Field
               label="Business Phone"
               name="phone"
               type="tel"
-              defaultValue={brand.phone ?? ''}
+              value={values.phone}
+              onChange={(phone) => setValues((prev) => ({ ...prev, phone }))}
               placeholder="Enter phone number"
             />
             <Field
               label="Tax ID / EIN"
               name="taxId"
-              defaultValue={brand.taxId ?? ''}
+              value={values.taxId}
+              onChange={(taxId) => setValues((prev) => ({ ...prev, taxId }))}
               placeholder="Enter Tax ID/EIN"
             />
           </div>
         </section>
 
-        <section className="p-5">
-          <h2 className="mb-2 text-sm font-bold text-ink-strong">Mailing Address</h2>
-          <AddressFields
-            prefix="mailing"
-            country={mailingCountry}
-            onCountryChange={setMailingCountry}
-            defaults={brand.mailingAddress}
-          />
+        {/* Full-width, not confined to the max-w-2xl field column — same
+            -mx-6/-mx-10 bleed as the sticky Save/Discard bar below, so the
+            line runs edge-to-edge with the page like it does in the
+            reference design. */}
+        <hr className="-mx-6 border-t border-[#E5E7EB] sm:-mx-10" />
+
+        <section className="max-w-2xl">
+          <h2 className="mb-4 text-base font-bold text-[#0F172A]">Mailing Address</h2>
+          <AddressFields prefix="mailing" value={values.mailing} onChange={updateMailing} />
         </section>
 
-        <section className="p-5">
-          <h2 className="mb-2 text-sm font-bold text-ink-strong">Billing Address</h2>
+        {/* Full-width, not confined to the max-w-2xl field column — same
+            -mx-6/-mx-10 bleed as the sticky Save/Discard bar below, so the
+            line runs edge-to-edge with the page like it does in the
+            reference design. */}
+        <hr className="-mx-6 border-t border-[#E5E7EB] sm:-mx-10" />
+
+        <section className="max-w-2xl">
+          <h2 className="mb-4 text-base font-bold text-[#0F172A]">Billing Address</h2>
           <Toggle
             id="same-as-mailing"
-            checked={sameAsMailing}
-            onChange={setSameAsMailing}
+            checked={values.sameAsMailing}
+            onChange={(sameAsMailing) => setValues((prev) => ({ ...prev, sameAsMailing }))}
             label="Same as Mailing address"
           />
           <div
             className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
-              sameAsMailing ? 'grid-rows-[0fr]' : 'mt-3 grid-rows-[1fr]'
+              values.sameAsMailing ? 'grid-rows-[0fr]' : 'mt-5 grid-rows-[1fr]'
             }`}
           >
             <div className="overflow-hidden">
-              <fieldset disabled={sameAsMailing}>
+              <fieldset disabled={values.sameAsMailing}>
                 <AddressFields
                   prefix="billing"
-                  country={billingCountry}
-                  onCountryChange={setBillingCountry}
-                  disabled={sameAsMailing}
-                  defaults={brand.billingAddress}
+                  value={values.billing}
+                  onChange={updateBilling}
+                  disabled={values.sameAsMailing}
                 />
               </fieldset>
             </div>
           </div>
         </section>
 
-        <div className="flex flex-col items-start gap-3 p-5">
-          {state.error && (
-            <p
-              role="alert"
-              className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {state.error}
-            </p>
-          )}
-          {state.success && (
-            <p className="rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              Saved.
-            </p>
-          )}
+        {state.error && (
+          <p
+            role="alert"
+            className="max-w-2xl rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
+            {state.error}
+          </p>
+        )}
+        {state.success && (
+          <p className="max-w-2xl rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            Saved.
+          </p>
+        )}
+      </fieldset>
 
+      {/* Bottom-right action bar — only appears once there's something to
+          save or discard, and stays out of the layout entirely otherwise
+          (no reserved space, no empty bar). Sticky, not fixed: it should
+          track the scrollable content column (see admin-shell's own
+          overflow-y-auto wrapper), not float over the sidebar/header. The
+          negative margins undo PageContainer's own px-6/px-10 so the bar
+          spans the full content width edge-to-edge, matching the design
+          rather than stopping at the (narrower) max-w-2xl column above it.
+          A plain descendant submit button — see the comment above the
+          <form> for why this can't be linked in via `form="id"` from
+          outside it. */}
+      {isDirty && (
+        <div
+          className="sticky bottom-0 z-10 -mx-6 mt-8 flex justify-end gap-3 border-t
+                     border-[#E5E7EB] bg-surface px-6 py-4 sm:-mx-10 sm:px-10"
+        >
+          <button
+            type="button"
+            onClick={handleDiscard}
+            disabled={pending}
+            className="rounded-[10px] border border-[#D4D4D4] bg-white px-6 py-3 text-sm font-bold
+                     text-[#0F172A] transition-colors hover:bg-neutral-50
+                     disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none
+                     focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          >
+            Discard
+          </button>
           <button
             type="submit"
             disabled={pending}
@@ -382,7 +552,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             {pending ? 'Saving…' : 'Save Changes'}
           </button>
         </div>
-      </div>
+      )}
     </form>
   );
 }

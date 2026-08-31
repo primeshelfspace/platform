@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useId, useRef, useState } from 'react';
+import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import {
   Check,
   ChevronDown,
@@ -502,6 +502,23 @@ export function PaymentPageEditor({
   const [device, setDevice] = useState<'web' | 'mobile'>('web');
   const [method, setMethod] = useState<MethodKey>('card');
 
+  // Last-known-persisted snapshot, re-seeded from whatever was just
+  // submitted the moment a save succeeds (see the effect below) — comparing
+  // the live state above against this is what drives the Discard/Save
+  // changes bar's visibility. `device`/`method` are pure preview toggles
+  // (never submitted), so they're deliberately excluded.
+  const [savedValues, setSavedValues] = useState({
+    themeColor: brand.themeColor,
+    accentColor: display.accentColor,
+    layout: display.paymentPageLayout,
+  });
+  const [logoDirty, setLogoDirty] = useState(false);
+  const isDirty =
+    logoDirty ||
+    themeColor !== savedValues.themeColor ||
+    accentColor !== savedValues.accentColor ||
+    layout !== savedValues.layout;
+
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoSrc = logoPreview ?? brand.logoUrl;
@@ -512,200 +529,260 @@ export function PaymentPageEditor({
   const [pageLayoutOpen, setPageLayoutOpen] = useState(true);
 
   const layoutGroupId = useId();
+  const saveFormId = useId();
 
   function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     if (!file) return;
     setLogoPreview(URL.createObjectURL(file));
+    setLogoDirty(true);
   }
 
+  function handleDiscard() {
+    setThemeColor(savedValues.themeColor);
+    setAccentColor(savedValues.accentColor);
+    setLayout(savedValues.layout);
+    setLogoPreview(null);
+    setLogoDirty(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  // On a successful save, whatever was just submitted becomes the new
+  // baseline, which is what makes the bar disappear again.
+  useEffect(() => {
+    if (!state.success) return;
+    setSavedValues({ themeColor, accentColor, layout });
+    setLogoDirty(false);
+    // Intentionally keyed on `state` alone: this should fire once per
+    // successful dispatch, using whichever values were current at that
+    // point, not re-fire on every subsequent keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   return (
-    <form
-      action={formAction}
-      className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
+    <>
+      <form
+        id={saveFormId}
+        action={formAction}
+        className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
                  border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
-    >
-      <input type="hidden" name="themeColor" value={themeColor} />
-      <input type="hidden" name="accentColor" value={accentColor} />
-      <input type="hidden" name="paymentPageLayout" value={layout} />
+      >
+        <input type="hidden" name="themeColor" value={themeColor} />
+        <input type="hidden" name="accentColor" value={accentColor} />
+        <input type="hidden" name="paymentPageLayout" value={layout} />
 
-      <section className="w-[350px] shrink-0 p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
-            <p className="mt-1 text-sm text-ink-muted">
-              Set default elements that appear across all customer communications.
-            </p>
-          </div>
-          <CollapseToggle
-            open={brandElementsOpen}
-            onToggle={() => setBrandElementsOpen((open) => !open)}
-            label="Brand Elements"
-          />
-        </div>
-
-        {brandElementsOpen && (
-          <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
-            <div className="flex items-center justify-between py-3">
-              <span className="text-sm font-medium text-ink-strong">Logo</span>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                aria-label="Upload brand logo"
-                className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                style={{ backgroundColor: logoSrc ? undefined : themeColor }}
-              >
-                {logoSrc ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  initialOf(brand.displayName)
-                )}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                name="logo"
-                accept="image/jpeg,image/png,image/svg+xml"
-                onChange={handleLogoChange}
-                className="hidden"
-              />
-            </div>
-
-            <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
-            <ColourField label="Accent colour" value={accentColor} onChange={setAccentColor} />
-          </div>
-        )}
-
-        <div className="mt-6">
+        <section className="w-[350px] shrink-0 p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-bold text-ink-strong">Page layout</p>
+              <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
               <p className="mt-1 text-sm text-ink-muted">
-                Choose how your payment page is presented to customers.
+                Set default elements that appear across all customer communications.
               </p>
             </div>
             <CollapseToggle
-              open={pageLayoutOpen}
-              onToggle={() => setPageLayoutOpen((open) => !open)}
-              label="Page layout"
+              open={brandElementsOpen}
+              onToggle={() => setBrandElementsOpen((open) => !open)}
+              label="Brand Elements"
             />
           </div>
 
-          {pageLayoutOpen && (
-            <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
-              {LAYOUTS.map(({ key, title, description }) => {
-                const selected = key === layout;
+          {brandElementsOpen && (
+            <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm font-medium text-ink-strong">Logo</span>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Upload brand logo"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                  style={{ backgroundColor: logoSrc ? undefined : themeColor }}
+                >
+                  {logoSrc ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logoSrc} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    initialOf(brand.displayName)
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  name="logo"
+                  accept="image/jpeg,image/png,image/svg+xml"
+                  onChange={handleLogoChange}
+                  className="hidden"
+                />
+              </div>
+
+              <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
+              <ColourField label="Accent colour" value={accentColor} onChange={setAccentColor} />
+            </div>
+          )}
+
+          <div className="mt-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-ink-strong">Page layout</p>
+                <p className="mt-1 text-sm text-ink-muted">
+                  Choose how your payment page is presented to customers.
+                </p>
+              </div>
+              <CollapseToggle
+                open={pageLayoutOpen}
+                onToggle={() => setPageLayoutOpen((open) => !open)}
+                label="Page layout"
+              />
+            </div>
+
+            {pageLayoutOpen && (
+              <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
+                {LAYOUTS.map(({ key, title, description }) => {
+                  const selected = key === layout;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => setLayout(key)}
+                      className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                        selected
+                          ? 'border-ink-strong bg-surface-muted'
+                          : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
+                      }`}
+                    >
+                      <span>
+                        <span className="block text-sm font-semibold text-ink-strong">{title}</span>
+                        <span className="block text-xs text-ink-muted">{description}</span>
+                      </span>
+                      {selected && (
+                        <Check className="h-4 w-4 shrink-0 text-ink-strong" aria-hidden />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {state.error && (
+            <p
+              role="alert"
+              className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {state.error}
+            </p>
+          )}
+          {state.success && (
+            <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              Saved.
+            </p>
+          )}
+
+          {/* Save/Discard live in the sticky bar below, outside this card —
+            see EmailReceiptEditor's identical bar for the full rationale. */}
+        </section>
+
+        <section className="min-w-0 w-[744px] max-w-full p-6">
+          {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
+            "Brand Settings" page heading — here it's the first thing in a
+            padded card, so that margin is cancelled rather than stacking
+            with the section's own p-6. */}
+          <div className="-mt-6">
+            <BrandingSubTabs active={activeSub} brandId={brand.id} />
+          </div>
+          <div className="mt-6 flex items-center justify-between">
+            <h3 className="text-base font-bold text-ink-strong">Preview</h3>
+            <div
+              role="radiogroup"
+              aria-label="Preview device"
+              className="inline-flex rounded-lg border border-[#E5E7EB] bg-white p-1"
+            >
+              {(
+                [
+                  { key: 'web' as const, label: 'Web', icon: Monitor },
+                  { key: 'mobile' as const, label: 'Mobile', icon: Smartphone },
+                ] satisfies { key: 'web' | 'mobile'; label: string; icon: typeof Monitor }[]
+              ).map(({ key, label, icon: Icon }) => {
+                const selected = key === device;
                 return (
                   <button
                     key={key}
                     type="button"
                     role="radio"
                     aria-checked={selected}
-                    onClick={() => setLayout(key)}
-                    className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
-                      selected
-                        ? 'border-ink-strong bg-surface-muted'
-                        : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
+                    onClick={() => setDevice(key)}
+                    className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      selected ? 'bg-[#404040] text-white' : 'text-ink-muted hover:text-ink-strong'
                     }`}
                   >
-                    <span>
-                      <span className="block text-sm font-semibold text-ink-strong">{title}</span>
-                      <span className="block text-xs text-ink-muted">{description}</span>
-                    </span>
-                    {selected && <Check className="h-4 w-4 shrink-0 text-ink-strong" aria-hidden />}
+                    <Icon className="h-3.5 w-3.5" aria-hidden />
+                    {label}
                   </button>
                 );
               })}
             </div>
-          )}
-        </div>
+          </div>
 
-        {state.error && (
-          <p
-            role="alert"
-            className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          <div
+            className={`mt-4 overflow-hidden border border-[#E5E7EB] bg-white shadow-sm transition-[max-width] ${
+              layout === 'SPLIT' && device === 'web' ? 'rounded-l-2xl' : 'rounded-2xl'
+            } ${device === 'mobile' ? 'mx-auto w-full max-w-[340px]' : 'max-w-none'}`}
           >
-            {state.error}
-          </p>
-        )}
-        {state.success && (
-          <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Saved.
-          </p>
-        )}
+            <PreviewBody
+              brand={brand}
+              themeColor={themeColor}
+              accentColor={accentColor}
+              layout={layout}
+              device={device}
+              logoSrc={logoSrc}
+              method={method}
+              onMethodChange={setMethod}
+              invoice={previewInvoice}
+            />
+          </div>
+        </section>
+      </form>
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-6 rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
+      {/* Bottom-right action bar — only appears once there's something to
+          save or discard, and rendered OUTSIDE the form above: that form
+          uses flex/lg:flex-row for its two columns, and a third flex child
+          here would've joined that row instead of sitting full-width below
+          it. See BrandDetailsForm's own identical bar for the rest of the
+          rationale (sticky vs fixed, the -mx-6/-mx-10 bleed matching
+          PageContainer's own padding). The Save button reaches the form
+          above purely via its `form` attribute — proven to work correctly
+          in this app already (EmailReceiptEditor's compact "Send Test
+          Email" button does the same). */}
+      {isDirty && (
+        <div
+          className="sticky bottom-0 z-10 -mx-6 mt-8 flex justify-end gap-3 border-t
+                     border-[#E5E7EB] bg-surface px-6 py-4 sm:-mx-10 sm:px-10"
+        >
+          <button
+            type="button"
+            onClick={handleDiscard}
+            disabled={pending}
+            className="rounded-[10px] border border-[#D4D4D4] bg-white px-6 py-3 text-sm font-bold
+                     text-[#0F172A] transition-colors hover:bg-neutral-50
+                     disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none
+                     focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          >
+            Discard
+          </button>
+          <button
+            type="submit"
+            form={saveFormId}
+            disabled={pending}
+            className="rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
                      hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
                      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
-          {pending ? 'Saving…' : 'Save Changes'}
-        </button>
-      </section>
-
-      <section className="min-w-0 w-[744px] max-w-full p-6">
-        {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
-            "Brand Settings" page heading — here it's the first thing in a
-            padded card, so that margin is cancelled rather than stacking
-            with the section's own p-6. */}
-        <div className="-mt-6">
-          <BrandingSubTabs active={activeSub} brandId={brand.id} />
-        </div>
-        <div className="mt-6 flex items-center justify-between">
-          <h3 className="text-base font-bold text-ink-strong">Preview</h3>
-          <div
-            role="radiogroup"
-            aria-label="Preview device"
-            className="inline-flex rounded-lg border border-[#E5E7EB] bg-white p-1"
           >
-            {(
-              [
-                { key: 'web' as const, label: 'Web', icon: Monitor },
-                { key: 'mobile' as const, label: 'Mobile', icon: Smartphone },
-              ] satisfies { key: 'web' | 'mobile'; label: string; icon: typeof Monitor }[]
-            ).map(({ key, label, icon: Icon }) => {
-              const selected = key === device;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onClick={() => setDevice(key)}
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                    selected ? 'bg-[#404040] text-white' : 'text-ink-muted hover:text-ink-strong'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" aria-hidden />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+            {pending ? 'Saving…' : 'Save changes'}
+          </button>
         </div>
-
-        <div
-          className={`mt-4 overflow-hidden border border-[#E5E7EB] bg-white shadow-sm transition-[max-width] ${
-            layout === 'SPLIT' && device === 'web' ? 'rounded-l-2xl' : 'rounded-2xl'
-          } ${device === 'mobile' ? 'mx-auto w-full max-w-[340px]' : 'max-w-none'}`}
-        >
-          <PreviewBody
-            brand={brand}
-            themeColor={themeColor}
-            accentColor={accentColor}
-            layout={layout}
-            device={device}
-            logoSrc={logoSrc}
-            method={method}
-            onMethodChange={setMethod}
-            invoice={previewInvoice}
-          />
-        </div>
-      </section>
-    </form>
+      )}
+    </>
   );
 }

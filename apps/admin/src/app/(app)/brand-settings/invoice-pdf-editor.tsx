@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useId, useRef, useState } from 'react';
+import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import type {
   Brand,
@@ -573,6 +573,36 @@ export function InvoicePdfEditor({
   const [paymentTerms, setPaymentTerms] = useState<InvoicePdfPaymentTerms>(settings.paymentTerms);
   const [notes, setNotes] = useState(settings.notes);
 
+  // Last-known-persisted snapshot, re-seeded from whatever was just
+  // submitted the moment a save succeeds (see the effect below) — comparing
+  // the live state above against this is what drives the Discard/Save
+  // changes bar's visibility: no bar when nothing has changed since the
+  // last save. showTaxBreakdown is deliberately omitted — it has no setter
+  // and never changes.
+  const [savedValues, setSavedValues] = useState({
+    themeColor: brand.themeColor,
+    layout: settings.invoicePdfLayout,
+    showCompanyAddress: settings.showCompanyAddress,
+    showPaymentTerms: settings.showPaymentTerms,
+    showNotes: settings.showNotes,
+    companyName: settings.companyName,
+    companyAddress: settings.companyAddress,
+    paymentTerms: settings.paymentTerms,
+    notes: settings.notes,
+  });
+  const [logoDirty, setLogoDirty] = useState(false);
+  const isDirty =
+    logoDirty ||
+    themeColor !== savedValues.themeColor ||
+    layout !== savedValues.layout ||
+    showCompanyAddress !== savedValues.showCompanyAddress ||
+    showPaymentTerms !== savedValues.showPaymentTerms ||
+    showNotes !== savedValues.showNotes ||
+    companyName !== savedValues.companyName ||
+    companyAddress !== savedValues.companyAddress ||
+    paymentTerms !== savedValues.paymentTerms ||
+    notes !== savedValues.notes;
+
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoSrc = logoPreview ?? brand.logoUrl;
@@ -584,147 +614,197 @@ export function InvoicePdfEditor({
 
   const layoutGroupId = useId();
   const paymentTermsId = useId();
+  const saveFormId = useId();
 
   function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     if (!file) return;
     setLogoPreview(URL.createObjectURL(file));
+    setLogoDirty(true);
   }
 
+  function handleDiscard() {
+    setThemeColor(savedValues.themeColor);
+    setLayout(savedValues.layout);
+    setShowCompanyAddress(savedValues.showCompanyAddress);
+    setShowPaymentTerms(savedValues.showPaymentTerms);
+    setShowNotes(savedValues.showNotes);
+    setCompanyName(savedValues.companyName);
+    setCompanyAddress(savedValues.companyAddress);
+    setPaymentTerms(savedValues.paymentTerms);
+    setNotes(savedValues.notes);
+    setLogoPreview(null);
+    setLogoDirty(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  // On a successful save, whatever was just submitted becomes the new
+  // baseline, which is what makes the bar disappear again.
+  useEffect(() => {
+    if (!state.success) return;
+    setSavedValues({
+      themeColor,
+      layout,
+      showCompanyAddress,
+      showPaymentTerms,
+      showNotes,
+      companyName,
+      companyAddress,
+      paymentTerms,
+      notes,
+    });
+    setLogoDirty(false);
+    // Intentionally keyed on `state` alone: this should fire once per
+    // successful dispatch, using whichever values were current at that
+    // point, not re-fire on every subsequent keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
   return (
-    <div
-      className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
+    <>
+      <div
+        className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
                  border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
-    >
-      <section className="w-[350px] shrink-0 p-6">
-        <form action={formAction}>
-          <input type="hidden" name="themeColor" value={themeColor} />
-          <input type="hidden" name="invoicePdfLayout" value={layout} />
-          <input type="hidden" name="paymentTerms" value={paymentTerms} />
-          {/* Company info's own fields live inside a collapsible section —
+      >
+        <section className="w-[350px] shrink-0 p-6">
+          <form id={saveFormId} action={formAction}>
+            <input type="hidden" name="themeColor" value={themeColor} />
+            <input type="hidden" name="invoicePdfLayout" value={layout} />
+            <input type="hidden" name="paymentTerms" value={paymentTerms} />
+            {/* Company info's own fields live inside a collapsible section —
               when it's collapsed those inputs aren't in the DOM at all, so
               nothing of theirs would reach FormData on submit. Hidden
               mirrors here, always rendered regardless of collapse state,
               are the same fix EmailReceiptEditor's Subject/Body already use. */}
-          <input type="hidden" name="companyName" value={companyName} />
-          <input type="hidden" name="companyAddress" value={companyAddress} />
-          <input type="hidden" name="notes" value={notes} />
-          <input type="hidden" name="showCompanyAddress" value={showCompanyAddress ? 'on' : ''} />
-          <input type="hidden" name="showPaymentTerms" value={showPaymentTerms ? 'on' : ''} />
-          <input type="hidden" name="showTaxBreakdown" value={showTaxBreakdown ? 'on' : ''} />
-          <input type="hidden" name="showNotes" value={showNotes ? 'on' : ''} />
+            <input type="hidden" name="companyName" value={companyName} />
+            <input type="hidden" name="companyAddress" value={companyAddress} />
+            <input type="hidden" name="notes" value={notes} />
+            <input type="hidden" name="showCompanyAddress" value={showCompanyAddress ? 'on' : ''} />
+            <input type="hidden" name="showPaymentTerms" value={showPaymentTerms ? 'on' : ''} />
+            <input type="hidden" name="showTaxBreakdown" value={showTaxBreakdown ? 'on' : ''} />
+            <input type="hidden" name="showNotes" value={showNotes ? 'on' : ''} />
 
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
-              <p className="mt-1 text-sm text-ink-muted">
-                Set default elements that appear across all customer communications.
-              </p>
-            </div>
-            <CollapseToggle
-              open={brandElementsOpen}
-              onToggle={() => setBrandElementsOpen((open) => !open)}
-              label="Brand Elements"
-            />
-          </div>
+            {/* Brand Elements / Invoice Layout / Invoice Fields / Company info
+              used to just be mt-6-spaced with no line between them — this
+              divide-y draws the same light line under each of the four here,
+              matching the reference design (and EmailReceiptEditor's own
+              identical treatment of its three sections). */}
+            <div className="divide-y divide-[#E5E7EB]">
+              <div className="pb-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Set default elements that appear across all customer communications.
+                    </p>
+                  </div>
+                  <CollapseToggle
+                    open={brandElementsOpen}
+                    onToggle={() => setBrandElementsOpen((open) => !open)}
+                    label="Brand Elements"
+                  />
+                </div>
 
-          {brandElementsOpen && (
-            <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
-              <div className="flex items-center justify-between py-3">
-                <span className="text-sm font-medium text-ink-strong">Logo</span>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Upload brand logo"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
-                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  style={{ backgroundColor: logoSrc ? undefined : themeColor }}
-                >
-                  {logoSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    initialOf(brand.displayName)
-                  )}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  name="logo"
-                  accept="image/jpeg,image/png,image/svg+xml"
-                  onChange={handleLogoChange}
-                  className="hidden"
-                />
+                {brandElementsOpen && (
+                  <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
+                    <div className="flex items-center justify-between py-3">
+                      <span className="text-sm font-medium text-ink-strong">Logo</span>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        aria-label="Upload brand logo"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
+                                 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                        style={{ backgroundColor: logoSrc ? undefined : themeColor }}
+                      >
+                        {logoSrc ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={logoSrc} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          initialOf(brand.displayName)
+                        )}
+                      </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        name="logo"
+                        accept="image/jpeg,image/png,image/svg+xml"
+                        onChange={handleLogoChange}
+                        className="hidden"
+                      />
+                    </div>
+
+                    <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
+                  </div>
+                )}
               </div>
 
-              <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
-            </div>
-          )}
+              <div className="py-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-ink-strong">Invoice Layout</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Choose the visual structure of the generated PDF invoice.
+                    </p>
+                  </div>
+                  <CollapseToggle
+                    open={layoutOpen}
+                    onToggle={() => setLayoutOpen((open) => !open)}
+                    label="Invoice Layout"
+                  />
+                </div>
 
-          <div className="mt-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-bold text-ink-strong">Invoice Layout</p>
-                <p className="mt-1 text-sm text-ink-muted">
-                  Choose the visual structure of the generated PDF invoice.
-                </p>
+                {layoutOpen && (
+                  <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
+                    {LAYOUTS.map(({ key, title, description }) => {
+                      const selected = key === layout;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => setLayout(key)}
+                          className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                            selected
+                              ? 'border-ink-strong bg-surface-muted'
+                              : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
+                          }`}
+                        >
+                          <span>
+                            <span className="block text-sm font-semibold text-ink-strong">
+                              {title}
+                            </span>
+                            <span className="block text-xs text-ink-muted">{description}</span>
+                          </span>
+                          {selected && (
+                            <Check className="h-4 w-4 shrink-0 text-ink-strong" aria-hidden />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <CollapseToggle
-                open={layoutOpen}
-                onToggle={() => setLayoutOpen((open) => !open)}
-                label="Invoice Layout"
-              />
-            </div>
 
-            {layoutOpen && (
-              <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
-                {LAYOUTS.map(({ key, title, description }) => {
-                  const selected = key === layout;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => setLayout(key)}
-                      className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
-                        selected
-                          ? 'border-ink-strong bg-surface-muted'
-                          : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
-                      }`}
-                    >
-                      <span>
-                        <span className="block text-sm font-semibold text-ink-strong">{title}</span>
-                        <span className="block text-xs text-ink-muted">{description}</span>
-                      </span>
-                      {selected && (
-                        <Check className="h-4 w-4 shrink-0 text-ink-strong" aria-hidden />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+              <div className="py-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-ink-strong">Invoice Fields</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Toggle which sections appear on the PDF.
+                    </p>
+                  </div>
+                  <CollapseToggle
+                    open={fieldsOpen}
+                    onToggle={() => setFieldsOpen((open) => !open)}
+                    label="Invoice Fields"
+                  />
+                </div>
 
-          <div className="mt-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-bold text-ink-strong">Invoice Fields</p>
-                <p className="mt-1 text-sm text-ink-muted">
-                  Toggle which sections appear on the PDF.
-                </p>
-              </div>
-              <CollapseToggle
-                open={fieldsOpen}
-                onToggle={() => setFieldsOpen((open) => !open)}
-                label="Invoice Fields"
-              />
-            </div>
-
-            {fieldsOpen && (
-              <div className="mt-3">
-                {/* No `name` on these — they're inside this collapsible
+                {fieldsOpen && (
+                  <div className="mt-3">
+                    {/* No `name` on these — they're inside this collapsible
                     section, so a checkbox's own presence/absence in FormData
                     would go missing entirely (not just wrong) whenever the
                     section happens to be collapsed at submit time. The
@@ -733,180 +813,211 @@ export function InvoicePdfEditor({
                     `divided={false}`: no rule between rows here, per the
                     reference — the outer border-y/divide-y that used to sit
                     on this wrapper is gone too, for the same reason. */}
-                <Toggle
-                  layout="row"
-                  divided={false}
-                  checked={showCompanyAddress}
-                  onChange={setShowCompanyAddress}
-                  label="Company address"
-                  hint="Show sender address on the invoice"
-                />
-                <Toggle
-                  layout="row"
-                  divided={false}
-                  checked={showPaymentTerms}
-                  onChange={setShowPaymentTerms}
-                  label="Payment terms"
-                  hint="e.g. Net 30, Due on receipt"
-                />
-                <Toggle
-                  layout="row"
-                  divided={false}
-                  checked={showNotes}
-                  onChange={setShowNotes}
-                  label="Notes"
-                  hint="Custom message at the bottom"
-                />
+                    <Toggle
+                      layout="row"
+                      divided={false}
+                      checked={showCompanyAddress}
+                      onChange={setShowCompanyAddress}
+                      label="Company address"
+                      hint="Show sender address on the invoice"
+                    />
+                    <Toggle
+                      layout="row"
+                      divided={false}
+                      checked={showPaymentTerms}
+                      onChange={setShowPaymentTerms}
+                      label="Payment terms"
+                      hint="e.g. Net 30, Due on receipt"
+                    />
+                    <Toggle
+                      layout="row"
+                      divided={false}
+                      checked={showNotes}
+                      onChange={setShowNotes}
+                      label="Notes"
+                      hint="Custom message at the bottom"
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="mt-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-bold text-ink-strong">Company info</p>
+              <div className="pt-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-ink-strong">Company info</p>
+                  </div>
+                  <CollapseToggle
+                    open={companyInfoOpen}
+                    onToggle={() => setCompanyInfoOpen((open) => !open)}
+                    label="Company info"
+                  />
+                </div>
+
+                {companyInfoOpen && (
+                  <div className="mt-4 space-y-4">
+                    <label className="block">
+                      <span className="mb-1 block text-sm font-medium text-ink-strong">
+                        Company name
+                      </span>
+                      <input
+                        value={companyName}
+                        onChange={(event) => setCompanyName(event.target.value)}
+                        className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-sm font-medium text-ink-strong">
+                        Address
+                      </span>
+                      <textarea
+                        value={companyAddress}
+                        onChange={(event) => setCompanyAddress(event.target.value)}
+                        rows={3}
+                        className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                      />
+                    </label>
+
+                    <label className="block" htmlFor={paymentTermsId}>
+                      <span className="mb-1 block text-sm font-medium text-ink-strong">
+                        Payment terms
+                      </span>
+                      <select
+                        id={paymentTermsId}
+                        value={paymentTerms}
+                        onChange={(event) =>
+                          setPaymentTerms(event.target.value as InvoicePdfPaymentTerms)
+                        }
+                        className="h-10 w-full appearance-none rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                      >
+                        {PAYMENT_TERMS_OPTIONS.map((option) => (
+                          <option key={option.key} value={option.key}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-sm font-medium text-ink-strong">Notes</span>
+                      <textarea
+                        value={notes}
+                        onChange={(event) => setNotes(event.target.value)}
+                        rows={4}
+                        className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                      />
+                    </label>
+                  </div>
+                )}
               </div>
-              <CollapseToggle
-                open={companyInfoOpen}
-                onToggle={() => setCompanyInfoOpen((open) => !open)}
-                label="Company info"
-              />
             </div>
 
-            {companyInfoOpen && (
-              <div className="mt-4 space-y-4">
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-ink-strong">
-                    Company name
-                  </span>
-                  <input
-                    value={companyName}
-                    onChange={(event) => setCompanyName(event.target.value)}
-                    className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-ink-strong">Address</span>
-                  <textarea
-                    value={companyAddress}
-                    onChange={(event) => setCompanyAddress(event.target.value)}
-                    rows={3}
-                    className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  />
-                </label>
-
-                <label className="block" htmlFor={paymentTermsId}>
-                  <span className="mb-1 block text-sm font-medium text-ink-strong">
-                    Payment terms
-                  </span>
-                  <select
-                    id={paymentTermsId}
-                    value={paymentTerms}
-                    onChange={(event) =>
-                      setPaymentTerms(event.target.value as InvoicePdfPaymentTerms)
-                    }
-                    className="h-10 w-full appearance-none rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  >
-                    {PAYMENT_TERMS_OPTIONS.map((option) => (
-                      <option key={option.key} value={option.key}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-ink-strong">Notes</span>
-                  <textarea
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    rows={4}
-                    className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  />
-                </label>
-              </div>
+            {state.error && (
+              <p
+                role="alert"
+                className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {state.error}
+              </p>
             )}
-          </div>
+            {state.success && (
+              <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                Saved.
+              </p>
+            )}
 
-          {state.error && (
-            <p
-              role="alert"
-              className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {state.error}
-            </p>
-          )}
-          {state.success && (
-            <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              Saved.
-            </p>
-          )}
+            {/* Save/Discard live in the sticky bar below, outside this card —
+              see EmailReceiptEditor's identical bar for the full rationale. */}
+          </form>
+        </section>
 
-          <button
-            type="submit"
-            disabled={pending}
-            className="mt-6 rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
-                       hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
-                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
-            {pending ? 'Saving…' : 'Save Changes'}
-          </button>
-        </form>
-      </section>
-
-      <section className="min-w-0 w-[744px] max-w-full p-6">
-        {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
+        <section className="min-w-0 w-[744px] max-w-full p-6">
+          {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
             "Brand Settings" page heading — here it's the first thing in a
             padded card, so that margin is cancelled rather than stacking
             with the section's own p-6. */}
-        <div className="-mt-6">
-          <BrandingSubTabs active={activeSub} brandId={brand.id} />
-        </div>
-        <div className="mt-6 flex items-center justify-between">
-          <h3 className="text-base font-bold text-ink-strong">Preview</h3>
-          {/* text-black, not the faded look opacity-50 used to give it —
+          <div className="-mt-6">
+            <BrandingSubTabs active={activeSub} brandId={brand.id} />
+          </div>
+          <div className="mt-6 flex items-center justify-between">
+            <h3 className="text-base font-bold text-ink-strong">Preview</h3>
+            {/* text-black, not the faded look opacity-50 used to give it —
               the border/bg alone (plus cursor-not-allowed and the title
               tooltip) already communicate disabled without washing out
               the label to gray. */}
+            <button
+              type="button"
+              disabled
+              title="PDF generation isn't built yet — this previews the layout only"
+              className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-[#D1D5DB]
+                       bg-white px-3 py-1.5 text-xs font-semibold text-black"
+            >
+              <Download className="h-3.5 w-3.5" aria-hidden />
+              Download PDF
+            </button>
+          </div>
+
+          <div className="mt-4 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+            <InvoicePreviewBody
+              brand={brand}
+              layout={layout}
+              themeColor={themeColor}
+              logoSrc={logoSrc}
+              companyName={companyName}
+              companyAddress={companyAddress}
+              showCompanyAddress={showCompanyAddress}
+              showPaymentTerms={showPaymentTerms}
+              showNotes={showNotes}
+              paymentTerms={paymentTerms}
+              notes={notes}
+              invoice={previewInvoice ?? SAMPLE_PREVIEW}
+              isSample={!previewInvoice}
+            />
+          </div>
+        </section>
+      </div>
+
+      {/* Bottom-right action bar — only appears once there's something to
+          save or discard. See BrandDetailsForm's own identical bar for the
+          full rationale (sticky vs fixed, the -mx-6/-mx-10 bleed matching
+          PageContainer's own padding). The Save button reaches the actual
+          <form> above purely via its `form` attribute. */}
+      {isDirty && (
+        <div
+          className="sticky bottom-0 z-10 -mx-6 mt-8 flex justify-end gap-3 border-t
+                     border-[#E5E7EB] bg-surface px-6 py-4 sm:-mx-10 sm:px-10"
+        >
           <button
             type="button"
-            disabled
-            title="PDF generation isn't built yet — this previews the layout only"
-            className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg border border-[#D1D5DB]
-                       bg-white px-3 py-1.5 text-xs font-semibold text-black"
+            onClick={handleDiscard}
+            disabled={pending}
+            className="rounded-[10px] border border-[#D4D4D4] bg-white px-6 py-3 text-sm font-bold
+                     text-[#0F172A] transition-colors hover:bg-neutral-50
+                     disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none
+                     focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
           >
-            <Download className="h-3.5 w-3.5" aria-hidden />
-            Download PDF
+            Discard
+          </button>
+          <button
+            type="submit"
+            form={saveFormId}
+            disabled={pending}
+            className="rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
+                     hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
+                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          >
+            {pending ? 'Saving…' : 'Save changes'}
           </button>
         </div>
-
-        <div className="mt-4 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
-          <InvoicePreviewBody
-            brand={brand}
-            layout={layout}
-            themeColor={themeColor}
-            logoSrc={logoSrc}
-            companyName={companyName}
-            companyAddress={companyAddress}
-            showCompanyAddress={showCompanyAddress}
-            showPaymentTerms={showPaymentTerms}
-            showNotes={showNotes}
-            paymentTerms={paymentTerms}
-            notes={notes}
-            invoice={previewInvoice ?? SAMPLE_PREVIEW}
-            isSample={!previewInvoice}
-          />
-        </div>
-      </section>
-    </div>
+      )}
+    </>
   );
 }
