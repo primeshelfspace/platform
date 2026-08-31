@@ -217,9 +217,12 @@ export class IntegrationConnectionService {
    * see the migration comment on IntegrationConnection.lastPulledAt. */
   async recordPullRun(scope: Scope, brandId: string, pullStartedAt: Date): Promise<void> {
     await this.prisma.withScope(scope, (tx) =>
-      tx.integrationConnection.update({
-        where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } },
-        data: { lastPulledAt: pullStartedAt },
+      tx.integrationConnection.updateMany({
+        where: { brandId, provider: 'ZOHO_BOOKS' },
+        // health alongside the cursor: a completed pull is positive evidence
+        // the connection works, so it clears a stale markUnhealthy reason for
+        // the same reason recordSyncRun does.
+        data: { lastPulledAt: pullStartedAt, health: 'Healthy' },
       }),
     );
   }
@@ -306,22 +309,41 @@ export class IntegrationConnectionService {
     }));
   }
 
+  /**
+   * Records *why* a brand's sync is failing without stopping it.
+   *
+   * Deliberately touches `health` only, never `status`. Setting status to
+   * UNHEALTHY would make buildAccountingConnection return null for this brand,
+   * which turns every subsequent push and pull into a silent no-op with no way
+   * back except a full OAuth reconnect — so a single transient auth blip would
+   * permanently disable the integration. Leaving status CONNECTED keeps the
+   * pipeline retrying and lets it heal on its own the moment Zoho accepts the
+   * token again (recordSyncRun and recordPullRun both clear this back to
+   * Healthy on the next success), while the integrations panel still shows the
+   * operator exactly what Zoho said.
+   */
   async markUnhealthy(scope: Scope, brandId: string, reason: string): Promise<void> {
     await this.prisma.withScope(scope, (tx) =>
       tx.integrationConnection
-        .update({
-          where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } },
-          data: { status: 'UNHEALTHY', health: reason },
+        .updateMany({
+          where: { brandId, provider: 'ZOHO_BOOKS' },
+          // Zoho's own message can be long; the column is display-oriented.
+          data: { health: reason.slice(0, 500) },
         })
         // A brand that was never connected has no row to mark — nothing to do.
         .catch(() => undefined),
     );
   }
 
+  /** Called after every successful push (ZohoSyncService.runJob). This is what
+   * makes the panel's "last sync" figure mean anything: before it was wired up
+   * the column was set once, at connect time, and never advanced again. Also
+   * clears whatever markUnhealthy last recorded, so a recovered connection
+   * stops reporting a stale failure. */
   async recordSyncRun(scope: Scope, brandId: string): Promise<void> {
     await this.prisma.withScope(scope, (tx) =>
-      tx.integrationConnection.update({
-        where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } },
+      tx.integrationConnection.updateMany({
+        where: { brandId, provider: 'ZOHO_BOOKS' },
         data: { lastSyncAt: new Date(), health: 'Healthy' },
       }),
     );

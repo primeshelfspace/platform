@@ -12,6 +12,13 @@ import { ZohoPullService } from './integrations/zoho-pull.service.js';
 import { ZohoSyncService } from './integrations/zoho-sync.service.js';
 
 /**
+ * How long a SyncJob may sit in RUNNING before it is treated as abandoned
+ * rather than slow. See the reaper in the 'scheduled-sync' handler for why this
+ * exists and why thirty minutes is the right side of every legitimate job.
+ */
+const STALE_SYNC_JOB_MS = 30 * 60 * 1000;
+
+/**
  * Worker entry point.
  *
  * One process hosts all six pools today; each queue keeps its own concurrency,
@@ -66,6 +73,36 @@ async function bootstrap(): Promise<void> {
   // brand configured for "Daily" is skipped on the other 1,439 ticks.
   handlers.scheduled = {
     'scheduled-sync': async () => {
+      // G-11. A SyncJob row is set RUNNING before its work starts and moved to
+      // SUCCEEDED/SKIPPED/FAILED after, so a process that dies mid-job — a
+      // deploy, an OOM kill, a crash — leaves the row RUNNING with nothing that
+      // will ever transition it. They accumulate silently and, because the
+      // integrations panel shows the most recent rows, eventually crowd out the
+      // real activity with jobs that are permanently "in flight".
+      //
+      // Thirty minutes is comfortably longer than any legitimate job: the
+      // per-record pulls are single API calls, the list scans are bounded by the
+      // rate limiter, and BullMQ's own retry budget for this queue is about the
+      // same span — so anything still RUNNING past it is not slow, it is gone.
+      const reaped = await prisma.withoutScope(
+        'scheduled-sync: failing sync jobs orphaned by a crashed worker',
+        (client) =>
+          client.syncJob.updateMany({
+            where: {
+              status: 'RUNNING',
+              createdAt: { lt: new Date(Date.now() - STALE_SYNC_JOB_MS) },
+            },
+            data: {
+              status: 'FAILED',
+              errorClass: 'PERMANENT',
+              lastError: 'abandoned — the worker processing this job stopped before finishing it',
+            },
+          }),
+      );
+      if (reaped.count > 0) {
+        logger.warn(`scheduled-sync: failed ${reaped.count} sync job(s) orphaned by a crash`);
+      }
+
       const connections = await prisma.withoutScope(
         'scheduled-sync: listing brands with a live Zoho connection',
         (client) =>
@@ -85,7 +122,11 @@ async function bootstrap(): Promise<void> {
       await Promise.all(
         due.map(({ brandId }) => queue.enqueue('sync', 'zoho-pull-brand', { brandId })),
       );
-      return { brandsConnected: connections.length, brandsEnqueued: due.length };
+      return {
+        brandsConnected: connections.length,
+        brandsEnqueued: due.length,
+        staleJobsReaped: reaped.count,
+      };
     },
   };
 

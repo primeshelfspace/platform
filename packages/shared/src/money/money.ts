@@ -34,6 +34,34 @@ const MINOR_UNIT_EXPONENT: Record<CurrencyCode, number> = {
 };
 
 /**
+ * How many decimal places this currency's minor unit represents.
+ *
+ * Exported because the Zoho adapter converts between Zoho's decimal amounts and
+ * this platform's minor units, and a hardcoded 100 there is correct only while
+ * every supported currency happens to be 2-decimal. Adding a zero-decimal
+ * currency (JPY, KRW) or a three-decimal one (KWD, BHD) to
+ * SUPPORTED_CURRENCIES would otherwise silently make every amount crossing that
+ * boundary wrong by a factor of 100 or 10 — with nothing failing to signal it.
+ */
+export function minorUnitExponent(currency: CurrencyCode): number {
+  return MINOR_UNIT_EXPONENT[currency];
+}
+
+/**
+ * Type guard for a currency this platform can actually represent.
+ *
+ * Distinct from toCurrencyCode, and the difference matters: that function
+ * *substitutes* a fallback, which is right for narrowing a value already known
+ * to be one of ours, and badly wrong for data arriving from a provider. Zoho
+ * returns whatever currency the merchant's own books use, so silently reading a
+ * JPY invoice as USD would store a number that is both mislabelled and 100x
+ * off. Callers handling external data want this and an explicit refusal.
+ */
+export function isSupportedCurrency(value: string | null | undefined): value is CurrencyCode {
+  return (SUPPORTED_CURRENCIES as readonly string[]).includes(value ?? '');
+}
+
+/**
  * Narrows a currency string coming back over the wire.
  *
  * Call sites previously wrote `invoice.currency as 'USD'` — which is a lie to
@@ -45,9 +73,7 @@ export function toCurrencyCode(
   value: string | null | undefined,
   fallback: CurrencyCode = 'USD',
 ): CurrencyCode {
-  return (SUPPORTED_CURRENCIES as readonly string[]).includes(value ?? '')
-    ? (value as CurrencyCode)
-    : fallback;
+  return isSupportedCurrency(value) ? value : fallback;
 }
 
 export class MoneyError extends Error {

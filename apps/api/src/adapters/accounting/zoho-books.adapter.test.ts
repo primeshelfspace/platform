@@ -5,6 +5,7 @@
  * with no fields treated as "present" instead of null.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isSupportedCurrency, minorUnitExponent } from '@fenwick/shared';
 import type { AccountingConnection } from '@fenwick/shared';
 import type { Env } from '../../config/env.js';
 import type { RedisService } from '../../infra/redis/redis.service.js';
@@ -38,16 +39,42 @@ describe('ZohoBooksAdapter.reverseMapPaymentMode', () => {
 
 describe('ZohoBooksAdapter.decimalToMinor', () => {
   it('converts whole and fractional amounts exactly', () => {
-    expect(adapter.decimalToMinor(12.34)).toBe(1234);
-    expect(adapter.decimalToMinor(0)).toBe(0);
-    expect(adapter.decimalToMinor(100)).toBe(10000);
+    expect(adapter.decimalToMinor(12.34, 'USD')).toBe(1234);
+    expect(adapter.decimalToMinor(0, 'USD')).toBe(0);
+    expect(adapter.decimalToMinor(100, 'USD')).toBe(10000);
   });
 
   it('rounds rather than truncates on floating-point-imprecise values', () => {
     // 19.99 * 100 is 1998.9999999999998 in IEEE 754 — a naive Math.floor
     // would silently undercharge by a cent.
-    expect(adapter.decimalToMinor(19.99)).toBe(1999);
-    expect(adapter.decimalToMinor(0.1)).toBe(10);
+    expect(adapter.decimalToMinor(19.99, 'USD')).toBe(1999);
+    expect(adapter.decimalToMinor(0.1, 'USD')).toBe(10);
+  });
+
+  it('scales by the currency exponent rather than a hardcoded 100', () => {
+    // Every currency the platform supports today is 2-decimal, so this asserts
+    // the mechanism rather than a live difference: the conversion reads the
+    // exponent, so adding JPY (0) or KWD (3) to SUPPORTED_CURRENCIES stays a
+    // one-line change instead of silently mis-scaling every amount.
+    for (const currency of ['USD', 'CAD', 'EUR', 'GBP'] as const) {
+      expect(minorUnitExponent(currency)).toBe(2);
+      expect(adapter.decimalToMinor(12.34, currency)).toBe(1234);
+    }
+  });
+});
+
+describe('isSupportedCurrency', () => {
+  it('accepts every supported code and rejects everything else', () => {
+    for (const currency of ['USD', 'CAD', 'EUR', 'GBP']) {
+      expect(isSupportedCurrency(currency)).toBe(true);
+    }
+    // The ones that would corrupt an amount if waved through: JPY has no minor
+    // unit at all, KWD has three.
+    expect(isSupportedCurrency('JPY')).toBe(false);
+    expect(isSupportedCurrency('KWD')).toBe(false);
+    expect(isSupportedCurrency(null)).toBe(false);
+    expect(isSupportedCurrency(undefined)).toBe(false);
+    expect(isSupportedCurrency('')).toBe(false);
   });
 });
 

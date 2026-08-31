@@ -3,7 +3,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   IntegrationError,
+  isSupportedCurrency,
   type AccountingConnection,
+  type CurrencyCode,
   type InvoiceStatus,
   type Scope,
 } from '@fenwick/shared';
@@ -66,6 +68,33 @@ const CONTACTS_FULL_SCAN_FLOOR_SECONDS = 15 * 60;
  */
 const PAYMENTS_FULL_SCAN_FLOOR_SECONDS = 15 * 60;
 
+/**
+ * How often a brand's invoices are reconciled against Zoho's full list to
+ * detect deletions (G-02). Deliberately much coarser than the pull cadence:
+ * the normal invoice pull is incremental — it asks only for invoices modified
+ * since the cursor — which by construction can never reveal an invoice that
+ * has stopped existing. Answering "what does Zoho still have" needs an
+ * unfiltered scan of every page, so it is priced accordingly. Deletion is also
+ * rare and, unlike a missed status change, not time-critical to within
+ * minutes.
+ */
+const INVOICE_RECONCILE_FLOOR_SECONDS = 60 * 60;
+
+/**
+ * How recently a local record may have been created and still be exempt from
+ * being treated as deleted in Zoho.
+ *
+ * Without this the reconciliation races its own sibling pipeline: pushes run on
+ * the sync queue concurrently with pulls, so an invoice issued here can be
+ * written locally, and its Zoho list scan can complete, before the push that
+ * creates it in Zoho actually lands. It would then be absent from the scan
+ * purely because it did not exist there yet, and flagging that as a deletion
+ * would deactivate the payment link on a brand-new invoice. Ten minutes is far
+ * longer than the queue's own backlog under any normal load, and costs nothing
+ * — a genuinely deleted invoice is simply caught on the next hourly pass.
+ */
+const RECONCILE_CREATION_GRACE_MS = 10 * 60 * 1000;
+
 /** Zoho's contact archive flag ('active' | 'inactive', ZohoContactListItem.status)
  * onto our Customer.status. Undefined is a defensive fallback only - Status.All
  * (see listContactsPage) should always return one - and reads as ACTIVE, the
@@ -117,6 +146,48 @@ export class ZohoPullService {
   ) {}
 
   /**
+   * Whether the record Zoho just handed us is this platform's own push echoing
+   * back, rather than a change someone actually made in Zoho.
+   *
+   * This is what keeps the two pipelines from corrupting each other, and it is
+   * needed because they are not inverse operations. pushInvoice sends tax and
+   * the card fee to Zoho as ordinary line items — deliberately, since a line
+   * item stays neutral on whether the fee is a merchant cost or a customer
+   * surcharge — so a pull that reads our own write back rewrote subtotalMinor
+   * to silently include them, zeroed taxMinor, replaced one line item with
+   * three, and left cardFeeMinor double-counted. Customers had the same shape
+   * of problem: upsertCustomer sends only contact_name, but pullOneCustomer
+   * reads first_name/last_name back.
+   *
+   * The comparison is `<=`, not `<`: the version stored at push time IS the
+   * timestamp Zoho reported for our own write, so an unchanged record reports
+   * exactly equal and must be skipped. Anything strictly newer is a genuine
+   * remote edit and is applied as before — Zoho stays authoritative for real
+   * changes, which is the whole point of the pull.
+   *
+   * Both null cases correctly read as "not an echo": no stored version means
+   * this platform never pushed the record (or pushed it before the column
+   * existed), and Zoho omitting last_modified_time means we cannot tell, so we
+   * fall back to the previous always-apply behaviour rather than risk dropping
+   * a real change.
+   *
+   * Checked after the detail fetch rather than against the cheaper list
+   * response on purpose: the cascade paths (an invoice or payment referencing a
+   * record we have not seen) never go through a list at all, so this is the one
+   * place every path passes through. The cost is one wasted detail fetch per
+   * pushed record per pull cycle, which is bounded by push volume.
+   */
+  private isOwnPushEcho(
+    zohoLastModified: string | undefined,
+    syncedVersion: Date | null | undefined,
+  ): boolean {
+    if (!syncedVersion || !zohoLastModified) return false;
+    const remote = new Date(zohoLastModified);
+    if (Number.isNaN(remote.getTime())) return false;
+    return remote.getTime() <= syncedVersion.getTime();
+  }
+
+  /**
    * @param forceFullScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS and
    * PAYMENTS_FULL_SCAN_FLOOR_SECONDS — set by the on-demand "pull now"
    * endpoint, never by the scheduled tick.
@@ -148,6 +219,11 @@ export class ZohoPullService {
       this.pullCustomersIfDue(scope, brandId, connection, cursor, forceFullScan),
       this.pullInvoices(scope, brandId, connection, cursor),
       this.pullPaymentsIfDue(scope, brandId, connection, forceFullScan),
+      // Deletion detection, on its own much coarser clock. Safe to run
+      // alongside the three phases above: it only ever acts on records that
+      // predate its own scan by RECONCILE_CREATION_GRACE_MS, so nothing those
+      // phases create during this run is in scope for it.
+      this.reconcileInvoicePresenceIfDue(scope, brandId, connection, forceFullScan),
     ]);
 
     await this.connections.recordPullRun(scope, brandId, pullStartedAt);
@@ -170,7 +246,17 @@ export class ZohoPullService {
     if (!force && (await this.redis.getJson<boolean>(floorKey))) {
       return 0;
     }
-    const touched = await this.pullCustomers(scope, brandId, connection, cursor);
+    const { touched, seen } = await this.pullCustomers(scope, brandId, connection, cursor);
+
+    // Contacts are the one entity whose normal pull is already a full scan
+    // (there is no server-side modified-time filter to narrow it), so the
+    // complete set of contact ids is in hand here for free — no extra Zoho
+    // call. Reaching this line also means the scan paginated to completion:
+    // mapWithConcurrency and recordPull both propagate, so a partial scan
+    // throws rather than returning short. That completeness is exactly the
+    // precondition for treating a contact's absence as meaningful.
+    await this.reconcileContactPresence(scope, brandId, seen);
+
     // Set after a successful scan regardless of `force`, so a manual pull
     // now restarts the floor's own clock too, rather than leaving the next
     // scheduled tick free to redundantly re-scan moments later.
@@ -194,26 +280,35 @@ export class ZohoPullService {
     brandId: string,
     connection: AccountingConnection,
     cursor: Date | null,
-  ): Promise<number> {
+  ): Promise<{ touched: number; seen: Array<{ contactId: string; status: string | undefined }> }> {
     return this.recordPull(brandId, 'CUSTOMER', 'list', async () => {
       let page = 1;
       let hasMore = true;
       let touched = 0;
+      // Every contact Zoho reported, due or not — reconcileContactPresence
+      // needs the full picture, not just the changed subset.
+      const seen: Array<{ contactId: string; status: string | undefined }> = [];
 
       while (hasMore) {
         const { contacts, hasMorePage } = await this.zoho.listContactsPage(connection, page);
+        for (const item of contacts) {
+          seen.push({ contactId: item.contact_id, status: item.status });
+        }
         const due = contacts.filter(
           (item) =>
             !cursor || !item.last_modified_time || new Date(item.last_modified_time) > cursor,
         );
-        await mapWithConcurrency(due, PULL_DETAIL_CONCURRENCY, (item) =>
+        // Counts records actually written, not records considered — an echo of
+        // our own push is fetched and then skipped, and reporting it as pulled
+        // would overstate what the run did. Same shape pullPayments already uses.
+        const applied = await mapWithConcurrency(due, PULL_DETAIL_CONCURRENCY, (item) =>
           this.pullOneCustomer(scope, brandId, connection, item.contact_id),
         );
-        touched += due.length;
+        touched += applied.filter(Boolean).length;
         hasMore = hasMorePage;
         page++;
       }
-      return touched;
+      return { touched, seen };
     });
   }
 
@@ -224,9 +319,23 @@ export class ZohoPullService {
     brandId: string,
     connection: AccountingConnection,
     contactId: string,
-  ): Promise<void> {
-    await this.recordPull(brandId, 'CUSTOMER', contactId, async () => {
+  ): Promise<boolean> {
+    return this.recordPull(brandId, 'CUSTOMER', contactId, async () => {
       const contact = await this.zoho.getContact(connection, contactId);
+
+      const existing = await this.prisma.withScope(scope, (tx) =>
+        tx.customer.findFirst({
+          where: { brandId, zohoContactId: contactId },
+          select: { zohoSyncedVersion: true },
+        }),
+      );
+      if (this.isOwnPushEcho(contact.last_modified_time, existing?.zohoSyncedVersion)) {
+        this.logger.debug(
+          `skipping Zoho contact ${contactId} — unchanged since this platform's own push`,
+        );
+        return false;
+      }
+
       const data = {
         type: (contact.customer_sub_type === 'individual' ? 'INDIVIDUAL' : 'BUSINESS') as
           'INDIVIDUAL' | 'BUSINESS',
@@ -306,7 +415,213 @@ export class ZohoPullService {
           },
         });
       });
+      return true;
     });
+  }
+
+  /**
+   * Reconciles local customers against the set of contacts Zoho actually
+   * reports (G-09), in both directions:
+   *
+   *  - present locally, absent from Zoho entirely  -> ARCHIVED
+   *  - reported by Zoho as inactive                -> ARCHIVED
+   *  - reported by Zoho as active but locally archived -> ACTIVE again
+   *
+   * Archived, never deleted, because nothing financial is hard-deleted here
+   * (see the schema header) and because Zoho itself only permits deleting a
+   * contact no invoice references — a contact that vanishes may well still have
+   * invoices pointing at it locally. This is also what finally makes
+   * CustomersService.list's own comment true: it has always filtered archived
+   * customers out on the stated grounds that ZohoPullService archives the ones
+   * Zoho stops reporting, which until now nothing actually did.
+   *
+   * The diff is computed in memory rather than as a `notIn` against every seen
+   * id: a brand with thousands of contacts would otherwise build an enormous
+   * IN list, whereas the sets that actually need writing are small.
+   */
+  private async reconcileContactPresence(
+    scope: Scope,
+    brandId: string,
+    seen: ReadonlyArray<{ contactId: string; status: string | undefined }>,
+  ): Promise<void> {
+    // An empty result is not trustworthy evidence that a brand has no contacts
+    // — it is equally consistent with a scan that returned nothing for a reason
+    // this code cannot see. Archiving a brand's entire customer list on that
+    // basis is far worse than waiting for the next pass.
+    if (seen.length === 0) {
+      this.logger.warn(
+        `skipping contact reconciliation for brand ${brandId} — Zoho reported no contacts at all`,
+      );
+      return;
+    }
+
+    const activeInZoho = new Set(
+      seen.filter((c) => mapContactStatus(c.status) === 'ACTIVE').map((c) => c.contactId),
+    );
+    const knownToZoho = new Set(seen.map((c) => c.contactId));
+
+    const local = await this.prisma.withScope(scope, (tx) =>
+      tx.customer.findMany({
+        where: { brandId, zohoContactId: { not: null } },
+        select: { id: true, zohoContactId: true, status: true, createdAt: true },
+      }),
+    );
+
+    const createdBefore = new Date(Date.now() - RECONCILE_CREATION_GRACE_MS);
+    const toArchive: string[] = [];
+    const toActivate: string[] = [];
+
+    for (const row of local) {
+      const contactId = row.zohoContactId!;
+      const shouldBeActive = activeInZoho.has(contactId);
+
+      // Same race guard as the invoice reconciliation: a customer created here
+      // moments ago may not have been pushed to Zoho yet, so its absence from
+      // the scan says nothing.
+      if (!knownToZoho.has(contactId) && row.createdAt > createdBefore) continue;
+
+      if (!shouldBeActive && row.status === 'ACTIVE') toArchive.push(row.id);
+      if (shouldBeActive && row.status === 'ARCHIVED') toActivate.push(row.id);
+    }
+
+    if (toArchive.length > 0) {
+      await this.prisma.withScope(scope, (tx) =>
+        tx.customer.updateMany({ where: { id: { in: toArchive } }, data: { status: 'ARCHIVED' } }),
+      );
+      this.logger.log(
+        `archived ${toArchive.length} customer(s) for brand ${brandId} — Zoho no longer reports them as active`,
+      );
+    }
+    if (toActivate.length > 0) {
+      await this.prisma.withScope(scope, (tx) =>
+        tx.customer.updateMany({ where: { id: { in: toActivate } }, data: { status: 'ACTIVE' } }),
+      );
+      this.logger.log(
+        `re-activated ${toActivate.length} customer(s) for brand ${brandId} — present and active in Zoho again`,
+      );
+    }
+  }
+
+  /** Same floor-plus-force shape as the contacts and payments scans. */
+  private async reconcileInvoicePresenceIfDue(
+    scope: Scope,
+    brandId: string,
+    connection: AccountingConnection,
+    force: boolean,
+  ): Promise<void> {
+    const floorKey = `zoho:invoices-reconciled:${brandId}`;
+    if (!force && (await this.redis.getJson<boolean>(floorKey))) return;
+    await this.reconcileInvoicePresence(scope, brandId, connection);
+    await this.redis.setJson(floorKey, true, INVOICE_RECONCILE_FLOOR_SECONDS);
+  }
+
+  /**
+   * Detects invoices deleted in Zoho and stops them being collectable here
+   * (G-02 — the one open gap that could take real money for a record Zoho no
+   * longer has).
+   *
+   * A deleted invoice previously kept its status, its publicToken and
+   * publicTokenActive: true, so a customer holding the payment link could still
+   * pay an invoice that had been removed from the books. Setting
+   * publicTokenActive false is what actually closes that, since
+   * PublicInvoicesService.resolveScope already refuses an inactive token.
+   *
+   * Status is deliberately NOT changed. This infers deletion from silence, and
+   * an unfiltered list is the only evidence available; if Zoho ever applies an
+   * unexpected default filter to the invoice list, that inference is wrong.
+   * Deactivating a token is reversible and costs a merchant one re-send, while
+   * rewriting an invoice's status on a false positive corrupts the ledger. So
+   * absence stops collection and records a flag a human can act on, and the
+   * flag is cleared — reactivating the token — if the invoice turns up again.
+   */
+  private async reconcileInvoicePresence(
+    scope: Scope,
+    brandId: string,
+    connection: AccountingConnection,
+  ): Promise<void> {
+    await this.recordPull(
+      brandId,
+      'INVOICE',
+      'reconcile',
+      async () => {
+        // Explicitly no cursor: an incremental fetch cannot answer "what does
+        // Zoho still have", which is the entire question here.
+        let page = 1;
+        let hasMore = true;
+        const seen = new Set<string>();
+        while (hasMore) {
+          const { invoices, hasMorePage } = await this.zoho.listInvoicesPage(
+            connection,
+            page,
+            null,
+          );
+          for (const item of invoices) seen.add(item.invoice_id);
+          hasMore = hasMorePage;
+          page++;
+        }
+
+        // Same reasoning as the contact scan: nothing at all is not evidence of
+        // deletion, and acting on it would deactivate every payment link a brand
+        // has.
+        if (seen.size === 0) {
+          this.logger.warn(
+            `skipping invoice reconciliation for brand ${brandId} — Zoho reported no invoices at all`,
+          );
+          return false;
+        }
+
+        const local = await this.prisma.withScope(scope, (tx) =>
+          tx.invoice.findMany({
+            where: { brandId, zohoInvoiceId: { not: null } },
+            select: {
+              id: true,
+              number: true,
+              zohoInvoiceId: true,
+              zohoMissingSince: true,
+              createdAt: true,
+            },
+          }),
+        );
+
+        const createdBefore = new Date(Date.now() - RECONCILE_CREATION_GRACE_MS);
+        const nowMissing = local.filter(
+          (row) =>
+            !seen.has(row.zohoInvoiceId!) &&
+            row.zohoMissingSince === null &&
+            row.createdAt <= createdBefore,
+        );
+        const reappeared = local.filter(
+          (row) => seen.has(row.zohoInvoiceId!) && row.zohoMissingSince !== null,
+        );
+
+        if (nowMissing.length > 0) {
+          await this.prisma.withScope(scope, (tx) =>
+            tx.invoice.updateMany({
+              where: { id: { in: nowMissing.map((r) => r.id) } },
+              data: { zohoMissingSince: new Date(), publicTokenActive: false },
+            }),
+          );
+          this.logger.warn(
+            `brand ${brandId}: ${nowMissing.length} invoice(s) no longer exist in Zoho — ` +
+              `payment links deactivated (${nowMissing.map((r) => r.number).join(', ')})`,
+          );
+        }
+        if (reappeared.length > 0) {
+          await this.prisma.withScope(scope, (tx) =>
+            tx.invoice.updateMany({
+              where: { id: { in: reappeared.map((r) => r.id) } },
+              data: { zohoMissingSince: null, publicTokenActive: true },
+            }),
+          );
+          this.logger.log(
+            `brand ${brandId}: ${reappeared.length} invoice(s) present in Zoho again — ` +
+              `payment links restored`,
+          );
+        }
+        return true;
+      },
+      { skippedWhen: (applied) => applied === false },
+    );
   }
 
   private async localCustomerId(
@@ -340,10 +655,10 @@ export class ZohoPullService {
           page,
           sinceIso,
         );
-        await mapWithConcurrency(invoices, PULL_DETAIL_CONCURRENCY, (item) =>
+        const applied = await mapWithConcurrency(invoices, PULL_DETAIL_CONCURRENCY, (item) =>
           this.pullOneInvoice(scope, brandId, connection, item.invoice_id),
         );
-        touched += invoices.length;
+        touched += applied.filter(Boolean).length;
         hasMore = hasMorePage;
         page++;
       }
@@ -356,102 +671,165 @@ export class ZohoPullService {
     brandId: string,
     connection: AccountingConnection,
     invoiceId: string,
-  ): Promise<void> {
-    await this.recordPull(brandId, 'INVOICE', invoiceId, async () => {
-      const invoice = await this.zoho.getInvoice(connection, invoiceId);
+  ): Promise<boolean> {
+    return this.recordPull(
+      brandId,
+      'INVOICE',
+      invoiceId,
+      async () => {
+        const invoice = await this.zoho.getInvoice(connection, invoiceId);
 
-      let customerId = await this.localCustomerId(scope, brandId, invoice.customer_id);
-      if (!customerId) {
-        await this.pullOneCustomer(scope, brandId, connection, invoice.customer_id);
-        customerId = await this.localCustomerId(scope, brandId, invoice.customer_id);
-      }
-      if (!customerId) {
-        throw new IntegrationError({
-          message: `invoice ${invoiceId} references Zoho contact ${invoice.customer_id}, which could not be pulled`,
-          errorClass: 'VALIDATION',
-          provider: 'zoho-books',
-        });
-      }
+        // Before anything else, and before the cascade below spends further
+        // calls: an invoice unchanged since this platform's own push is our own
+        // write coming back, and applying it is what corrupted the money fields.
+        const existing = await this.prisma.withScope(scope, (tx) =>
+          tx.invoice.findFirst({
+            where: { brandId, zohoInvoiceId: invoiceId },
+            select: { zohoSyncedVersion: true },
+          }),
+        );
+        if (this.isOwnPushEcho(invoice.last_modified_time, existing?.zohoSyncedVersion)) {
+          this.logger.debug(
+            `skipping Zoho invoice ${invoiceId} — unchanged since this platform's own push`,
+          );
+          return false;
+        }
 
-      const taxRateBpApplied =
-        invoice.sub_total > 0 ? Math.round((invoice.tax_total / invoice.sub_total) * 10000) : 0;
-
-      const data = {
-        customerId,
-        number: invoice.invoice_number,
-        status: INVOICE_STATUS_MAP[invoice.status] ?? 'SENT',
-        invoiceDate: new Date(invoice.date),
-        dueDate: new Date(invoice.due_date),
-        currency: invoice.currency_code,
-        subtotalMinor: BigInt(this.zoho.decimalToMinor(invoice.sub_total)),
-        taxRateBpApplied,
-        taxMinor: BigInt(this.zoho.decimalToMinor(invoice.tax_total)),
-        totalMinor: BigInt(this.zoho.decimalToMinor(invoice.total)),
-        balanceMinor: BigInt(this.zoho.decimalToMinor(invoice.balance)),
-        notes: invoice.notes ?? null,
-      };
-
-      // Upserting on brandId_zohoInvoiceId — the same idea as pullOneCustomer's,
-      // and usually enough on its own the same way: Postgres compiles it to a
-      // real INSERT ... ON CONFLICT (brand_id, zoho_invoice_id) DO UPDATE,
-      // atomic against two concurrent calls for the same not-yet-seen
-      // invoice_id (pullOnePayment's cascade can have two partial payments
-      // both trigger this at once).
-      //
-      // "Usually" — the one case that ON CONFLICT does NOT absorb is this
-      // invoice also colliding on a *different* unique constraint,
-      // (brand_id, number): both concurrent calls fetched the same Zoho
-      // invoice, so they propose the identical invoice_number too. Postgres
-      // only arbitrates the constraint actually named in ON CONFLICT; a
-      // second, incidental collision on `number` is checked with ordinary
-      // (non-speculative) insertion semantics, and — confirmed against the
-      // real database, not assumed — can raise a genuine unique-violation
-      // error on *either or both* concurrent callers even though the row
-      // they're each trying to write is, semantically, the exact same
-      // invoice. withUniqueViolationRetry exists for exactly this: a retried
-      // call re-resolves brandId_zohoInvoiceId against the now-committed
-      // winner and takes the UPDATE branch, which touches no other unique
-      // index at all.
-      //
-      // What is NOT safe to do concurrently, independent of the above, is
-      // the naive way to "replace" line items — deleteMany then createMany
-      // in the same transaction. Two concurrent pulls of the same invoice
-      // can interleave: B's deleteMany finds nothing (A's insert hasn't
-      // reached its own createMany yet), then both createMany collide on
-      // (invoice_id, position) — also confirmed, not assumed. Upserting each
-      // line item individually makes each one individually race-safe the
-      // same way the invoice row is; only the trim for a shrunk item count
-      // needs a plain delete, scoped past the new range so it can't touch a
-      // row a concurrent call is still writing.
-      await this.withUniqueViolationRetry(() =>
-        this.prisma.withScope(scope, async (tx) => {
-          const row = await tx.invoice.upsert({
-            where: { brandId_zohoInvoiceId: { brandId, zohoInvoiceId: invoiceId } },
-            create: {
-              ...data,
-              brandId,
-              zohoInvoiceId: invoiceId,
-              publicToken: this.randomPublicToken(),
-              cardFeeRateBpApplied: 0,
-              cardFeeMinor: 0n,
-            },
-            update: data,
+        let customerId = await this.localCustomerId(scope, brandId, invoice.customer_id);
+        if (!customerId) {
+          await this.pullOneCustomer(scope, brandId, connection, invoice.customer_id);
+          customerId = await this.localCustomerId(scope, brandId, invoice.customer_id);
+        }
+        if (!customerId) {
+          throw new IntegrationError({
+            message: `invoice ${invoiceId} references Zoho contact ${invoice.customer_id}, which could not be pulled`,
+            errorClass: 'VALIDATION',
+            provider: 'zoho-books',
           });
+        }
 
-          const lineItems = this.toLocalLineItems(row.id, invoice);
-          for (const item of lineItems) {
-            await tx.lineItem.upsert({
-              where: { invoiceId_position: { invoiceId: row.id, position: item.position } },
-              create: item,
-              update: item,
+        // Zoho returns whatever currency the merchant's own books use, and until
+        // now that string was stored raw and every amount converted as if it were
+        // 2-decimal. A JPY invoice therefore imported at 100x its real value,
+        // labelled with a currency the rest of the platform cannot even format
+        // (formatMinor would look up an undefined exponent). Refusing the invoice
+        // outright is the honest outcome: one clearly-failed SyncJob naming the
+        // currency, rather than a silently wrong number in the ledger. Widening
+        // SUPPORTED_CURRENCIES is what makes such an invoice importable.
+        if (!isSupportedCurrency(invoice.currency_code)) {
+          throw new IntegrationError({
+            message:
+              `invoice ${invoiceId} is denominated in ${invoice.currency_code}, which this ` +
+              `platform does not support — it cannot be represented without corrupting the amount`,
+            errorClass: 'VALIDATION',
+            provider: 'zoho-books',
+          });
+        }
+        const currency: CurrencyCode = invoice.currency_code;
+
+        const taxRateBpApplied =
+          invoice.sub_total > 0 ? Math.round((invoice.tax_total / invoice.sub_total) * 10000) : 0;
+
+        const data = {
+          customerId,
+          number: invoice.invoice_number,
+          status: INVOICE_STATUS_MAP[invoice.status] ?? 'SENT',
+          invoiceDate: new Date(invoice.date),
+          dueDate: new Date(invoice.due_date),
+          currency,
+          subtotalMinor: BigInt(this.zoho.decimalToMinor(invoice.sub_total, currency)),
+          taxRateBpApplied,
+          taxMinor: BigInt(this.zoho.decimalToMinor(invoice.tax_total, currency)),
+          totalMinor: BigInt(this.zoho.decimalToMinor(invoice.total, currency)),
+          balanceMinor: BigInt(this.zoho.decimalToMinor(invoice.balance, currency)),
+          notes: invoice.notes ?? null,
+        };
+
+        // Upserting on brandId_zohoInvoiceId — the same idea as pullOneCustomer's,
+        // and usually enough on its own the same way: Postgres compiles it to a
+        // real INSERT ... ON CONFLICT (brand_id, zoho_invoice_id) DO UPDATE,
+        // atomic against two concurrent calls for the same not-yet-seen
+        // invoice_id (pullOnePayment's cascade can have two partial payments
+        // both trigger this at once).
+        //
+        // "Usually" — the one case that ON CONFLICT does NOT absorb is this
+        // invoice also colliding on a *different* unique constraint,
+        // (brand_id, number): both concurrent calls fetched the same Zoho
+        // invoice, so they propose the identical invoice_number too. Postgres
+        // only arbitrates the constraint actually named in ON CONFLICT; a
+        // second, incidental collision on `number` is checked with ordinary
+        // (non-speculative) insertion semantics, and — confirmed against the
+        // real database, not assumed — can raise a genuine unique-violation
+        // error on *either or both* concurrent callers even though the row
+        // they're each trying to write is, semantically, the exact same
+        // invoice. withUniqueViolationRetry exists for exactly this: a retried
+        // call re-resolves brandId_zohoInvoiceId against the now-committed
+        // winner and takes the UPDATE branch, which touches no other unique
+        // index at all.
+        //
+        // What is NOT safe to do concurrently, independent of the above, is
+        // the naive way to "replace" line items — deleteMany then createMany
+        // in the same transaction. Two concurrent pulls of the same invoice
+        // can interleave: B's deleteMany finds nothing (A's insert hasn't
+        // reached its own createMany yet), then both createMany collide on
+        // (invoice_id, position) — also confirmed, not assumed. Upserting each
+        // line item individually makes each one individually race-safe the
+        // same way the invoice row is; only the trim for a shrunk item count
+        // needs a plain delete, scoped past the new range so it can't touch a
+        // row a concurrent call is still writing.
+        // `number` is declared non-retryable below. Unlike a zohoInvoiceId
+        // conflict — a genuine race a retry resolves — a collision on
+        // (brandId, number) means Zoho's invoice number is already held by a
+        // *different* local invoice, usually one this platform numbered from
+        // its own sequence. Retrying cannot change that, so it used to burn all
+        // five attempts and then surface a raw Prisma error.
+        await this.withUniqueViolationRetry(
+          () =>
+            this.prisma.withScope(scope, async (tx) => {
+              const row = await tx.invoice.upsert({
+                where: { brandId_zohoInvoiceId: { brandId, zohoInvoiceId: invoiceId } },
+                create: {
+                  ...data,
+                  brandId,
+                  zohoInvoiceId: invoiceId,
+                  publicToken: this.randomPublicToken(),
+                  cardFeeRateBpApplied: 0,
+                  cardFeeMinor: 0n,
+                },
+                update: data,
+              });
+
+              const lineItems = this.toLocalLineItems(row.id, invoice, currency);
+              for (const item of lineItems) {
+                await tx.lineItem.upsert({
+                  where: { invoiceId_position: { invoiceId: row.id, position: item.position } },
+                  create: item,
+                  update: item,
+                });
+              }
+              await tx.lineItem.deleteMany({
+                where: { invoiceId: row.id, position: { gte: lineItems.length } },
+              });
+            }),
+          5,
+          ['number'],
+        ).catch((error: unknown) => {
+          if (PrismaService.isUniqueViolation(error, 'number')) {
+            throw new IntegrationError({
+              message:
+                `Zoho invoice ${invoiceId} uses number "${invoice.invoice_number}", which ` +
+                `already belongs to a different invoice on this brand — the Zoho-sourced and ` +
+                `locally generated number sequences have collided, and one of them has to change`,
+              errorClass: 'VALIDATION',
+              provider: 'zoho-books',
             });
           }
-          await tx.lineItem.deleteMany({
-            where: { invoiceId: row.id, position: { gte: lineItems.length } },
-          });
-        }),
-      );
-    });
+          throw error;
+        });
+        return true;
+      },
+      { skippedWhen: (applied) => applied === false },
+    );
   }
 
   /**
@@ -466,11 +844,19 @@ export class ZohoPullService {
    * delay between attempts, not a tight loop, since this is arbitrating
    * against a concurrent transaction that needs a moment to actually commit.
    */
-  private async withUniqueViolationRetry<T>(work: () => Promise<T>, attempts = 5): Promise<T> {
+  private async withUniqueViolationRetry<T>(
+    work: () => Promise<T>,
+    attempts = 5,
+    nonRetryableTargets: readonly string[] = [],
+  ): Promise<T> {
     for (let attempt = 1; attempt <= attempts; attempt++) {
       try {
         return await work();
       } catch (error) {
+        // Not every unique violation is a race. Retrying one that isn't just
+        // multiplies a single permanent failure into `attempts` of them and
+        // delays the error the caller actually needs to see.
+        if (nonRetryableTargets.some((t) => PrismaService.isUniqueViolation(error, t))) throw error;
         if (attempt === attempts || !PrismaService.isUniqueViolation(error)) throw error;
         await new Promise((resolve) => setTimeout(resolve, 5 + Math.random() * 15));
       }
@@ -483,6 +869,7 @@ export class ZohoPullService {
   private toLocalLineItems(
     invoiceId: string,
     invoice: ZohoInvoiceDetail,
+    currency: CurrencyCode,
   ): Array<{
     invoiceId: string;
     position: number;
@@ -501,8 +888,8 @@ export class ZohoPullService {
       // Our Quantity type is fixed-point scaled by 10,000 (packages/shared
       // money/quantity.ts) — Zoho's quantity is a plain decimal.
       quantity: Math.round(line.quantity * 10_000),
-      unitPriceMinor: BigInt(this.zoho.decimalToMinor(line.rate)),
-      lineTotalMinor: BigInt(this.zoho.decimalToMinor(line.rate * line.quantity)),
+      unitPriceMinor: BigInt(this.zoho.decimalToMinor(line.rate, currency)),
+      lineTotalMinor: BigInt(this.zoho.decimalToMinor(line.rate * line.quantity, currency)),
       taxExempt: !line.tax_id,
     }));
   }
@@ -603,74 +990,95 @@ export class ZohoPullService {
     connection: AccountingConnection,
     paymentId: string,
   ): Promise<boolean> {
-    return this.recordPull(brandId, 'PAYMENT', paymentId, async () => {
-      const payment = await this.zoho.getPayment(connection, paymentId);
+    return this.recordPull(
+      brandId,
+      'PAYMENT',
+      paymentId,
+      async () => {
+        const payment = await this.zoho.getPayment(connection, paymentId);
 
-      if (!payment.invoices || payment.invoices.length !== 1) {
-        this.logger.warn(
-          `skipping Zoho payment ${paymentId} — applies to ${payment.invoices?.length ?? 0} invoices, ` +
-            'and this schema only supports one invoice per payment',
-        );
-        return false;
-      }
-      const zohoInvoiceId = payment.invoices[0]!.invoice_id;
+        if (!payment.invoices || payment.invoices.length !== 1) {
+          this.logger.warn(
+            `skipping Zoho payment ${paymentId} — applies to ${payment.invoices?.length ?? 0} invoices, ` +
+              'and this schema only supports one invoice per payment',
+          );
+          return false;
+        }
+        const zohoInvoiceId = payment.invoices[0]!.invoice_id;
 
-      let invoiceRow = await this.prisma.withScope(scope, (tx) =>
-        tx.invoice.findFirst({ where: { brandId, zohoInvoiceId }, select: { id: true } }),
-      );
-      if (!invoiceRow) {
-        await this.pullOneInvoice(scope, brandId, connection, zohoInvoiceId);
-        invoiceRow = await this.prisma.withScope(scope, (tx) =>
+        let invoiceRow = await this.prisma.withScope(scope, (tx) =>
           tx.invoice.findFirst({ where: { brandId, zohoInvoiceId }, select: { id: true } }),
         );
-      }
-      if (!invoiceRow) {
-        throw new IntegrationError({
-          message: `payment ${paymentId} references Zoho invoice ${zohoInvoiceId}, which could not be pulled`,
-          errorClass: 'VALIDATION',
-          provider: 'zoho-books',
-        });
-      }
-
-      // Currency follows the invoice this payment settles, never a hardcoded
-      // default — a brand billing in CAD or GBP would otherwise have every
-      // pulled payment recorded as USD against a non-USD invoice.
-      const invoiceCurrency = await this.prisma.withScope(scope, (tx) =>
-        tx.invoice.findUnique({ where: { id: invoiceRow.id }, select: { currency: true } }),
-      );
-
-      const data = {
-        method: this.zoho.reverseMapPaymentMode(payment.payment_mode),
-        amountMinor: BigInt(this.zoho.decimalToMinor(payment.amount)),
-        currency: invoiceCurrency?.currency ?? 'USD',
-        status: 'SETTLED' as const,
-        settledAt: new Date(payment.date),
-      };
-
-      await this.prisma.withScope(scope, async (tx) => {
-        const existing = await tx.payment.findFirst({
-          where: { brandId, zohoPaymentId: paymentId },
-        });
-        if (existing) {
-          await tx.payment.update({ where: { id: existing.id }, data });
-        } else {
-          await tx.payment.create({
-            data: {
-              ...data,
-              brandId,
-              invoiceId: invoiceRow!.id,
-              zohoPaymentId: paymentId,
-              // No natural idempotency input for a pulled record (that key
-              // exists to dedupe our own createIntent retries) — synthesized
-              // from the Zoho payment id itself, unique and stable, and
-              // distinguishable from our sha256-hex keys by format alone.
-              idempotencyKey: `zoho:${paymentId}`,
-            },
+        if (!invoiceRow) {
+          await this.pullOneInvoice(scope, brandId, connection, zohoInvoiceId);
+          invoiceRow = await this.prisma.withScope(scope, (tx) =>
+            tx.invoice.findFirst({ where: { brandId, zohoInvoiceId }, select: { id: true } }),
+          );
+        }
+        if (!invoiceRow) {
+          throw new IntegrationError({
+            message: `payment ${paymentId} references Zoho invoice ${zohoInvoiceId}, which could not be pulled`,
+            errorClass: 'VALIDATION',
+            provider: 'zoho-books',
           });
         }
-      });
-      return true;
-    });
+
+        // Currency follows the invoice this payment settles, never a hardcoded
+        // default — a brand billing in CAD or GBP would otherwise have every
+        // pulled payment recorded as USD against a non-USD invoice.
+        const invoiceCurrency = await this.prisma.withScope(scope, (tx) =>
+          tx.invoice.findUnique({ where: { id: invoiceRow.id }, select: { currency: true } }),
+        );
+
+        // The invoice's own currency was validated when it was pulled, so an
+        // unsupported value here means a row predating that check — still not
+        // something to convert blindly.
+        const settledCurrency = invoiceCurrency?.currency;
+        if (!isSupportedCurrency(settledCurrency)) {
+          throw new IntegrationError({
+            message:
+              `payment ${paymentId} settles an invoice denominated in ` +
+              `${settledCurrency ?? 'an unknown currency'}, which this platform does not support`,
+            errorClass: 'VALIDATION',
+            provider: 'zoho-books',
+          });
+        }
+        const currency: CurrencyCode = settledCurrency;
+
+        const data = {
+          method: this.zoho.reverseMapPaymentMode(payment.payment_mode),
+          amountMinor: BigInt(this.zoho.decimalToMinor(payment.amount, currency)),
+          currency,
+          status: 'SETTLED' as const,
+          settledAt: new Date(payment.date),
+        };
+
+        await this.prisma.withScope(scope, async (tx) => {
+          const existing = await tx.payment.findFirst({
+            where: { brandId, zohoPaymentId: paymentId },
+          });
+          if (existing) {
+            await tx.payment.update({ where: { id: existing.id }, data });
+          } else {
+            await tx.payment.create({
+              data: {
+                ...data,
+                brandId,
+                invoiceId: invoiceRow!.id,
+                zohoPaymentId: paymentId,
+                // No natural idempotency input for a pulled record (that key
+                // exists to dedupe our own createIntent retries) — synthesized
+                // from the Zoho payment id itself, unique and stable, and
+                // distinguishable from our sha256-hex keys by format alone.
+                idempotencyKey: `zoho:${paymentId}`,
+              },
+            });
+          }
+        });
+        return true;
+      },
+      { skippedWhen: (applied) => applied === false },
+    );
   }
 
   // --- SyncJob recording -----------------------------------------------------
@@ -683,6 +1091,7 @@ export class ZohoPullService {
     objectType: 'CUSTOMER' | 'INVOICE' | 'PAYMENT',
     objectId: string,
     work: () => Promise<T>,
+    options?: { readonly skippedWhen?: (result: T) => boolean },
   ): Promise<T> {
     const job = await this.prisma.withoutScope(
       `recording pull job start for brand ${brandId}`,
@@ -701,10 +1110,14 @@ export class ZohoPullService {
 
     try {
       const result = await work();
+      // An explicit predicate rather than treating any falsy result as a skip:
+      // the list wrappers legitimately return 0 for "nothing had changed", which
+      // is a real success, not a refusal to represent something.
+      const skipped = options?.skippedWhen?.(result) ?? false;
       await this.prisma.withoutScope(`recording pull job success for brand ${brandId}`, (client) =>
         client.syncJob.update({
           where: { id: job.id },
-          data: { status: 'SUCCEEDED', completedAt: new Date() },
+          data: { status: skipped ? 'SKIPPED' : 'SUCCEEDED', completedAt: new Date() },
         }),
       );
       return result;
@@ -725,6 +1138,20 @@ export class ZohoPullService {
       this.logger.warn(
         `Zoho pull failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`,
       );
+
+      // Same reasoning as the push path's own copy of this: a rejected
+      // credential is the failure an operator has to act on, and it was
+      // previously invisible behind a connection that still read "Healthy".
+      if (integrationError?.errorClass === 'AUTHENTICATION') {
+        const scope = await this.systemScope.forBrand(brandId, 'zoho-pull-health');
+        if (scope) {
+          await this.connections.markUnhealthy(
+            scope,
+            brandId,
+            integrationError.providerMessage ?? integrationError.message,
+          );
+        }
+      }
       throw error;
     }
   }

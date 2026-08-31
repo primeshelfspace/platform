@@ -166,6 +166,11 @@ enum SyncStatus {
   QUEUED
   RUNNING
   SUCCEEDED
+  /// Ran to completion and deliberately applied nothing — a Zoho payment
+  /// spanning several invoices (unrepresentable here), or a record recognised
+  /// as this platform's own push echoing back. Distinct from SUCCEEDED so the
+  /// activity feed cannot overstate what actually synced.
+  SKIPPED
   FAILED
   DEAD_LETTERED
 }
@@ -208,25 +213,25 @@ model Merchant {
   /// SINGLE sets it the instant its one brand is created, but a MULTI
   /// merchant decides for itself when it is done adding brands, which
   /// nothing in the data implies on its own.
-  companyLegalName     String?          @map("company_legal_name")
+  companyLegalName      String?         @map("company_legal_name")
   /// "Doing business as" — the trading name, where it differs from the legal
   /// one. Optional because most businesses trade under their legal name.
-  companyDba           String?          @map("company_dba")
-  companyBusinessType  BusinessType?    @map("company_business_type")
-  companyPhone         String?          @map("company_phone")
-  companyEmail         String?          @map("company_email")
+  companyDba            String?         @map("company_dba")
+  companyBusinessType   BusinessType?   @map("company_business_type")
+  companyPhone          String?         @map("company_phone")
+  companyEmail          String?         @map("company_email")
   /// Normalized bare domain (e.g. "acme.com") — used to verify companyEmail
   /// belongs to the business rather than a personal provider.
-  companyWebsite       String?          @map("company_website")
+  companyWebsite        String?         @map("company_website")
   companyMailingAddress Json?           @map("company_mailing_address")
   companyBillingAddress Json?           @map("company_billing_address")
-  companyTaxId         String?          @map("company_tax_id")
-  companyLogoKey       String?          @map("company_logo_key")
-  brandStructure       BrandStructure?  @map("brand_structure")
-  onboardingComplete   Boolean          @default(false) @map("onboarding_complete")
+  companyTaxId          String?         @map("company_tax_id")
+  companyLogoKey        String?         @map("company_logo_key")
+  brandStructure        BrandStructure? @map("brand_structure")
+  onboardingComplete    Boolean         @default(false) @map("onboarding_complete")
 
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   users     User[]
   brands    Brand[]
@@ -277,15 +282,15 @@ model UserBrandAssignment {
 }
 
 model Session {
-  id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  tokenHash    String    @unique @map("token_hash")
-  issuedAt     DateTime  @default(now()) @map("issued_at")
-  expiresAt    DateTime  @map("expires_at")
-  revokedAt    DateTime? @map("revoked_at")
-  lastSeenAt   DateTime? @map("last_seen_at")
-  sourceIp     String?   @map("source_ip")
-  userAgent    String?   @map("user_agent")
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  issuedAt   DateTime  @default(now()) @map("issued_at")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+  sourceIp   String?   @map("source_ip")
+  userAgent  String?   @map("user_agent")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -326,8 +331,8 @@ model PasswordResetToken {
 // ---------------------------------------------------------------------------
 
 model Brand {
-  id             String      @id @default(uuid()) @db.Uuid
-  merchantId     String      @map("merchant_id") @db.Uuid
+  id             String        @id @default(uuid()) @db.Uuid
+  merchantId     String        @map("merchant_id") @db.Uuid
   legalName      String        @map("legal_name")
   displayName    String        @map("display_name")
   salesPerson    String?       @map("sales_person")
@@ -337,13 +342,13 @@ model Brand {
   mailingAddress Json?         @map("mailing_address")
   billingAddress Json?         @map("billing_address")
   taxId          String?       @map("tax_id")
-  currency       String      @default("USD")
-  timezone       String      @default("America/New_York")
-  themeColor     String      @default("#2D6A6A") @map("theme_color")
-  logoKey        String?     @map("logo_key")
-  status         BrandStatus @default(ACTIVE)
-  createdAt      DateTime    @default(now()) @map("created_at")
-  updatedAt      DateTime    @updatedAt @map("updated_at")
+  currency       String        @default("USD")
+  timezone       String        @default("America/New_York")
+  themeColor     String        @default("#2D6A6A") @map("theme_color")
+  logoKey        String?       @map("logo_key")
+  status         BrandStatus   @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
   merchant    Merchant                @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   settings    BrandSettings?
@@ -362,25 +367,25 @@ model Brand {
 
 /// Separated from brand so sequence allocation locks a narrow row (TDD-001 §5.2).
 model BrandSettings {
-  brandId                String   @id @map("brand_id") @db.Uuid
-  invoicePrefix          String   @default("INV") @map("invoice_prefix")
-  nextSequence           Int      @default(1) @map("next_sequence")
-  paymentTermsDays       Int      @default(30) @map("payment_terms_days")
-  lateFeeRateBp          Int      @default(0) @map("late_fee_rate_bp")
-  defaultTaxRateId       String?  @map("default_tax_rate_id") @db.Uuid
-  cardFeeRateBp          Int      @default(0) @map("card_fee_rate_bp")
-  partialPaymentEnabled  Boolean  @default(false) @map("partial_payment_enabled")
-  reminderSchedule       Int[]    @default([]) @map("reminder_schedule")
+  brandId               String  @id @map("brand_id") @db.Uuid
+  invoicePrefix         String  @default("INV") @map("invoice_prefix")
+  nextSequence          Int     @default(1) @map("next_sequence")
+  paymentTermsDays      Int     @default(30) @map("payment_terms_days")
+  lateFeeRateBp         Int     @default(0) @map("late_fee_rate_bp")
+  defaultTaxRateId      String? @map("default_tax_rate_id") @db.Uuid
+  cardFeeRateBp         Int     @default(0) @map("card_fee_rate_bp")
+  partialPaymentEnabled Boolean @default(false) @map("partial_payment_enabled")
+  reminderSchedule      Int[]   @default([]) @map("reminder_schedule")
 
   /// FR-PAY-005: which methods the public payment page offers for this
   /// brand. Card defaults on; everything else is opt-in because each has its
   /// own real-world prerequisite (a live gateway, an Apple/Google merchant
   /// registration) that does not exist until someone actually completes it.
-  cardEnabled       Boolean @default(true) @map("card_enabled")
-  applePayEnabled   Boolean @default(false) @map("apple_pay_enabled")
-  googlePayEnabled  Boolean @default(false) @map("google_pay_enabled")
-  achEnabled        Boolean @default(false) @map("ach_enabled")
-  checkEnabled      Boolean @default(false) @map("check_enabled")
+  cardEnabled      Boolean @default(true) @map("card_enabled")
+  applePayEnabled  Boolean @default(false) @map("apple_pay_enabled")
+  googlePayEnabled Boolean @default(false) @map("google_pay_enabled")
+  achEnabled       Boolean @default(false) @map("ach_enabled")
+  checkEnabled     Boolean @default(false) @map("check_enabled")
 
   /// FR-PAY: brand-level display of the hosted payment page — Brand Settings
   /// > Branding > Payment Page. accentColor has no other home; themeColor on
@@ -398,21 +403,21 @@ model BrandSettings {
 
   /// FR-PDF: Brand Settings > Branding > Invoice PDF — layout and which
   /// optional sections appear on the invoice PDF a customer receives.
-  invoicePdfLayout             InvoicePdfLayout        @default(CLASSIC) @map("invoice_pdf_layout")
-  invoicePdfShowCompanyAddress Boolean                 @default(true) @map("invoice_pdf_show_company_address")
-  invoicePdfShowPaymentTerms   Boolean                 @default(true) @map("invoice_pdf_show_payment_terms")
-  invoicePdfShowTaxBreakdown   Boolean                 @default(true) @map("invoice_pdf_show_tax_breakdown")
-  invoicePdfShowNotes          Boolean                 @default(true) @map("invoice_pdf_show_notes")
+  invoicePdfLayout             InvoicePdfLayout       @default(CLASSIC) @map("invoice_pdf_layout")
+  invoicePdfShowCompanyAddress Boolean                @default(true) @map("invoice_pdf_show_company_address")
+  invoicePdfShowPaymentTerms   Boolean                @default(true) @map("invoice_pdf_show_payment_terms")
+  invoicePdfShowTaxBreakdown   Boolean                @default(true) @map("invoice_pdf_show_tax_breakdown")
+  invoicePdfShowNotes          Boolean                @default(true) @map("invoice_pdf_show_notes")
   /// Null until a merchant overrides it — the read path falls back to the
   /// brand's own displayName/mailingAddress, so the PDF letterhead matches
   /// Brand Details until someone deliberately wants it to read differently.
-  invoicePdfCompanyName        String?                 @map("invoice_pdf_company_name")
-  invoicePdfCompanyAddress     String?                 @map("invoice_pdf_company_address")
-  invoicePdfPaymentTerms       InvoicePdfPaymentTerms  @default(DUE_ON_RECEIPT) @map("invoice_pdf_payment_terms")
-  invoicePdfNotes              String                  @default("Thank you for your business. Please contact us with any questions.") @map("invoice_pdf_notes")
+  invoicePdfCompanyName        String?                @map("invoice_pdf_company_name")
+  invoicePdfCompanyAddress     String?                @map("invoice_pdf_company_address")
+  invoicePdfPaymentTerms       InvoicePdfPaymentTerms @default(DUE_ON_RECEIPT) @map("invoice_pdf_payment_terms")
+  invoicePdfNotes              String                 @default("Thank you for your business. Please contact us with any questions.") @map("invoice_pdf_notes")
 
-  createdAt              DateTime @default(now()) @map("created_at")
-  updatedAt              DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
@@ -442,30 +447,36 @@ model TaxRate {
 // ---------------------------------------------------------------------------
 
 model Customer {
-  id              String         @id @default(uuid()) @db.Uuid
-  brandId         String         @map("brand_id") @db.Uuid
-  type            CustomerType   @default(BUSINESS)
-  salutation      String?
-  firstName       String?        @map("first_name")
-  lastName        String?        @map("last_name")
-  companyName     String?        @map("company_name")
-  displayName     String         @map("display_name")
-  email           String?
-  phone           String?
-  billingAddress  Json?          @map("billing_address")
-  shippingAddress Json?          @map("shipping_address")
-  zohoContactId   String?        @map("zoho_contact_id")
-  notes           String?
-  status          CustomerStatus @default(ACTIVE)
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  id                String         @id @default(uuid()) @db.Uuid
+  brandId           String         @map("brand_id") @db.Uuid
+  type              CustomerType   @default(BUSINESS)
+  salutation        String?
+  firstName         String?        @map("first_name")
+  lastName          String?        @map("last_name")
+  companyName       String?        @map("company_name")
+  displayName       String         @map("display_name")
+  email             String?
+  phone             String?
+  billingAddress    Json?          @map("billing_address")
+  shippingAddress   Json?          @map("shipping_address")
+  zohoContactId     String?        @map("zoho_contact_id")
+  /// The last_modified_time Zoho reported for this contact immediately after
+  /// our own push. Lets ZohoPullService tell our own write echoing back from a
+  /// genuine edit made in Zoho — without it, a push followed by a pull
+  /// replaced firstName/lastName with whatever Zoho derived from contact_name,
+  /// since upsertCustomer sends only contact_name but pullOneCustomer reads
+  /// first_name/last_name back. Null means "never pushed from here", which
+  /// correctly reads as "not an echo".
+  zohoSyncedVersion DateTime?      @map("zoho_synced_version")
+  notes             String?
+  status            CustomerStatus @default(ACTIVE)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
 
-  brand          Brand                    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  brand          Brand                   @relation(fields: [brandId], references: [id], onDelete: Cascade)
   invoices       Invoice[]
   contactPersons CustomerContactPerson[]
 
-  @@index([brandId])
-  @@index([brandId, status])
   /// Real uniqueness, not just an index: ZohoPullService now runs its
   /// per-record detail fetches with several in flight at once
   /// (mapWithConcurrency), so two concurrent pulls racing to create the same
@@ -473,6 +484,8 @@ model Customer {
   /// pulled in the same batch) must fail one of them at the database rather
   /// than silently doubling the customer — pullOneCustomer upserts on this.
   @@unique([brandId, zohoContactId])
+  @@index([brandId])
+  @@index([brandId, status])
   @@map("customer")
 }
 
@@ -503,12 +516,12 @@ model CustomerContactPerson {
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  @@index([customerId])
   /// Same reasoning as Customer.zohoContactId above: ZohoPullService upserts
   /// each contact person on this rather than a naive delete-then-recreate,
   /// which is exactly what made line items unsafe under concurrent pulls of
   /// the same customer (see pullOneInvoice's own comment on that).
   @@unique([customerId, zohoContactPersonId])
+  @@index([customerId])
   @@map("customer_contact_person")
 }
 
@@ -535,37 +548,47 @@ model Invoice {
 
   /// 128-bit random, hex. Separate from `number` because invoice numbers are
   /// sequential and guessable and this is what secures the public page (NFR-SEC-014).
-  publicToken     String    @unique @map("public_token")
+  publicToken       String  @unique @map("public_token")
   publicTokenActive Boolean @default(true) @map("public_token_active")
 
-  notes         String?
-  internalNotes String?   @map("internal_notes")
-  zohoInvoiceId String?   @map("zoho_invoice_id")
-  taxRateId     String?   @map("tax_rate_id") @db.Uuid
-  issuedAt      DateTime? @map("issued_at")
-  firstViewedAt DateTime? @map("first_viewed_at")
-  paidAt        DateTime? @map("paid_at")
-  cancelledAt   DateTime? @map("cancelled_at")
+  notes             String?
+  internalNotes     String?        @map("internal_notes")
+  zohoInvoiceId     String?        @map("zoho_invoice_id")
+  /// Same purpose as Customer.zohoSyncedVersion, and the more consequential of
+  /// the two: pushInvoice sends tax and the card fee to Zoho as ordinary line
+  /// items, so pulling our own push back rewrote subtotalMinor to include
+  /// them, zeroed taxMinor, and left cardFeeMinor double-counted. A pull whose
+  /// Zoho last_modified_time has not advanced past this value is skipped.
+  zohoSyncedVersion DateTime?      @map("zoho_synced_version")
+  /// When a full reconciliation scan first failed to find this invoice in Zoho.
+  /// Setting it also deactivates publicToken, which is what actually stops an
+  /// invoice deleted in Zoho from staying collectable here. Cleared if the
+  /// invoice turns up again. Status is deliberately left alone — see the
+  /// migration comment for why inferring deletion from silence must not
+  /// rewrite the ledger.
+  zohoMissingSince  DateTime?      @map("zoho_missing_since")
+  taxRateId         String?        @map("tax_rate_id") @db.Uuid
+  issuedAt          DateTime?      @map("issued_at")
+  firstViewedAt     DateTime?      @map("first_viewed_at")
+  paidAt            DateTime?      @map("paid_at")
+  cancelledAt       DateTime?      @map("cancelled_at")
   /// Set when a payment attempt starts, so a definitive failure can return the
   /// invoice to where it was (TDD-001 §8.2).
-  previousStatus InvoiceStatus? @map("previous_status")
-  overdue        Boolean        @default(false)
+  previousStatus    InvoiceStatus? @map("previous_status")
+  overdue           Boolean        @default(false)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  brand     Brand          @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  customer  Customer       @relation(fields: [customerId], references: [id])
-  taxRate   TaxRate?       @relation(fields: [taxRateId], references: [id])
+  brand     Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customer  Customer          @relation(fields: [customerId], references: [id])
+  taxRate   TaxRate?          @relation(fields: [taxRateId], references: [id])
   lineItems LineItem[]
   payments  Payment[]
   events    InvoiceEvent[]
   checks    CheckSubmission[]
 
   @@unique([brandId, number])
-  @@index([brandId, status])
-  @@index([brandId, dueDate])
-  @@index([customerId])
   /// Real uniqueness, not just an index — same reason as
   /// Customer.zohoContactId above: pullOneInvoice now upserts on this rather
   /// than findFirst-then-create, because pullOnePayment's cascade can have
@@ -573,21 +596,24 @@ model Invoice {
   /// invoice (e.g. two partial payments on it) in the same
   /// mapWithConcurrency batch.
   @@unique([brandId, zohoInvoiceId])
+  @@index([brandId, status])
+  @@index([brandId, dueDate])
+  @@index([customerId])
   @@map("invoice")
 }
 
 model LineItem {
-  id          String  @id @default(uuid()) @db.Uuid
-  invoiceId   String  @map("invoice_id") @db.Uuid
-  position    Int
-  itemName    String  @map("item_name")
-  description String?
+  id             String  @id @default(uuid()) @db.Uuid
+  invoiceId      String  @map("invoice_id") @db.Uuid
+  position       Int
+  itemName       String  @map("item_name")
+  description    String?
   /// Fixed point scaled by 10,000. Int caps a single line at 214,748.3647
   /// units; widen to BigInt if a client ever bills beyond that.
-  quantity    Int
-  unitPriceMinor BigInt @map("unit_price_minor")
+  quantity       Int
+  unitPriceMinor BigInt  @map("unit_price_minor")
   /// Stored, not derived at read (TDD-001 §5.3).
-  lineTotalMinor BigInt @map("line_total_minor")
+  lineTotalMinor BigInt  @map("line_total_minor")
   taxExempt      Boolean @default(false) @map("tax_exempt")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -601,19 +627,19 @@ model LineItem {
 }
 
 model Payment {
-  id        String        @id @default(uuid()) @db.Uuid
-  invoiceId String        @map("invoice_id") @db.Uuid
-  brandId   String        @map("brand_id") @db.Uuid
-  method    PaymentMethod
-  amountMinor BigInt      @map("amount_minor")
-  currency  String        @default("USD")
-  status    PaymentStatus @default(INITIATED)
+  id          String        @id @default(uuid()) @db.Uuid
+  invoiceId   String        @map("invoice_id") @db.Uuid
+  brandId     String        @map("brand_id") @db.Uuid
+  method      PaymentMethod
+  amountMinor BigInt        @map("amount_minor")
+  currency    String        @default("USD")
+  status      PaymentStatus @default(INITIATED)
 
   /// Uniquely indexed — the mechanism behind NFR-INT-010. A gateway that
   /// delivers the same settlement twice cannot create a second payment row.
-  gatewayReference String? @unique @map("gateway_reference")
+  gatewayReference String?   @unique @map("gateway_reference")
   /// hash(invoice_id, amount, attempt_nonce) — TDD-001 §8.3.
-  idempotencyKey   String  @unique @map("idempotency_key")
+  idempotencyKey   String    @unique @map("idempotency_key")
   /// Gateway's own timestamp for the last event applied. Anything older is
   /// discarded, which is what makes out-of-order webhooks safe (NFR-INT-012).
   lastEventAt      DateTime? @map("last_event_at")
@@ -718,22 +744,22 @@ model IntegrationConnection {
 
 /// The retry and error-log surface for FR-ZHO-021.
 model SyncJob {
-  id           String              @id @default(uuid()) @db.Uuid
-  brandId      String              @map("brand_id") @db.Uuid
-  provider     IntegrationProvider
-  direction    SyncDirection
-  objectType   String              @map("object_type")
-  objectId     String?             @map("object_id")
-  status       SyncStatus          @default(QUEUED)
-  attemptCount Int                 @default(0) @map("attempt_count")
-  errorClass   SyncErrorClass?     @map("error_class")
+  id            String              @id @default(uuid()) @db.Uuid
+  brandId       String              @map("brand_id") @db.Uuid
+  provider      IntegrationProvider
+  direction     SyncDirection
+  objectType    String              @map("object_type")
+  objectId      String?             @map("object_id")
+  status        SyncStatus          @default(QUEUED)
+  attemptCount  Int                 @default(0) @map("attempt_count")
+  errorClass    SyncErrorClass?     @map("error_class")
   /// The provider's verbatim message, so an operator sees what was actually
   /// said rather than a paraphrase.
-  lastError    String?             @map("last_error")
-  nextAttemptAt DateTime?          @map("next_attempt_at")
-  completedAt  DateTime?           @map("completed_at")
-  createdAt    DateTime            @default(now()) @map("created_at")
-  updatedAt    DateTime            @updatedAt @map("updated_at")
+  lastError     String?             @map("last_error")
+  nextAttemptAt DateTime?           @map("next_attempt_at")
+  completedAt   DateTime?           @map("completed_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
 
   brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
 

@@ -7,6 +7,7 @@ import type {
   AccountingInvoice,
   AccountingPayment,
   IntegrationError as IntegrationErrorType,
+  Scope,
 } from '@fenwick/shared';
 import { IntegrationError } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -194,7 +195,7 @@ export class ZohoSyncService {
       if (flags && !flags.customerSyncEnabled) return;
     }
 
-    await this.runJob(brandId, 'CUSTOMER', customerId, async () => {
+    await this.runJob(scope, brandId, 'CUSTOMER', customerId, async () => {
       const customer = await this.prisma.withScope(scope, (tx) =>
         tx.customer.findUniqueOrThrow({ where: { id: customerId }, include: { brand: true } }),
       );
@@ -218,7 +219,15 @@ export class ZohoSyncService {
       await this.prisma.withScope(scope, (tx) =>
         tx.customer.update({
           where: { id: customer.id },
-          data: { zohoContactId: result.remoteId },
+          data: {
+            zohoContactId: result.remoteId,
+            // Zoho's own last_modified_time for the record we just wrote, so
+            // the next pull can recognise this write coming back rather than
+            // treating it as a remote edit and overwriting firstName/lastName
+            // with whatever Zoho derived from contact_name (Customer
+            // .zohoSyncedVersion in schema.prisma spells out why).
+            zohoSyncedVersion: result.updatedAt ?? null,
+          },
         }),
       );
     });
@@ -232,7 +241,7 @@ export class ZohoSyncService {
     const flags = await this.connections.getSyncFlags(scope, brandId);
     if (flags && !flags.invoiceSyncEnabled) return;
 
-    await this.runJob(brandId, 'INVOICE', invoiceId, async () => {
+    await this.runJob(scope, brandId, 'INVOICE', invoiceId, async () => {
       const invoice = await this.prisma.withScope(scope, (tx) =>
         tx.invoice.findUniqueOrThrow({
           where: { id: invoiceId },
@@ -287,7 +296,17 @@ export class ZohoSyncService {
 
       const result = await this.zoho.pushInvoice(connection, dto);
       await this.prisma.withScope(scope, (tx) =>
-        tx.invoice.update({ where: { id: invoice.id }, data: { zohoInvoiceId: result.remoteId } }),
+        tx.invoice.update({
+          where: { id: invoice.id },
+          data: {
+            zohoInvoiceId: result.remoteId,
+            // The load-bearing half of echo suppression: tax and the card fee
+            // went to Zoho as ordinary line items, so without this the next
+            // pull reads our own write back as a changed invoice and rewrites
+            // subtotalMinor to include them. See Invoice.zohoSyncedVersion.
+            zohoSyncedVersion: result.updatedAt ?? null,
+          },
+        }),
       );
     });
   }
@@ -304,7 +323,7 @@ export class ZohoSyncService {
     const flags = await this.connections.getSyncFlags(scope, brandId);
     if (flags && !flags.invoiceSyncEnabled) return;
 
-    await this.runJob(brandId, 'PAYMENT', paymentId, async () => {
+    await this.runJob(scope, brandId, 'PAYMENT', paymentId, async () => {
       const payment = await this.prisma.withScope(scope, (tx) =>
         tx.payment.findUniqueOrThrow({
           where: { id: paymentId },
@@ -375,6 +394,7 @@ export class ZohoSyncService {
    * this row is the audit trail, not a second retry mechanism.
    */
   private async runJob(
+    scope: Scope,
     brandId: string,
     objectType: 'CUSTOMER' | 'INVOICE' | 'PAYMENT',
     objectId: string,
@@ -404,6 +424,11 @@ export class ZohoSyncService {
           data: { status: 'SUCCEEDED', completedAt: new Date() },
         }),
       );
+      // Advances the connection's own lastSyncAt and clears any stale failure
+      // reason. Until this call existed, lastSyncAt was written once by
+      // saveZohoConnection and never again, so the "last sync" figure on the
+      // integrations panel was really just the moment the brand connected.
+      await this.connections.recordSyncRun(scope, brandId);
     } catch (error) {
       const integrationError = error instanceof IntegrationError ? error : null;
       await this.prisma.withoutScope(`recording sync job failure for brand ${brandId}`, (client) =>
@@ -421,6 +446,21 @@ export class ZohoSyncService {
       this.logger.warn(
         `Zoho push failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`,
       );
+
+      // A revoked or rejected credential is the one failure an operator has to
+      // act on themselves, and it was previously invisible: the panel kept
+      // reporting "Healthy" while every job failed behind it. Recorded against
+      // the connection so the reason is visible where the connection is, not
+      // only in a per-object activity row. markUnhealthy deliberately leaves
+      // `status` alone — see its own comment for why halting here would be
+      // worse than surfacing it.
+      if (integrationError?.errorClass === 'AUTHENTICATION') {
+        await this.connections.markUnhealthy(
+          scope,
+          brandId,
+          integrationError.providerMessage ?? integrationError.message,
+        );
+      }
 
       // A non-retryable class (e.g. VALIDATION — "this customer already
       // exists") will never succeed no matter how many times BullMQ retries

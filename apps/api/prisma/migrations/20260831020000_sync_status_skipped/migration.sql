@@ -1,0 +1,14 @@
+-- A pull that deliberately applied nothing is not a success (G-08).
+--
+-- ZohoPullService.pullOnePayment refuses a Zoho payment applied to zero or
+-- several invoices, because Payment.invoiceId is singular and there is no
+-- honest way to represent it. The refusal is correct. The reporting was not:
+-- recordPull marked the SyncJob SUCCEEDED regardless, so the integrations
+-- panel showed a green "Success" row for a payment that had in fact been
+-- dropped — the audit trail overstating what synced is worse than the
+-- limitation itself, because it hides it.
+--
+-- Echo-suppressed records (a pull that recognised this platform's own push
+-- coming back) land here too, for the same reason: nothing was applied, so
+-- claiming success would be equally untrue.
+ALTER TYPE "SyncStatus" ADD VALUE 'SKIPPED';

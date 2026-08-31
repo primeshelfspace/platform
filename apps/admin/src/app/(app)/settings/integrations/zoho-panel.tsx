@@ -19,11 +19,17 @@ const FREQUENCY_OPTIONS: { readonly value: 1 | 15 | 60 | 1440; readonly label: s
 function statusDotClass(status: string): string {
   if (status === 'SUCCEEDED') return 'bg-success';
   if (status === 'FAILED' || status === 'DEAD_LETTERED') return 'bg-danger';
+  // A skip is neither success nor failure: the job ran and deliberately applied
+  // nothing (a Zoho payment spanning several invoices, or our own push echoing
+  // back). Warning-coloured because the payment case is a real dropped record
+  // an operator may want to reconcile by hand.
+  if (status === 'SKIPPED') return 'bg-warning';
   return 'bg-ink-subtle';
 }
 
 function statusTextClass(status: string): string {
   if (status === 'SUCCEEDED') return 'text-success';
+  if (status === 'SKIPPED') return 'text-warning';
   if (status === 'FAILED' || status === 'DEAD_LETTERED') return 'text-danger';
   return 'text-ink-muted';
 }
@@ -32,6 +38,7 @@ function statusLabel(status: string): string {
   if (status === 'SUCCEEDED') return 'Success';
   if (status === 'FAILED' || status === 'DEAD_LETTERED') return 'Failed';
   if (status === 'RUNNING') return 'Running';
+  if (status === 'SKIPPED') return 'Skipped';
   return 'Queued';
 }
 

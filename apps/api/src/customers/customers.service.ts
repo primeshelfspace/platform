@@ -219,7 +219,7 @@ export class CustomersService {
   }
 
   async update(scope: Scope, brandId: string, id: string, input: CustomerInput): Promise<Customer> {
-    return this.prisma.withScope(scope, async (tx) => {
+    const customer = await this.prisma.withScope(scope, async (tx) => {
       const existing = await tx.customer.findFirst({ where: { id, brandId } });
       if (!existing) throw new NotFoundException('customer not found');
 
@@ -243,6 +243,16 @@ export class CustomersService {
         throw this.translateWriteError(error);
       }
     });
+
+    // Enqueued after commit, exactly as create does and for the same reason.
+    // Without this an edit made here never reached Zoho at all — the adapter's
+    // PUT /contacts/{id} path exists and was simply unreachable from the update
+    // flow, so the two systems diverged silently the moment anyone corrected a
+    // customer record. pushCustomer is a no-op for a brand that is not
+    // connected, so this costs an unconnected brand nothing but a drained job.
+    await this.queue.enqueue('sync', 'zoho-push-customer', { brandId, customerId: customer.id });
+
+    return customer;
   }
 
   /**

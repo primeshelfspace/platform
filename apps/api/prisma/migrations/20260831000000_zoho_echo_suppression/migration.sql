@@ -1,0 +1,29 @@
+-- Echo suppression for the Zoho push/pull round trip.
+--
+-- The two pipelines were individually correct but not inverse operations, so
+-- composing them corrupted data. ZohoSyncService.pushInvoice sends tax and the
+-- card fee to Zoho as ordinary line items (a deliberate choice — a line item
+-- stays neutral on whether the fee is a merchant cost or a customer
+-- surcharge). That write bumps the invoice's last_modified_time, so the very
+-- next pull saw it as "changed in Zoho", fetched it back, and — treating Zoho
+-- as authoritative, also deliberate — overwrote subtotal_minor with a figure
+-- that now silently included the tax and the fee, zeroed tax_minor, and
+-- replaced one line item with three. card_fee_minor is not in the pull's
+-- update payload, so it survived and was then double-counted.
+--
+-- Customers had the same shape of bug for a different reason: upsertCustomer
+-- does not send first_name/last_name at all (only contact_name), but
+-- pullOneCustomer reads them back, so a push followed by a pull replaced a
+-- local customer's first/last name with whatever Zoho derived.
+--
+-- These columns hold the last_modified_time Zoho itself reported for the
+-- record immediately after our own push. On the next pull, a record whose
+-- Zoho last_modified_time has not advanced past this value is our own write
+-- echoing back, and is skipped. Anything newer is a genuine remote edit and
+-- is applied exactly as before — Zoho stays authoritative for real changes.
+--
+-- Nullable with no backfill on purpose: a null means "never pushed from here,
+-- or pushed before this column existed", which correctly reads as "not an
+-- echo" and preserves the previous behaviour for those rows.
+ALTER TABLE "customer" ADD COLUMN "zoho_synced_version" TIMESTAMP(3);
+ALTER TABLE "invoice" ADD COLUMN "zoho_synced_version" TIMESTAMP(3);

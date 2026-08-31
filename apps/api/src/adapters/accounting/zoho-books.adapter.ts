@@ -3,6 +3,7 @@ import {
   IntegrationError,
   classifyHttpStatus,
   formatQuantity,
+  minorUnitExponent,
   type AccountingChange,
   type AccountingConnection,
   type AccountingCustomer,
@@ -10,6 +11,7 @@ import {
   type AccountingPayment,
   type AccountingPort,
   type AccountingReferenceData,
+  type CurrencyCode,
   type PullChangesInput,
   type PullChangesResult,
   type RemoteRef,
@@ -152,8 +154,10 @@ export interface ZohoPaymentDetail extends ZohoPaymentListItem {
  * OAuth refresh, request signing, rate-limit handling and the error
  * classification the sync worker's retry policy depends on (TDD-001 §11.2),
  * plus the real Contact/Invoice/Customer Payment field mappings (TDD-001
- * §10.4). voidInvoice and pullChanges are still stubs — this adapter pushes,
- * it does not yet pull.
+ * §10.4). Both directions are live: the pull methods below back
+ * ZohoPullService, and pullChanges is a real list-level change feed.
+ * voidInvoice remains the one genuine stub — see its own comment for the open
+ * question blocking it.
  *
  * Used directly by ZohoSyncService rather than through ACCOUNTING_PORT: the
  * push integration always talks to Zoho specifically, regardless of which
@@ -448,9 +452,14 @@ export class ZohoBooksAdapter implements AccountingPort {
           { body: payload },
         );
 
+    const contactId = body.contact.contact_id;
     return {
-      remoteId: body.contact.contact_id,
-      updatedAt: this.parseZohoTimestamp(body.contact.last_modified_time),
+      remoteId: contactId,
+      updatedAt: await this.resolveWriteVersion(
+        body.contact.last_modified_time,
+        async () => (await this.getContact(connection, contactId)).last_modified_time,
+        `contact ${contactId}`,
+      ),
     };
   }
 
@@ -471,7 +480,7 @@ export class ZohoBooksAdapter implements AccountingPort {
     const lineItems = invoice.lines.map((line) => ({
       name: line.name,
       description: line.description ?? undefined,
-      rate: this.minorToDecimal(line.unitPriceMinor),
+      rate: this.minorToDecimal(line.unitPriceMinor, invoice.currency),
       quantity: Number(formatQuantity(line.quantity)),
       tax_id: line.taxExempt ? undefined : (line.remoteTaxId ?? undefined),
     }));
@@ -482,7 +491,7 @@ export class ZohoBooksAdapter implements AccountingPort {
       lineItems.push({
         name: 'Tax',
         description: `Tax at the rate applied when this invoice was issued (${(invoice.taxRateBpApplied / 100).toFixed(2)}%)`,
-        rate: this.minorToDecimal(invoice.taxMinor),
+        rate: this.minorToDecimal(invoice.taxMinor, invoice.currency),
         quantity: 1,
         tax_id: undefined,
       });
@@ -491,7 +500,7 @@ export class ZohoBooksAdapter implements AccountingPort {
       lineItems.push({
         name: 'Card processing fee',
         description: 'Applied because this invoice was paid by card or digital wallet',
-        rate: this.minorToDecimal(invoice.cardFeeMinor),
+        rate: this.minorToDecimal(invoice.cardFeeMinor, invoice.currency),
         quantity: 1,
         tax_id: undefined,
       });
@@ -520,10 +529,47 @@ export class ZohoBooksAdapter implements AccountingPort {
           { body: payload },
         );
 
+    const invoiceId = body.invoice.invoice_id;
     return {
-      remoteId: body.invoice.invoice_id,
-      updatedAt: this.parseZohoTimestamp(body.invoice.last_modified_time),
+      remoteId: invoiceId,
+      updatedAt: await this.resolveWriteVersion(
+        body.invoice.last_modified_time,
+        async () => (await this.getInvoice(connection, invoiceId)).last_modified_time,
+        `invoice ${invoiceId}`,
+      ),
     };
+  }
+
+  /**
+   * The Zoho last_modified_time for a record we have just written, which
+   * ZohoSyncService stores as zohoSyncedVersion so the next pull can tell our
+   * own write apart from a genuine edit made in Zoho (see either model's own
+   * comment in schema.prisma for what that prevents).
+   *
+   * Books v3 returns the full object on create and update, so the write
+   * response normally carries this already and no extra request is made. The
+   * readback is the fallback for a response that omits it: with no version at
+   * all the echo check cannot engage, and the round-trip corruption it exists
+   * to prevent returns silently — one cheap GET is worth more than that. A
+   * readback that itself fails is not fatal; null just means the next pull
+   * treats the record as changed, which is exactly the old behaviour.
+   */
+  private async resolveWriteVersion(
+    fromWriteResponse: string | undefined,
+    readBack: () => Promise<string | undefined>,
+    context: string,
+  ): Promise<Date | null> {
+    const direct = this.parseZohoTimestamp(fromWriteResponse);
+    if (direct) return direct;
+    try {
+      return this.parseZohoTimestamp(await readBack());
+    } catch (error) {
+      this.logger.warn(
+        `could not read back last_modified_time for ${context} after writing it — ` +
+          `the next pull will treat it as changed: ${error instanceof Error ? error.message : error}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -540,13 +586,13 @@ export class ZohoBooksAdapter implements AccountingPort {
     const payload = {
       customer_id: payment.customerRemoteId,
       payment_mode: this.mapPaymentMode(payment.method),
-      amount: this.minorToDecimal(payment.amountMinor),
+      amount: this.minorToDecimal(payment.amountMinor, payment.currency),
       date: this.toZohoDate(payment.settledAt),
       reference_number: payment.reference ?? undefined,
       invoices: [
         {
           invoice_id: payment.invoiceRemoteId,
-          amount_applied: this.minorToDecimal(payment.amountMinor),
+          amount_applied: this.minorToDecimal(payment.amountMinor, payment.currency),
         },
       ],
     };
@@ -574,12 +620,19 @@ export class ZohoBooksAdapter implements AccountingPort {
     }
   }
 
-  private minorToDecimal(minor: number): number {
-    // Every currency this platform supports (USD/CAD/EUR/GBP) has 2 decimal
-    // places — the one conversion point between our integer minor units and
-    // the plain JSON number Zoho's API contract requires (TDD-001 §9.1: this
-    // is the boundary, never an intermediate step).
-    return Number((minor / 100).toFixed(2));
+  /**
+   * The one conversion point between our integer minor units and the plain JSON
+   * number Zoho's API contract requires (TDD-001 §9.1: this is the boundary,
+   * never an intermediate step).
+   *
+   * Takes the currency rather than assuming 100. Every currency the platform
+   * supports today is 2-decimal, so this is presently equivalent — the point is
+   * that adding JPY or KWD to SUPPORTED_CURRENCIES stays a one-line change
+   * instead of silently making every pushed amount wrong by 100x.
+   */
+  private minorToDecimal(minor: number, currency: CurrencyCode): number {
+    const exponent = minorUnitExponent(currency);
+    return Number((minor / 10 ** exponent).toFixed(exponent));
   }
 
   private toZohoDate(date: Date): string {
@@ -811,10 +864,10 @@ export class ZohoBooksAdapter implements AccountingPort {
     }
   }
 
-  /** Inverse of toZohoDate/minorToDecimal boundary — the one place a Zoho
-   * decimal amount becomes our integer minor units. */
-  decimalToMinor(amount: number): number {
-    return Math.round(amount * 100);
+  /** Inverse of minorToDecimal — the one place a Zoho decimal amount becomes
+   * our integer minor units. Currency-aware for the same reason. */
+  decimalToMinor(amount: number, currency: CurrencyCode): number {
+    return Math.round(amount * 10 ** minorUnitExponent(currency));
   }
 
   private mappingPending(operation: string, question: string): IntegrationError {
