@@ -107,6 +107,9 @@ export class IntegrationConnectionService {
         },
       }),
     );
+    // A reconnect always brings a new refresh token; any access token cached
+    // under the previous authorization must not survive to be paired with it.
+    await this.redis.cache.del(this.tokenCacheKey(brandId));
   }
 
   async getStatus(scope: Scope, brandId: string): Promise<ZohoConnectionStatus> {
@@ -187,6 +190,9 @@ export class IntegrationConnectionService {
         },
       }),
     );
+    // Otherwise a still-live cached access token outlives the disconnect and
+    // gets handed out again if the same brand reconnects before it expires.
+    await this.redis.cache.del(this.tokenCacheKey(brandId));
   }
 
   /** The one thing ZohoSyncService's push methods need to decide whether to
