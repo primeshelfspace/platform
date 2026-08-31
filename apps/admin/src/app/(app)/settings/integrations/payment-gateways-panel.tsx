@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronRight, Link2, Loader2, Unlink } from 'lucide-react';
@@ -276,6 +277,17 @@ function GatewayDetail({
     setConfirmingDisconnect(false),
   );
 
+  // Without this, the page behind the dialog keeps scrolling under the
+  // user's fingers/wheel while the confirm dialog sits on top of it.
+  useEffect(() => {
+    if (!confirmingDisconnect) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [confirmingDisconnect]);
+
   async function confirmDisconnect() {
     setDisconnecting(true);
     setDisconnectError(null);
@@ -401,48 +413,50 @@ function GatewayDetail({
         {initialTransactions && <TransactionLog initial={initialTransactions} />}
       </div>
 
-      {confirmingDisconnect && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="disconnect-gateway-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-        >
-          <div ref={dialogRef} className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-lg">
-            <h2 id="disconnect-gateway-title" className="text-base font-bold text-ink-strong">
-              Disconnect {gateway.displayName}?
-            </h2>
-            <p className="mt-2 text-sm text-ink-muted">
-              {brandDisplayName} will stop accepting payments through {gateway.displayName}{' '}
-              immediately, and any recurring payments through it will be affected. Its transaction
-              history stays right where it is, and you can reconnect at any time.
-            </p>
-            {disconnectError && (
-              <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">
-                {disconnectError}
+      {confirmingDisconnect &&
+        createPortal(
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="disconnect-gateway-title"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          >
+            <div ref={dialogRef} className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-lg">
+              <h2 id="disconnect-gateway-title" className="text-base font-bold text-ink-strong">
+                Disconnect {gateway.displayName}?
+              </h2>
+              <p className="mt-2 text-sm text-ink-muted">
+                {brandDisplayName} will stop accepting payments through {gateway.displayName}{' '}
+                immediately, and any recurring payments through it will be affected. Its
+                transaction history stays right where it is, and you can reconnect at any time.
+              </p>
+              {disconnectError && (
+                <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">
+                  {disconnectError}
+                </div>
+              )}
+              <div className="mt-5 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDisconnect(false)}
+                  disabled={disconnecting}
+                  className="rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmDisconnect()}
+                  disabled={disconnecting}
+                  className="rounded-[10px] bg-danger px-4 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                >
+                  {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+                </button>
               </div>
-            )}
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setConfirmingDisconnect(false)}
-                disabled={disconnecting}
-                className="rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmDisconnect()}
-                disabled={disconnecting}
-                className="rounded-[10px] bg-danger px-4 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
-              >
-                {disconnecting ? 'Disconnecting…' : 'Disconnect'}
-              </button>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

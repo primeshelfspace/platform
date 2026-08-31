@@ -33,12 +33,21 @@ const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX_WAIT_MS = 65_000;
 const RATE_LIMIT_POLL_MS = 300;
 
-/** Zoho's OAuth token endpoints return this shape for both grant types. */
+/**
+ * Zoho's OAuth token endpoints return this shape for both grant types — and,
+ * confusingly, also return HTTP 200 (not a 4xx) for a rejected request, with
+ * error/error_description in place of the token fields instead. That is
+ * exactly the shape toIntegrationError below exists to handle, but it only
+ * ever runs off !response.ok, so a 200-with-error body slips past it and
+ * needs its own error/error_description read where these fields are used.
+ */
 interface ZohoTokenResponse {
   access_token?: string;
   refresh_token?: string;
   api_domain?: string;
   expires_in?: number;
+  error?: string;
+  error_description?: string;
 }
 
 export interface ZohoOrganization {
@@ -200,6 +209,7 @@ export class ZohoBooksAdapter implements AccountingPort {
         message: 'token refresh returned no access token',
         errorClass: 'AUTHENTICATION',
         provider: this.providerName,
+        providerMessage: body.error_description ?? body.error,
       });
     }
     return {
@@ -232,10 +242,20 @@ export class ZohoBooksAdapter implements AccountingPort {
 
     const body = (await response.json()) as ZohoTokenResponse;
     if (!body.access_token || !body.refresh_token || !body.api_domain) {
+      // Zoho's token endpoint answers a rejected code with HTTP 200 and an
+      // error/error_description body rather than a 4xx, so the real reason
+      // (invalid_code, invalid_client, a redirect_uri that doesn't match
+      // what's registered for this client, ...) has to be read from here —
+      // it never reaches toIntegrationError's !response.ok branch.
+      const reason = body.error_description ?? body.error;
       throw new IntegrationError({
-        message: 'authorization code exchange returned an incomplete response',
+        message: reason
+          ? `authorization code exchange returned an incomplete response (${reason})`
+          : 'authorization code exchange returned an incomplete response',
         errorClass: 'AUTHENTICATION',
         provider: this.providerName,
+        providerMessage: reason,
+        providerCode: body.error,
       });
     }
     return {
