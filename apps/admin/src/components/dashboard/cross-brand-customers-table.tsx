@@ -11,7 +11,9 @@ const STATUS_TONE: Record<string, string> = {
 function StatusPill({ status }: { status: string | null }) {
   if (!status) return <span className="text-ink-subtle">—</span>;
   return (
-    <span className={`inline-flex items-center gap-1.5 text-sm ${STATUS_TONE[status] ?? 'text-ink-muted'}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 text-sm ${STATUS_TONE[status] ?? 'text-ink-muted'}`}
+    >
       <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
       {status as DashboardStatusBucketName}
     </span>

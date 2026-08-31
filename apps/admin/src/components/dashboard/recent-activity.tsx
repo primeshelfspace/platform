@@ -40,7 +40,9 @@ export function RecentActivity({ items }: { items: RecentActivityItem[] }) {
                 <p className="min-w-0 flex-1 truncate text-sm text-ink-strong">
                   {item.message}
                   {item.brandName && (
-                    <span className="ml-2 text-xs font-normal text-ink-subtle">{item.brandName}</span>
+                    <span className="ml-2 text-xs font-normal text-ink-subtle">
+                      {item.brandName}
+                    </span>
                   )}
                 </p>
                 <span className="shrink-0 text-xs text-ink-subtle">

@@ -40,7 +40,9 @@ export function InvoicedVsCollectedChart({
       <div className="mb-4 flex items-start justify-between">
         <div>
           <h2 className="font-medium text-ink-strong">Invoiced vs Collected</h2>
-          <p className="text-xs text-ink-subtle">6-months lookback — Gap between billed and received</p>
+          <p className="text-xs text-ink-subtle">
+            6-months lookback — Gap between billed and received
+          </p>
         </div>
       </div>
       <ResponsiveContainer width="100%" height={260}>
@@ -60,10 +62,7 @@ export function InvoicedVsCollectedChart({
             width={72}
           />
           <Tooltip
-            formatter={(value: number, name: string) => [
-              formatMinorForDisplay(value, code),
-              name,
-            ]}
+            formatter={(value: number, name: string) => [formatMinorForDisplay(value, code), name]}
             contentStyle={{ borderRadius: 8, borderColor: palette.border, fontSize: 12 }}
           />
           <Legend

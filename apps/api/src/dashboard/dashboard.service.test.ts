@@ -195,7 +195,7 @@ describeWithDb('DashboardService', () => {
     await owner.syncJob.delete({ where: { id: job.id } });
   });
 
-  it('re-enqueues a PUSH/INVOICE failure as zoho-push-invoice with the job\'s own invoiceId', async () => {
+  it("re-enqueues a PUSH/INVOICE failure as zoho-push-invoice with the job's own invoiceId", async () => {
     const invoice = await owner.invoice.create({ data: { ...invoiceDefaults(), status: 'SENT' } });
     const job = await owner.syncJob.create({
       data: {

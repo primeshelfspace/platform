@@ -100,9 +100,7 @@ export default async function DashboardPage({
         getDashboardNeedsAttention(scopeBrandId),
         getDashboardRecentActivity(scopeBrandId),
         // Only meaningful in All Brands mode — skip the round trip otherwise.
-        scopeBrandId === null
-          ? getDashboardByBrand()
-          : Promise.resolve<BrandRollup[]>([]),
+        scopeBrandId === null ? getDashboardByBrand() : Promise.resolve<BrandRollup[]>([]),
         scopeBrandId === null
           ? getDashboardCrossBrandCustomers()
           : Promise.resolve<CrossBrandCustomersResult>({ rows: [], matchedCount: 0 }),
@@ -206,8 +204,8 @@ export default async function DashboardPage({
                 </span>
                 {needsAttention.totalCount > 0 && (
                   <a href="#needs-attention" className="font-medium text-danger hover:underline">
-                    {needsAttention.totalCount} item{needsAttention.totalCount === 1 ? '' : 's'} need
-                    attention →
+                    {needsAttention.totalCount} item{needsAttention.totalCount === 1 ? '' : 's'}{' '}
+                    need attention →
                   </a>
                 )}
               </div>

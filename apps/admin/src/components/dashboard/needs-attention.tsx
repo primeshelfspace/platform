@@ -75,7 +75,10 @@ export function NeedsAttention({
             const Icon = ICON[item.kind];
             const targetBrandId = brandId ?? item.brandId;
             return (
-              <li key={`${item.kind}-${item.syncJobId ?? item.invoiceId ?? index}`} className="flex items-start gap-3">
+              <li
+                key={`${item.kind}-${item.syncJobId ?? item.invoiceId ?? index}`}
+                className="flex items-start gap-3"
+              >
                 <span
                   className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-muted text-ink-muted"
                   aria-hidden
@@ -87,7 +90,9 @@ export function NeedsAttention({
                     {item.invoiceNumber ? `${item.invoiceNumber}  ` : ''}
                     {item.subject}
                     {item.brandName && (
-                      <span className="ml-2 text-xs font-normal text-ink-subtle">{item.brandName}</span>
+                      <span className="ml-2 text-xs font-normal text-ink-subtle">
+                        {item.brandName}
+                      </span>
                     )}
                   </p>
                   <p className={`text-xs ${DETAIL_TONE[item.kind]}`}>{item.detail}</p>

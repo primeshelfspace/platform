@@ -36,7 +36,13 @@ export interface DashboardTrendPoint {
   readonly collectionRate: number;
 }
 
-export const STATUS_BUCKET_ORDER = ['Paid', 'Unpaid', 'Overdue', 'Partially Paid', 'Draft'] as const;
+export const STATUS_BUCKET_ORDER = [
+  'Paid',
+  'Unpaid',
+  'Overdue',
+  'Partially Paid',
+  'Draft',
+] as const;
 export type StatusBucket = (typeof STATUS_BUCKET_ORDER)[number];
 
 export interface DashboardStatusBucket {
@@ -425,7 +431,10 @@ export class DashboardService {
             })
           : Promise.resolve([]),
         customerIds.length
-          ? tx.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, displayName: true } })
+          ? tx.customer.findMany({
+              where: { id: { in: customerIds } },
+              select: { id: true, displayName: true },
+            })
           : Promise.resolve([]),
       ]);
       const invoiceById = new Map(jobInvoices.map((i) => [i.id, i]));
@@ -433,46 +442,51 @@ export class DashboardService {
 
       const items: NeedsAttentionItem[] = [
         ...failedJobs.map((job): NeedsAttentionItem => {
-          const invoice = job.objectType === 'INVOICE' && job.objectId ? invoiceById.get(job.objectId) : undefined;
-          const customer = job.objectType === 'CUSTOMER' && job.objectId ? customerById.get(job.objectId) : undefined;
+          const invoice =
+            job.objectType === 'INVOICE' && job.objectId
+              ? invoiceById.get(job.objectId)
+              : undefined;
+          const customer =
+            job.objectType === 'CUSTOMER' && job.objectId
+              ? customerById.get(job.objectId)
+              : undefined;
           return {
             kind: 'SYNC_FAILED',
             brandId: job.brandId,
             brandName: brandId ? null : job.brand.displayName,
             invoiceNumber: invoice?.number ?? null,
-            subject: invoice?.customer.displayName ?? customer?.displayName ?? `${job.objectType.toLowerCase()} sync`,
+            subject:
+              invoice?.customer.displayName ??
+              customer?.displayName ??
+              `${job.objectType.toLowerCase()} sync`,
             detail: 'Zoho sync failed' + (job.lastError ? ` — ${job.lastError}` : ''),
             invoiceId: invoice?.id ?? null,
             syncJobId: job.id,
             occurredAt: job.updatedAt,
           };
         }),
-        ...dueSoon.map(
-          (inv): NeedsAttentionItem => ({
-            kind: 'DUE_SOON',
-            brandId: inv.brandId,
-            brandName: brandId ? null : inv.brand.displayName,
-            invoiceNumber: inv.number,
-            subject: inv.customer.displayName,
-            detail: 'Payment due within 24 hours',
-            invoiceId: inv.id,
-            syncJobId: null,
-            occurredAt: inv.dueDate,
-          }),
-        ),
-        ...staleDrafts.map(
-          (inv): NeedsAttentionItem => ({
-            kind: 'STALE_DRAFT',
-            brandId: inv.brandId,
-            brandName: brandId ? null : inv.brand.displayName,
-            invoiceNumber: inv.number,
-            subject: inv.customer.displayName,
-            detail: `Draft unsent for ${daysBetween(inv.createdAt, now)} days`,
-            invoiceId: inv.id,
-            syncJobId: null,
-            occurredAt: inv.createdAt,
-          }),
-        ),
+        ...dueSoon.map((inv): NeedsAttentionItem => ({
+          kind: 'DUE_SOON',
+          brandId: inv.brandId,
+          brandName: brandId ? null : inv.brand.displayName,
+          invoiceNumber: inv.number,
+          subject: inv.customer.displayName,
+          detail: 'Payment due within 24 hours',
+          invoiceId: inv.id,
+          syncJobId: null,
+          occurredAt: inv.dueDate,
+        })),
+        ...staleDrafts.map((inv): NeedsAttentionItem => ({
+          kind: 'STALE_DRAFT',
+          brandId: inv.brandId,
+          brandName: brandId ? null : inv.brand.displayName,
+          invoiceNumber: inv.number,
+          subject: inv.customer.displayName,
+          detail: `Draft unsent for ${daysBetween(inv.createdAt, now)} days`,
+          invoiceId: inv.id,
+          syncJobId: null,
+          occurredAt: inv.createdAt,
+        })),
       ];
 
       return { items: items.slice(0, 5), totalCount: items.length };
@@ -527,33 +541,27 @@ export class DashboardService {
       const items: RecentActivityItem[] = [
         ...payments
           .filter((p) => p.settledAt)
-          .map(
-            (p): RecentActivityItem => ({
-              kind: 'PAYMENT_RECEIVED',
-              brandId: p.brandId,
-              brandName: brandId ? null : p.brand.displayName,
-              message: `Payment of ${formatMinorForDisplay(Number(p.amountMinor), toCurrencyCode(p.currency))} received from ${p.invoice.customer.displayName}`,
-              occurredAt: p.settledAt!,
-            }),
-          ),
-        ...issued.map(
-          (e): RecentActivityItem => ({
-            kind: 'INVOICE_SENT',
-            brandId: e.invoice.brandId,
-            brandName: brandId ? null : e.invoice.brand.displayName,
-            message: `Invoice ${e.invoice.number} sent to ${e.invoice.customer.displayName}`,
-            occurredAt: e.occurredAt,
-          }),
-        ),
-        ...customers.map(
-          (c): RecentActivityItem => ({
-            kind: 'CUSTOMER_ADDED',
-            brandId: c.brandId,
-            brandName: brandId ? null : c.brand.displayName,
-            message: `New customer ${c.displayName} added`,
-            occurredAt: c.createdAt,
-          }),
-        ),
+          .map((p): RecentActivityItem => ({
+            kind: 'PAYMENT_RECEIVED',
+            brandId: p.brandId,
+            brandName: brandId ? null : p.brand.displayName,
+            message: `Payment of ${formatMinorForDisplay(Number(p.amountMinor), toCurrencyCode(p.currency))} received from ${p.invoice.customer.displayName}`,
+            occurredAt: p.settledAt!,
+          })),
+        ...issued.map((e): RecentActivityItem => ({
+          kind: 'INVOICE_SENT',
+          brandId: e.invoice.brandId,
+          brandName: brandId ? null : e.invoice.brand.displayName,
+          message: `Invoice ${e.invoice.number} sent to ${e.invoice.customer.displayName}`,
+          occurredAt: e.occurredAt,
+        })),
+        ...customers.map((c): RecentActivityItem => ({
+          kind: 'CUSTOMER_ADDED',
+          brandId: c.brandId,
+          brandName: brandId ? null : c.brand.displayName,
+          message: `New customer ${c.displayName} added`,
+          occurredAt: c.createdAt,
+        })),
       ];
 
       items.sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());
@@ -585,9 +593,15 @@ export class DashboardService {
         }),
       ]);
 
-      const invoicedMap = new Map(invoiced.map((r) => [r.brandId, Number(r._sum.totalMinor ?? 0n)]));
-      const collectedMap = new Map(collected.map((r) => [r.brandId, Number(r._sum.amountMinor ?? 0n)]));
-      const overdueMap = new Map(overdue.map((r) => [r.brandId, Number(r._sum.balanceMinor ?? 0n)]));
+      const invoicedMap = new Map(
+        invoiced.map((r) => [r.brandId, Number(r._sum.totalMinor ?? 0n)]),
+      );
+      const collectedMap = new Map(
+        collected.map((r) => [r.brandId, Number(r._sum.amountMinor ?? 0n)]),
+      );
+      const overdueMap = new Map(
+        overdue.map((r) => [r.brandId, Number(r._sum.balanceMinor ?? 0n)]),
+      );
 
       return brands.map((brand): BrandRollup => {
         const invoicedMinor = invoicedMap.get(brand.id) ?? 0;
@@ -646,7 +660,8 @@ export class DashboardService {
         : [];
       const latestByCustomer = new Map<string, { status: InvoiceStatus; overdue: boolean }>();
       for (const invoice of latestInvoices) {
-        if (!latestByCustomer.has(invoice.customerId)) latestByCustomer.set(invoice.customerId, invoice);
+        if (!latestByCustomer.has(invoice.customerId))
+          latestByCustomer.set(invoice.customerId, invoice);
       }
 
       const rows: CrossBrandCustomerRow[] = limited.map(([email, group]) => {
