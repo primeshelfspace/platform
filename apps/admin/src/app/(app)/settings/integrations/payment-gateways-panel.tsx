@@ -427,8 +427,8 @@ function GatewayDetail({
               </h2>
               <p className="mt-2 text-sm text-ink-muted">
                 {brandDisplayName} will stop accepting payments through {gateway.displayName}{' '}
-                immediately, and any recurring payments through it will be affected. Its
-                transaction history stays right where it is, and you can reconnect at any time.
+                immediately, and any recurring payments through it will be affected. Its transaction
+                history stays right where it is, and you can reconnect at any time.
               </p>
               {disconnectError && (
                 <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">
