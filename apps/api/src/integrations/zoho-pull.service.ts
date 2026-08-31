@@ -208,12 +208,18 @@ export class ZohoPullService {
     try {
       return await work();
     } catch (error) {
-      const errorClass = error instanceof IntegrationError ? error.errorClass : 'PERMANENT';
-      if (errorClass === 'AUTHENTICATION' || errorClass === 'TRANSIENT') throw error;
-      this.logger.warn(
-        `continuing past ${describe}: ${errorClass} — ` +
-          `${error instanceof Error ? error.message : String(error)}`,
-      );
+      // An unknown error is NOT evidence that this one record is bad. A Prisma
+      // connection failure, a Redis outage during rate limiting, a plain
+      // programming error — none of those arrive as an IntegrationError, and
+      // treating them as record-specific would swallow them, let the phase
+      // report success, and let recordPullRun advance the cursor past a window
+      // that was never actually pulled. Those records would then never be
+      // fetched again: silent data loss, strictly worse than failing the phase
+      // and retrying. So tolerance requires a positively identified
+      // record-specific class; anything else propagates.
+      if (!(error instanceof IntegrationError)) throw error;
+      if (error.errorClass === 'AUTHENTICATION' || error.errorClass === 'TRANSIENT') throw error;
+      this.logger.warn(`continuing past ${describe}: ${error.errorClass} — ${error.message}`);
       return false;
     }
   }
@@ -576,8 +582,21 @@ export class ZohoPullService {
   ): Promise<void> {
     const floorKey = `zoho:invoices-reconciled:${brandId}`;
     if (!force && (await this.redis.getJson<boolean>(floorKey))) return;
-    await this.reconcileInvoicePresence(scope, brandId, connection);
-    await this.redis.setJson(floorKey, true, INVOICE_RECONCILE_FLOOR_SECONDS);
+    try {
+      await this.reconcileInvoicePresence(scope, brandId, connection);
+    } finally {
+      // In a finally, not after a success: this scan is a full unfiltered pass
+      // over every invoice, and it is the phase most likely to be rate limited.
+      // Setting the floor only on success meant a failing reconciliation
+      // re-scanned on every single pull — once a minute for a brand on
+      // "Realtime" — which is exactly the traffic the floor exists to prevent,
+      // and would keep re-triggering the very rate limit that failed it. Backing
+      // off for the normal interval on failure too turns a self-worsening loop
+      // into an hourly retry.
+      await this.redis
+        .setJson(floorKey, true, INVOICE_RECONCILE_FLOOR_SECONDS)
+        .catch(() => undefined);
+    }
   }
 
   /**
@@ -1185,27 +1204,53 @@ export class ZohoPullService {
       // the list wrappers legitimately return 0 for "nothing had changed", which
       // is a real success, not a refusal to represent something.
       const skipped = options?.skippedWhen?.(result) ?? false;
-      await this.prisma.withoutScope(`recording pull job success for brand ${brandId}`, (client) =>
-        client.syncJob.update({
-          where: { id: job.id },
-          data: { status: skipped ? 'SKIPPED' : 'SUCCEEDED', completedAt: new Date() },
-        }),
-      );
+      // Guarded: the work has already happened. Letting the audit write's own
+      // failure escape would turn a completed pull into a failure, and the
+      // caller would retry work that already succeeded.
+      try {
+        await this.prisma.withoutScope(
+          `recording pull job success for brand ${brandId}`,
+          (client) =>
+            client.syncJob.update({
+              where: { id: job.id },
+              data: { status: skipped ? 'SKIPPED' : 'SUCCEEDED', completedAt: new Date() },
+            }),
+        );
+      } catch (auditError) {
+        this.logger.warn(
+          `pull succeeded for brand ${brandId} but its SyncJob row could not be updated: ` +
+            `${auditError instanceof Error ? auditError.message : String(auditError)}`,
+        );
+      }
       return result;
     } catch (error) {
       const integrationError = error instanceof IntegrationError ? error : null;
-      await this.prisma.withoutScope(`recording pull job failure for brand ${brandId}`, (client) =>
-        client.syncJob.update({
-          where: { id: job.id },
-          data: {
-            status: 'FAILED',
-            errorClass: integrationError?.errorClass ?? 'PERMANENT',
-            lastError:
-              integrationError?.providerMessage ??
-              (error instanceof Error ? error.message : String(error)),
-          },
-        }),
-      );
+      // Guarded for the same reason markUnhealthy below is: if the database is
+      // the thing that is unwell, recording *why* we failed will fail too, and
+      // an unguarded write here would surface that instead of the Zoho error —
+      // which is what pullRecordTolerantly and the queue's retry policy both
+      // read to decide what to do next.
+      try {
+        await this.prisma.withoutScope(
+          `recording pull job failure for brand ${brandId}`,
+          (client) =>
+            client.syncJob.update({
+              where: { id: job.id },
+              data: {
+                status: 'FAILED',
+                errorClass: integrationError?.errorClass ?? 'PERMANENT',
+                lastError:
+                  integrationError?.providerMessage ??
+                  (error instanceof Error ? error.message : String(error)),
+              },
+            }),
+        );
+      } catch (auditError) {
+        this.logger.warn(
+          `could not record pull failure for brand ${brandId}: ` +
+            `${auditError instanceof Error ? auditError.message : String(auditError)}`,
+        );
+      }
       this.logger.warn(
         `Zoho pull failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`,
       );

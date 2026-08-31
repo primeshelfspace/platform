@@ -418,12 +418,23 @@ export class ZohoSyncService {
 
     try {
       await work();
-      await this.prisma.withoutScope(`recording sync job success for brand ${brandId}`, (client) =>
-        client.syncJob.update({
-          where: { id: job.id },
-          data: { status: 'SUCCEEDED', completedAt: new Date() },
-        }),
-      );
+      // Guarded: the write to Zoho has already landed. Letting the audit write
+      // fail the job would have BullMQ retry a push that already succeeded.
+      try {
+        await this.prisma.withoutScope(
+          `recording sync job success for brand ${brandId}`,
+          (client) =>
+            client.syncJob.update({
+              where: { id: job.id },
+              data: { status: 'SUCCEEDED', completedAt: new Date() },
+            }),
+        );
+      } catch (auditError) {
+        this.logger.warn(
+          `push succeeded for brand ${brandId} but its SyncJob row could not be updated: ` +
+            `${auditError instanceof Error ? auditError.message : String(auditError)}`,
+        );
+      }
       // Advances the connection's own lastSyncAt and clears any stale failure
       // reason. Until this call existed, lastSyncAt was written once by
       // saveZohoConnection and never again, so the "last sync" figure on the
@@ -443,18 +454,30 @@ export class ZohoSyncService {
       }
     } catch (error) {
       const integrationError = error instanceof IntegrationError ? error : null;
-      await this.prisma.withoutScope(`recording sync job failure for brand ${brandId}`, (client) =>
-        client.syncJob.update({
-          where: { id: job.id },
-          data: {
-            status: 'FAILED',
-            errorClass: integrationError?.errorClass ?? 'PERMANENT',
-            lastError:
-              integrationError?.providerMessage ??
-              (error instanceof Error ? error.message : String(error)),
-          },
-        }),
-      );
+      // Guarded: if the database is the unwell thing, recording why we failed
+      // fails too, and an unguarded write would surface that instead of the
+      // Zoho error the retry policy reads to decide whether to try again.
+      try {
+        await this.prisma.withoutScope(
+          `recording sync job failure for brand ${brandId}`,
+          (client) =>
+            client.syncJob.update({
+              where: { id: job.id },
+              data: {
+                status: 'FAILED',
+                errorClass: integrationError?.errorClass ?? 'PERMANENT',
+                lastError:
+                  integrationError?.providerMessage ??
+                  (error instanceof Error ? error.message : String(error)),
+              },
+            }),
+        );
+      } catch (auditError) {
+        this.logger.warn(
+          `could not record push failure for brand ${brandId}: ` +
+            `${auditError instanceof Error ? auditError.message : String(auditError)}`,
+        );
+      }
       this.logger.warn(
         `Zoho push failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`,
       );

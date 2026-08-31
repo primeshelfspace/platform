@@ -1031,4 +1031,57 @@ describeWithDb('ZohoPullService', () => {
       );
     });
   });
+
+  /**
+   * The dangerous half of failure tolerance.
+   *
+   * pullRecordTolerantly swallows record-specific failures so one bad row cannot
+   * stall a brand. The hazard is over-applying that: an infrastructure failure
+   * is not a bad row, and swallowing it lets the phase report success and the
+   * cursor advance past a window that was never pulled — those records are then
+   * never fetched again. Silent data loss, and strictly worse than failing and
+   * retrying. Tolerance therefore requires a positively identified
+   * record-specific IntegrationError; anything unrecognised propagates.
+   */
+  describe('unknown failures are never mistaken for bad records', () => {
+    it('propagates an infrastructure error instead of skipping the record', async () => {
+      const contactId = `infra-contact-${randomUUID()}`;
+      const invoiceId = `infra-invoice-${randomUUID()}`;
+
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.listedInvoices = [
+        { ...fakeInvoice(invoiceId, `IF-${randomUUID().slice(0, 8)}`, contactId) },
+      ] as never[];
+      // Not an IntegrationError — the shape a Prisma/Redis outage or a
+      // programming error actually takes.
+      zoho.getInvoiceImpl = () => {
+        throw new TypeError("Cannot read properties of undefined (reading 'connect')");
+      };
+
+      await expect(service(zoho).pullInvoices(scope, brandId, connection, null)).rejects.toThrow(
+        TypeError,
+      );
+    });
+
+    it('still tolerates a record-specific IntegrationError', async () => {
+      // The other side of the same rule, so the fix above cannot be "propagate
+      // everything", which would reintroduce the brand-wide stall.
+      const contactId = `spec-contact-${randomUUID()}`;
+      const invoiceId = `spec-invoice-${randomUUID()}`;
+
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.listedInvoices = [
+        { ...fakeInvoice(invoiceId, `SP-${randomUUID().slice(0, 8)}`, contactId) },
+      ] as never[];
+      zoho.getInvoiceImpl = () => {
+        throw new IntegrationError({
+          message: 'this particular invoice is malformed',
+          errorClass: 'VALIDATION',
+          provider: 'zoho-books',
+        });
+      };
+
+      await expect(service(zoho).pullInvoices(scope, brandId, connection, null)).resolves.toBe(0);
+    });
+  });
 });
