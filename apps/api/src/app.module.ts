@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { BrandsModule } from './brands/brands.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { CustomersModule } from './customers/customers.module.js';
+import { DashboardModule } from './dashboard/dashboard.module.js';
 import { HealthModule } from './health/health.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { InvoicesModule } from './invoices/invoices.module.js';
@@ -51,6 +52,7 @@ import { TenancyModule } from './tenancy/tenancy.module.js';
     PaymentsModule,
     PublicModule,
     IntegrationsModule,
+    DashboardModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthorisationGuard }],
 })

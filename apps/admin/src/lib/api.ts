@@ -916,4 +916,144 @@ export function getZohoActivity(brandId: string): Promise<ZohoActivityEntry[]> {
   return apiFetch<ZohoActivityEntry[]>(`/brands/${brandId}/integrations/zoho/activity`);
 }
 
+// --- Dashboard --------------------------------------------------------------
+
+/** `null` means "All Brands" — every dashboard endpoint below omits the
+ * query param entirely in that case, which is what makes the backend widen
+ * to every brand the caller's role can read (see DashboardController). */
+function dashboardQuery(brandId: string | null): string {
+  return brandId ? `?brandId=${brandId}` : '';
+}
+
+export interface DashboardSummary {
+  currency: string;
+  invoicedMinor: number;
+  collectedMinor: number;
+  /** 0..1 */
+  collectionRate: number;
+  overdueMinor: number;
+  otherCurrencyBrandCount: number;
+}
+
+export function getDashboardSummary(brandId: string | null): Promise<DashboardSummary> {
+  return apiFetch<DashboardSummary>(`/dashboard/summary${dashboardQuery(brandId)}`);
+}
+
+export interface DashboardTrendPoint {
+  month: string;
+  label: string;
+  invoicedMinor: number;
+  collectedMinor: number;
+  collectionRate: number;
+}
+
+export function getDashboardTrend(brandId: string | null): Promise<DashboardTrendPoint[]> {
+  return apiFetch<DashboardTrendPoint[]>(`/dashboard/trend${dashboardQuery(brandId)}`);
+}
+
+export type DashboardStatusBucketName = 'Paid' | 'Unpaid' | 'Overdue' | 'Partially Paid' | 'Draft';
+
+export interface DashboardStatusBucket {
+  bucket: DashboardStatusBucketName;
+  amountMinor: number;
+  /** 0..1 */
+  percent: number;
+}
+
+export function getDashboardStatusBreakdown(
+  brandId: string | null,
+): Promise<DashboardStatusBucket[]> {
+  return apiFetch<DashboardStatusBucket[]>(`/dashboard/status-breakdown${dashboardQuery(brandId)}`);
+}
+
+export interface TopOverdueCustomer {
+  customerId: string;
+  displayName: string;
+  brandId: string;
+  brandName: string | null;
+  balanceMinor: number;
+  daysOverdue: number;
+}
+
+export function getDashboardTopOverdueCustomers(
+  brandId: string | null,
+): Promise<TopOverdueCustomer[]> {
+  return apiFetch<TopOverdueCustomer[]>(
+    `/dashboard/top-overdue-customers${dashboardQuery(brandId)}`,
+  );
+}
+
+export type NeedsAttentionKind = 'STALE_DRAFT' | 'DUE_SOON' | 'SYNC_FAILED';
+
+export interface NeedsAttentionItem {
+  kind: NeedsAttentionKind;
+  brandId: string;
+  brandName: string | null;
+  invoiceNumber: string | null;
+  subject: string;
+  detail: string;
+  invoiceId: string | null;
+  syncJobId: string | null;
+  occurredAt: string;
+}
+
+export interface NeedsAttentionResult {
+  items: NeedsAttentionItem[];
+  totalCount: number;
+}
+
+export function getDashboardNeedsAttention(brandId: string | null): Promise<NeedsAttentionResult> {
+  return apiFetch<NeedsAttentionResult>(`/dashboard/needs-attention${dashboardQuery(brandId)}`);
+}
+
+export type RecentActivityKind = 'PAYMENT_RECEIVED' | 'INVOICE_SENT' | 'CUSTOMER_ADDED';
+
+export interface RecentActivityItem {
+  kind: RecentActivityKind;
+  brandId: string;
+  brandName: string | null;
+  message: string;
+  occurredAt: string;
+}
+
+export function getDashboardRecentActivity(brandId: string | null): Promise<RecentActivityItem[]> {
+  return apiFetch<RecentActivityItem[]>(`/dashboard/recent-activity${dashboardQuery(brandId)}`);
+}
+
+export interface BrandRollup {
+  brandId: string;
+  brandName: string;
+  themeColor: string;
+  currency: string;
+  invoicedMinor: number;
+  collectedMinor: number;
+  collectionRate: number;
+  overdueMinor: number;
+}
+
+/** Only meaningful in All Brands mode. */
+export function getDashboardByBrand(): Promise<BrandRollup[]> {
+  return apiFetch<BrandRollup[]>('/dashboard/by-brand');
+}
+
+export interface CrossBrandCustomerRow {
+  email: string;
+  displayName: string;
+  perBrand: Record<string, { brandName: string; status: string | null }>;
+}
+
+export interface CrossBrandCustomersResult {
+  rows: CrossBrandCustomerRow[];
+  matchedCount: number;
+}
+
+/** Only meaningful in All Brands mode. */
+export function getDashboardCrossBrandCustomers(): Promise<CrossBrandCustomersResult> {
+  return apiFetch<CrossBrandCustomersResult>('/dashboard/cross-brand-customers');
+}
+
+export function retrySyncJob(jobId: string): Promise<{ queued: true }> {
+  return apiFetch<{ queued: true }>(`/dashboard/sync-jobs/${jobId}/retry`, { method: 'POST' });
+}
+
 export { API_URL };

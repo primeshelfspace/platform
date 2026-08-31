@@ -8,6 +8,7 @@ import {
   Bell,
   ChevronDown,
   LayoutDashboard,
+  LayoutGrid,
   LogOut,
   Menu,
   Plus,
@@ -50,6 +51,17 @@ function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
 }
 
+/** The explicit, bookmarkable "All Brands" value for `?brandId=` — chosen
+ * over simply omitting the param, which would be ambiguous with "brand not
+ * yet chosen" on first load. Only the dashboard understands it; every other
+ * page in the app is inherently single-brand. */
+const ALL_BRANDS = 'all';
+
+/** Paths that can render for every brand at once. Every other nav
+ * destination substitutes a concrete brand when "All Brands" is active,
+ * since those pages were never built to receive no brandId at all. */
+const ALL_BRANDS_AWARE_PATHS = new Set(['/']);
+
 /**
  * The one place brand selection lives. Every nav link carries the current
  * brandId forward, and switching brands keeps the current page — a merchant
@@ -72,8 +84,17 @@ export function AdminShell({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeBrandId = searchParams.get('brandId') ?? brands[0]?.id ?? '';
-  const activeBrand = brands.find((b) => b.id === activeBrandId) ?? brands[0] ?? null;
+  const rawBrandParam = searchParams.get('brandId');
+  // 'all' only means something when there is more than one brand to
+  // aggregate — a single-brand merchant never sees the option, so a stray
+  // ?brandId=all for one falls back to that one brand instead of an
+  // unreachable All Brands state.
+  const allBrandsSelected = rawBrandParam === ALL_BRANDS && brands.length > 1;
+  const activeBrandId = allBrandsSelected ? null : (rawBrandParam ?? brands[0]?.id ?? '');
+  const activeBrand = activeBrandId
+    ? (brands.find((b) => b.id === activeBrandId) ?? brands[0] ?? null)
+    : null;
+  const firstConcreteBrandId = brands[0]?.id ?? '';
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
@@ -103,12 +124,24 @@ export function AdminShell({
     event.preventDefault();
     const query = new URLSearchParams();
     if (headerSearch.trim()) query.set('search', headerSearch.trim());
-    if (activeBrandId) query.set('brandId', activeBrandId);
+    // /customers has no All Brands mode of its own — searching from there
+    // always lands on a concrete brand, same as every other single-brand nav
+    // destination below.
+    const brandForCustomers = activeBrandId ?? firstConcreteBrandId;
+    if (brandForCustomers) query.set('brandId', brandForCustomers);
     router.push(`/customers?${query.toString()}`);
   }
 
+  /** Dashboard carries the real selection through, "all" included — every
+   * other destination is inherently single-brand and substitutes the first
+   * concrete brand rather than breaking on a missing brandId. */
   function hrefFor(path: string): string {
-    return activeBrandId ? `${path}?brandId=${activeBrandId}` : path;
+    if (ALL_BRANDS_AWARE_PATHS.has(path)) {
+      if (activeBrandId === null) return `${path}?brandId=${ALL_BRANDS}`;
+      return activeBrandId ? `${path}?brandId=${activeBrandId}` : path;
+    }
+    const brand = activeBrandId ?? firstConcreteBrandId;
+    return brand ? `${path}?brandId=${brand}` : path;
   }
 
   function isActive(path: string): boolean {
@@ -197,7 +230,7 @@ export function AdminShell({
           ))}
         </div>
 
-        {activeBrand && (
+        {brands.length > 0 && (
           <div className="mt-4 space-y-1 border-b border-white/10 pb-4">
             <p className="px-3 text-xs font-medium uppercase tracking-wide text-[#8C8C8C]">
               Brands
@@ -212,15 +245,24 @@ export function AdminShell({
                 className="flex w-full items-center gap-3 rounded-lg bg-white/10 px-3 py-2 text-left
                            transition-colors hover:bg-white/15"
               >
-                <span
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white"
-                  style={{ backgroundColor: activeBrand.themeColor }}
-                  aria-hidden
-                >
-                  {initialOf(activeBrand.displayName)}
-                </span>
+                {activeBrand ? (
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white"
+                    style={{ backgroundColor: activeBrand.themeColor }}
+                    aria-hidden
+                  >
+                    {initialOf(activeBrand.displayName)}
+                  </span>
+                ) : (
+                  <span
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-white/15 text-white"
+                    aria-hidden
+                  >
+                    <LayoutGrid className="h-4 w-4" aria-hidden />
+                  </span>
+                )}
                 <span className="flex-1 truncate text-[15px] font-bold text-white">
-                  {activeBrand.displayName}
+                  {activeBrand ? activeBrand.displayName : 'All Brands'}
                 </span>
                 <ChevronDown className="h-4 w-4 shrink-0 text-[#D4D4D4]" aria-hidden />
               </button>
@@ -231,6 +273,28 @@ export function AdminShell({
                   aria-label="Switch brand"
                   className="absolute left-0 right-0 z-10 mt-1 overflow-hidden rounded-lg border border-white/10 bg-[#232323] py-1 shadow-lg"
                 >
+                  {brands.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => onBrandChange(ALL_BRANDS)}
+                        className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 ${
+                          activeBrandId === null ? 'text-white' : 'text-[#D4D4D4]'
+                        }`}
+                      >
+                        <span
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/15 text-white"
+                          aria-hidden
+                        >
+                          <LayoutGrid className="h-3.5 w-3.5" aria-hidden />
+                        </span>
+                        <span className="truncate font-medium">All Brands</span>
+                      </button>
+                      <div className="my-1 border-t border-white/10" aria-hidden />
+                    </>
+                  )}
+
                   {brands.map((brand) => (
                     <button
                       key={brand.id}
@@ -238,7 +302,7 @@ export function AdminShell({
                       role="menuitem"
                       onClick={() => onBrandChange(brand.id)}
                       className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-white/10 ${
-                        brand.id === activeBrand.id ? 'text-white' : 'text-[#D4D4D4]'
+                        brand.id === activeBrandId ? 'text-white' : 'text-[#D4D4D4]'
                       }`}
                     >
                       <span

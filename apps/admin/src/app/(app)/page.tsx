@@ -1,51 +1,46 @@
 import Link from 'next/link';
-import { CircleCheck, CircleDashed, ScrollText, Users, Wallet } from 'lucide-react';
-import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
+import { CircleCheck, CircleDashed } from 'lucide-react';
+import { toCurrencyCode } from '@fenwick/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
+import { ByBrandCards } from '@/components/dashboard/by-brand-cards';
+import { CollectionRateTrendChart } from '@/components/dashboard/collection-rate-trend-chart';
+import { CrossBrandCustomersTable } from '@/components/dashboard/cross-brand-customers-table';
+import { InvoicedVsCollectedChart } from '@/components/dashboard/invoiced-vs-collected-chart';
+import { InvoiceStatusDonut } from '@/components/dashboard/invoice-status-donut';
+import { KpiCards } from '@/components/dashboard/kpi-cards';
+import { NeedsAttention } from '@/components/dashboard/needs-attention';
+import { RecentActivity } from '@/components/dashboard/recent-activity';
+import { TopOverdueCustomers } from '@/components/dashboard/top-overdue-customers';
 import {
   ApiError,
+  getDashboardByBrand,
+  getDashboardCrossBrandCustomers,
+  getDashboardNeedsAttention,
+  getDashboardRecentActivity,
+  getDashboardStatusBreakdown,
+  getDashboardSummary,
+  getDashboardTopOverdueCustomers,
+  getDashboardTrend,
   getZohoStatus,
   listBrands,
-  listCustomers,
-  getInvoiceSummary,
-  listInvoices,
   type Brand,
-  type Invoice,
+  type BrandRollup,
+  type CrossBrandCustomersResult,
+  type DashboardStatusBucket,
+  type DashboardSummary,
+  type DashboardTrendPoint,
+  type NeedsAttentionResult,
+  type RecentActivityItem,
+  type TopOverdueCustomer,
 } from '@/lib/api';
-import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoice-presentation';
 import { PageContainer } from '@/components/page-container';
 
 export const dynamic = 'force-dynamic';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
 
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  href,
-}: {
-  icon: typeof Wallet;
-  label: string;
-  value: string;
-  href?: string;
-}) {
-  const content = (
-    <div className="rounded-lg border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-2 flex items-center gap-2 text-ink-muted">
-        <Icon className="h-4 w-4" aria-hidden />
-        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
-      </div>
-      <p className="text-2xl font-semibold text-ink-strong">{value}</p>
-    </div>
-  );
-  return href ? (
-    <Link href={href} className="block transition hover:border-brand-ink">
-      {content}
-    </Link>
-  ) : (
-    content
-  );
+function settled<T>(outcome: PromiseSettledResult<T>, fallback: T): T {
+  return outcome.status === 'fulfilled' ? outcome.value : fallback;
 }
 
 export default async function DashboardPage({
@@ -63,51 +58,109 @@ export default async function DashboardPage({
     brandsError = cause instanceof ApiError ? cause.message : String(cause);
   }
 
-  const activeBrand = brands.find((b) => b.id === params.brandId) ?? brands[0] ?? null;
+  // 'all' is the explicit, bookmarkable "All Brands" value — only reachable
+  // with more than one brand, same rule the sidebar's switcher enforces.
+  const allBrandsSelected = params.brandId === 'all' && brands.length > 1;
+  const activeBrand = allBrandsSelected
+    ? null
+    : (brands.find((b) => b.id === params.brandId) ?? brands[0] ?? null);
+  // null means "every brand this session can read" — every dashboard
+  // endpoint below treats that as its own request, not a client-side loop.
+  const scopeBrandId = allBrandsSelected ? null : (activeBrand?.id ?? null);
 
-  let customerTotal = 0;
-  let invoices: Invoice[] = [];
-  let customerNames = new Map<string, string>();
+  let summary: DashboardSummary | null = null;
+  let trend: DashboardTrendPoint[] = [];
+  let statusBreakdown: DashboardStatusBucket[] = [];
+  let topOverdueCustomers: TopOverdueCustomer[] = [];
+  let needsAttention: NeedsAttentionResult = { items: [], totalCount: 0 };
+  let recentActivity: RecentActivityItem[] = [];
+  let byBrand: BrandRollup[] = [];
+  let crossBrandCustomers: CrossBrandCustomersResult = { rows: [], matchedCount: 0 };
   let zohoConnected = false;
-  // Aggregated server-side: summing the current page would silently report
-  // only what happens to be on it.
-  let outstandingMinor = 0;
+  let zohoLastSyncAt: string | null = null;
   let dataError: string | null = null;
 
-  if (activeBrand) {
+  if (brands.length > 0) {
     try {
-      const [customersResult, invoicesResult, invoiceSummary, zohoStatus] = await Promise.all([
-        listCustomers(activeBrand.id),
-        listInvoices(activeBrand.id, { pageSize: 5 }),
-        getInvoiceSummary(activeBrand.id),
-        getZohoStatus(activeBrand.id).catch(() => ({
-          connected: false,
-          organizationName: null,
-          lastSyncAt: null,
-          health: null,
-        })),
+      const [
+        summaryOutcome,
+        trendOutcome,
+        statusOutcome,
+        topOverdueOutcome,
+        needsAttentionOutcome,
+        recentActivityOutcome,
+        byBrandOutcome,
+        crossBrandOutcome,
+        zohoOutcome,
+      ] = await Promise.allSettled([
+        getDashboardSummary(scopeBrandId),
+        getDashboardTrend(scopeBrandId),
+        getDashboardStatusBreakdown(scopeBrandId),
+        getDashboardTopOverdueCustomers(scopeBrandId),
+        getDashboardNeedsAttention(scopeBrandId),
+        getDashboardRecentActivity(scopeBrandId),
+        // Only meaningful in All Brands mode — skip the round trip otherwise.
+        scopeBrandId === null
+          ? getDashboardByBrand()
+          : Promise.resolve<BrandRollup[]>([]),
+        scopeBrandId === null
+          ? getDashboardCrossBrandCustomers()
+          : Promise.resolve<CrossBrandCustomersResult>({ rows: [], matchedCount: 0 }),
+        activeBrand
+          ? getZohoStatus(activeBrand.id)
+          : Promise.resolve({
+              connected: false,
+              organizationName: null,
+              lastSyncAt: null,
+              lastPulledAt: null,
+              health: null,
+              pullFrequencyMinutes: 15,
+              customerSyncEnabled: true,
+              invoiceSyncEnabled: true,
+            }),
       ]);
-      customerTotal = customersResult.total;
-      invoices = invoicesResult.data;
-      outstandingMinor = invoiceSummary.outstandingMinor;
-      customerNames = new Map(customersResult.data.map((c) => [c.id, c.displayName]));
+
+      if (summaryOutcome.status === 'rejected') {
+        throw summaryOutcome.reason; // the KPI cards are the one widget worth failing the page over
+      }
+      summary = summaryOutcome.value;
+      trend = settled(trendOutcome, []);
+      statusBreakdown = settled(statusOutcome, []);
+      topOverdueCustomers = settled(topOverdueOutcome, []);
+      needsAttention = settled(needsAttentionOutcome, { items: [], totalCount: 0 });
+      recentActivity = settled(recentActivityOutcome, []);
+      byBrand = settled(byBrandOutcome, []);
+      crossBrandCustomers = settled(crossBrandOutcome, { rows: [], matchedCount: 0 });
+      const zohoStatus = settled(zohoOutcome, {
+        connected: false,
+        organizationName: null,
+        lastSyncAt: null,
+        lastPulledAt: null,
+        health: null,
+        pullFrequencyMinutes: 15,
+        customerSyncEnabled: true,
+        invoiceSyncEnabled: true,
+      });
       zohoConnected = zohoStatus.connected;
+      zohoLastSyncAt = zohoStatus.lastSyncAt;
     } catch (cause) {
       dataError = cause instanceof ApiError ? cause.message : String(cause);
     }
   }
 
-  const currency = toCurrencyCode(activeBrand?.currency);
-  const recentInvoices = invoices;
+  const currency = toCurrencyCode(summary?.currency ?? activeBrand?.currency);
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
       <PageContainer>
-        <header className="mb-8">
-          <p className="text-sm uppercase tracking-widest text-ink-subtle">
-            {activeBrand ? activeBrand.displayName : 'Fenwick Holdings Inc.'}
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold text-ink-strong">Dashboard</h1>
+        <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm uppercase tracking-widest text-ink-subtle">
+              {activeBrand ? activeBrand.displayName : 'All Brands'}
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold text-ink-strong">Dashboard</h1>
+            <p className="text-sm text-ink-muted">Finance overview &amp; collection performance</p>
+          </div>
         </header>
 
         {params.brandCreated && (
@@ -130,81 +183,63 @@ export default async function DashboardPage({
               Create your first brand
             </Link>
           </div>
-        ) : dataError ? (
+        ) : dataError || !summary ? (
           <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
-            Could not load dashboard data: {dataError}
+            Could not load dashboard data: {dataError ?? 'unknown error'}
           </div>
         ) : (
           <>
-            <div className="mb-8 grid gap-4 sm:grid-cols-3">
-              <StatCard
-                icon={Wallet}
-                label="Outstanding balance"
-                value={formatMinorForDisplay(outstandingMinor, currency)}
-                href={`/invoices?brandId=${activeBrand!.id}`}
-              />
-              <StatCard
-                icon={Users}
-                label="Customers"
-                value={String(customerTotal)}
-                href={`/customers?brandId=${activeBrand!.id}`}
-              />
-              <StatCard
-                icon={zohoConnected ? CircleCheck : CircleDashed}
-                label="Zoho Books"
-                value={zohoConnected ? 'Connected' : 'Not connected'}
-                href={`/settings/integrations?brandId=${activeBrand!.id}`}
-              />
+            {activeBrand && (
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm">
+                <span className="flex items-center gap-2 text-ink-muted">
+                  {zohoConnected ? (
+                    <CircleCheck className="h-4 w-4 text-success" aria-hidden />
+                  ) : (
+                    <CircleDashed className="h-4 w-4 text-ink-subtle" aria-hidden />
+                  )}
+                  Zoho Books: {zohoConnected ? 'Connected' : 'Not connected'}
+                  {zohoConnected && zohoLastSyncAt && (
+                    <span className="text-ink-subtle">
+                      · Last synced {new Date(zohoLastSyncAt).toLocaleString()}
+                    </span>
+                  )}
+                </span>
+                {needsAttention.totalCount > 0 && (
+                  <a href="#needs-attention" className="font-medium text-danger hover:underline">
+                    {needsAttention.totalCount} item{needsAttention.totalCount === 1 ? '' : 's'} need
+                    attention →
+                  </a>
+                )}
+              </div>
+            )}
+
+            <KpiCards summary={summary} />
+
+            {scopeBrandId === null && <ByBrandCards brands={byBrand} />}
+
+            <div className="mb-6 grid gap-4 lg:grid-cols-2">
+              <CollectionRateTrendChart trend={trend} />
+              <InvoiceStatusDonut buckets={statusBreakdown} currency={currency} />
             </div>
 
-            <section className="rounded-2xl border border-border bg-surface shadow-sm">
-              <div className="flex items-center justify-between border-b border-border px-5 py-3">
-                <h2 className="font-medium text-ink-strong">Recent invoices</h2>
-                <Link
-                  href={`/invoices?brandId=${activeBrand!.id}`}
-                  className="text-sm text-brand-ink underline"
-                >
-                  View all
-                </Link>
-              </div>
+            <div className="mb-6">
+              <InvoicedVsCollectedChart trend={trend} currency={currency} />
+            </div>
 
-              {recentInvoices.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 p-12 text-center">
-                  <ScrollText className="h-8 w-8 text-ink-subtle" aria-hidden />
-                  <p className="font-medium text-ink-strong">No invoices yet</p>
-                  <p className="text-sm text-ink-muted">
-                    Create the first invoice for {activeBrand!.displayName}.
-                  </p>
-                </div>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-left text-xs font-semibold uppercase tracking-wide text-ink-subtle">
-                      <th className="px-5 py-3">Invoice</th>
-                      <th className="px-5 py-3">Customer</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentInvoices.map((inv) => (
-                      <tr key={inv.id} className="border-b border-border last:border-0">
-                        <td className="px-5 py-3 font-medium text-ink-strong">{inv.number}</td>
-                        <td className="px-5 py-3 text-ink-muted">
-                          {customerNames.get(inv.customerId) ?? '—'}
-                        </td>
-                        <td className={`px-5 py-3 font-medium ${invoiceStatusTone(inv.status)}`}>
-                          {invoiceStatusLabel(inv.status)}
-                        </td>
-                        <td className="px-5 py-3 font-mono text-ink-strong">
-                          {formatMinorForDisplay(inv.balanceMinor, currency)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </section>
+            <div className="mb-6 grid gap-4 lg:grid-cols-2">
+              <TopOverdueCustomers customers={topOverdueCustomers} currency={currency} />
+              <div id="needs-attention">
+                <NeedsAttention result={needsAttention} brandId={scopeBrandId} />
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <RecentActivity items={recentActivity} />
+            </div>
+
+            {scopeBrandId === null && (
+              <CrossBrandCustomersTable result={crossBrandCustomers} brands={brands} />
+            )}
           </>
         )}
       </PageContainer>
