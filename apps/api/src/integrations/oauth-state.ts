@@ -8,16 +8,17 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  * signing the brandId (and an issued-at bound to a short window) answers
  * both without a Redis key to manage and expire.
  *
- * Provider-neutral: Zoho Books and Stripe Connect both redirect through here.
- * The provider is part of the signed payload rather than assumed, so a state
- * minted for one provider's consent screen cannot be replayed against the
- * other's callback — connecting an accounting ledger and granting charge
- * access to a payment account have very different consequences, and sharing
- * one signing secret must not make the two interchangeable.
+ * Provider-neutral: Zoho Books, Stripe Connect and Square Connect all redirect
+ * through here. The provider is part of the signed payload rather than
+ * assumed, so a state minted for one provider's consent screen cannot be
+ * replayed against another's callback — connecting an accounting ledger and
+ * granting charge access to a payment account have very different
+ * consequences, and sharing one signing secret must not make the two
+ * interchangeable.
  */
 const MAX_AGE_MS = 10 * 60 * 1000; // long enough for a human to click through a consent screen
 
-export type OAuthProvider = 'zoho' | 'stripe';
+export type OAuthProvider = 'zoho' | 'stripe' | 'square';
 
 interface StatePayload {
   readonly brandId: string;

@@ -6,19 +6,29 @@ import {
   getCustomer,
   getEmailReceiptSettings,
   getInvoicePdfSettings,
+  getPaymentMethodSettings,
   getPaymentPageDisplaySettings,
   getZohoActivity,
   getZohoStatus,
   listBrands,
   listInvoices,
+  listPaymentGateways,
+  listPaymentTransactions,
+  squareConnectUrl,
+  stripeConnectUrl,
   type Brand,
   type CustomerAddress,
   type EmailReceiptSettings,
   type InvoicePdfSettings,
+  type PaymentGatewayProvider,
+  type PaymentGatewaySummary,
+  type PaymentMethodSettings,
   type PaymentPageDisplaySettings,
+  type PaymentTransactionListResponse,
   type ZohoActivityEntry,
   type ZohoConnectionStatus,
 } from '@/lib/api';
+import { PaymentGatewaysPanel } from '@/app/(app)/settings/integrations/payment-gateways-panel';
 import { PageContainer } from '@/components/page-container';
 import { BrandDetailsForm } from './brand-details-form';
 import { EmailReceiptEditor } from './email-receipt-editor';
@@ -33,6 +43,40 @@ import {
   type BrandSettingsTab,
   type BrandingSubTab,
 } from './tabs';
+
+const PAYMENT_GATEWAY_PROVIDERS = ['STRIPE', 'PAYPAL', 'SQUARE', 'AUTHORIZE_NET'] as const;
+
+function parseGatewayProvider(value: string | undefined): PaymentGatewayProvider | null {
+  const upper = value?.toUpperCase();
+  return (PAYMENT_GATEWAY_PROVIDERS as readonly string[]).includes(upper ?? '')
+    ? (upper as PaymentGatewayProvider)
+    : null;
+}
+
+/** Mirrors the old /settings/integrations page's own maps — the Stripe and
+ * Square OAuth callbacks redirect here now, and their error codes are
+ * unchanged. */
+function describeStripeError(raw: string): string {
+  const KNOWN: Record<string, string> = {
+    missing_brand: 'No brand was selected.',
+    api_unreachable: 'The API could not be reached.',
+    connect_failed: 'Stripe did not return a consent link.',
+    invalid_or_expired_state: 'That connection link expired. Try again.',
+    unknown_brand: 'That brand no longer exists.',
+  };
+  return KNOWN[raw] ?? raw;
+}
+
+function describeSquareError(raw: string): string {
+  const KNOWN: Record<string, string> = {
+    missing_brand: 'No brand was selected.',
+    api_unreachable: 'The API could not be reached.',
+    connect_failed: 'Square did not return a consent link.',
+    invalid_or_expired_state: 'That connection link expired. Try again.',
+    unknown_brand: 'That brand no longer exists.',
+  };
+  return KNOWN[raw] ?? raw;
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -174,12 +218,20 @@ export default async function BrandSettingsPage({
     integration?: string;
     connected?: string;
     error?: string;
+    gateway?: string;
+    stripeConnected?: string;
+    stripeDisconnected?: string;
+    stripeError?: string;
+    squareConnected?: string;
+    squareDisconnected?: string;
+    squareError?: string;
   }>;
 }) {
   const params = await searchParams;
   const zohoErrorMessage = params.error
     ? (ZOHO_ERROR_MESSAGES[params.error] ?? params.error)
     : null;
+  const selectedGateway = parseGatewayProvider(params.gateway);
 
   // Unguarded, this threw straight to the root error boundary's generic
   // "Something went wrong" on anything from a dropped connection to a
@@ -237,7 +289,30 @@ export default async function BrandSettingsPage({
       integrationsError = cause instanceof ApiError ? cause.message : String(cause);
     }
   }
-  if (brand && activeTab !== 'details' && activeTab !== 'integrations') {
+  let gateways: PaymentGatewaySummary[] = [];
+  let gatewaysError: string | null = null;
+  let methodSettings: PaymentMethodSettings | null = null;
+  let transactions: PaymentTransactionListResponse | null = null;
+  if (brand && activeTab === 'payments') {
+    try {
+      gateways = await listPaymentGateways(brand.id);
+    } catch (cause) {
+      gatewaysError = cause instanceof ApiError ? cause.message : String(cause);
+    }
+
+    // The detail view's own sections only matter once that gateway is
+    // actually connected — a selected-but-disconnected provider (e.g. a
+    // stale link) just falls back to the list.
+    const detail = selectedGateway && gateways.find((g) => g.provider === selectedGateway);
+    if (detail?.connected) {
+      // Neither call depends on the other's result — fetched together.
+      [methodSettings, transactions] = await Promise.all([
+        getPaymentMethodSettings(brand.id),
+        listPaymentTransactions(brand.id, { pageSize: 50 }),
+      ]);
+    }
+  }
+  if (brand && activeTab !== 'details' && activeTab !== 'integrations' && activeTab !== 'payments') {
     if (activeSub === 'payment-page') {
       const [display, previewInvoice] = await Promise.all([
         getPaymentPageDisplaySettings(brand.id),
@@ -324,6 +399,61 @@ export default async function BrandSettingsPage({
             />
           </>
         )
+      ) : activeTab === 'payments' ? (
+        <div className="mt-3">
+          {params.stripeConnected && (
+            <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
+              Stripe connected.
+            </div>
+          )}
+          {params.stripeDisconnected && (
+            <div className="mb-4 rounded-md bg-surface-muted p-3 text-sm text-ink-muted">
+              Stripe disconnected.
+            </div>
+          )}
+          {params.stripeError && (
+            <div className="mb-4 rounded-md bg-danger-surface p-3 text-sm text-danger">
+              Stripe could not be connected: {describeStripeError(params.stripeError)}
+            </div>
+          )}
+          {params.squareConnected && (
+            <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
+              Square connected.
+            </div>
+          )}
+          {params.squareDisconnected && (
+            <div className="mb-4 rounded-md bg-surface-muted p-3 text-sm text-ink-muted">
+              Square disconnected.
+            </div>
+          )}
+          {params.squareError && (
+            <div className="mb-4 rounded-md bg-danger-surface p-3 text-sm text-danger">
+              Square could not be connected: {describeSquareError(params.squareError)}
+            </div>
+          )}
+
+          {gatewaysError ? (
+            <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
+              Could not load payment gateways: {gatewaysError}
+            </div>
+          ) : (
+            <PaymentGatewaysPanel
+              // Same stale-client-state fix as IntegrationsPanel above — this
+              // panel's gateway list and its Payment Methods toggles are also
+              // held in useState(initial...).
+              key={brand.id}
+              brandId={brand.id}
+              brandDisplayName={brand.displayName}
+              basePath="/brand-settings?tab=payments"
+              stripeConnectUrl={stripeConnectUrl(brand.id)}
+              squareConnectUrl={squareConnectUrl(brand.id)}
+              initialGateways={gateways}
+              selected={selectedGateway}
+              initialMethodSettings={methodSettings}
+              initialTransactions={transactions}
+            />
+          )}
+        </div>
       ) : (
         <>
           {/* Branches on activeSub itself — the props objects above are

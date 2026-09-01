@@ -70,9 +70,9 @@ export class StripeAccountController {
     @Query('error') error: string | undefined,
     @Res() response: Response,
   ): Promise<void> {
-    // The Stripe panel lives on the Payment Gateways tab of
-    // /settings/integrations — there is no standalone /settings/stripe page.
-    const settingsUrl = `${this.env.ADMIN_PUBLIC_URL}/settings/integrations`;
+    // The Stripe panel lives on the Payment Gateways tab of /brand-settings —
+    // there is no standalone /settings/stripe page.
+    const settingsUrl = `${this.env.ADMIN_PUBLIC_URL}/brand-settings`;
     const tab = 'tab=payments';
 
     if (error) {

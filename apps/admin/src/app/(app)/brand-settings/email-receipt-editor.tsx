@@ -337,26 +337,6 @@ function PreviewBody({
           </dl>
         </div>
       </div>
-
-      {/* Legal footer — links to the same public /terms and /privacy pages
-          linked from the sign-up form (see apps/admin/src/app/terms and
-          .../privacy), not brand-specific.
-
-          The rest of this preview now tracks the real send: layout, brand
-          colour, accent colour, logo and the subject-as-heading all render
-          from the same values renderEmailReceiptHtml (packages/shared) uses.
-          This footer is the one part that does not, since those routes are
-          relative paths on the admin app and an email needs absolute URLs. */}
-      <div className="border-t border-[#E5E7EB] bg-surface-muted px-6 py-6 text-center text-sm text-ink-muted">
-        {brand.displayName} ·{' '}
-        <a href="/terms" className="underline hover:text-ink-strong">
-          Terms &amp; Conditions
-        </a>{' '}
-        ·{' '}
-        <a href="/privacy" className="underline hover:text-ink-strong">
-          Privacy Policy
-        </a>
-      </div>
     </>
   );
 }
@@ -526,9 +506,11 @@ export function EmailReceiptEditor({
     // longer a nested <form> for the same reason — it dispatches its action
     // directly, which is also what lets it live inside this one at all.
     <form action={saveFormAction}>
-      <SaveBar dirty={isDirty} pending={savePending} onDiscard={handleDiscard} />
+      <div className="mt-4">
+        <BrandingSubTabs active={activeSub} brandId={brand.id} />
+      </div>
       <div
-        className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
+        className="mt-4 flex w-full flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
                  border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
       >
         <section className="w-[350px] shrink-0 p-6">
@@ -771,15 +753,8 @@ export function EmailReceiptEditor({
           </div>
         </section>
 
-        <section className="min-w-0 w-[744px] max-w-full p-6">
-          {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
-            "Brand Settings" page heading — here it's the first thing in a
-            padded card, so that margin is cancelled rather than stacking
-            with the section's own p-6. */}
-          <div className="-mt-6">
-            <BrandingSubTabs active={activeSub} brandId={brand.id} />
-          </div>
-          <div className="mt-6 flex items-center justify-between">
+        <section className="min-w-0 max-w-[640px] flex-1 p-6">
+          <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-ink-strong">Preview</h3>
             <button
               type="button"
@@ -816,6 +791,7 @@ export function EmailReceiptEditor({
           </div>
         </section>
       </div>
+      <SaveBar dirty={isDirty} pending={savePending} onDiscard={handleDiscard} />
     </form>
   );
 }

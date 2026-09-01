@@ -87,6 +87,16 @@ const envSchema = z
      */
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
+    // Square Connect (OAuth), per brand — the same shape as Stripe Connect
+    // above: the platform's own application id/secret, and each brand
+    // authorises on Square's consent screen rather than pasting a token.
+    // See SquareAccountService.
+    SQUARE_APPLICATION_ID: z.string().optional(),
+    SQUARE_APPLICATION_SECRET: z.string().optional(),
+    SQUARE_ENVIRONMENT: z.enum(['sandbox', 'production']).default('sandbox'),
+    /** Must exactly match a redirect URL registered on the Square application. */
+    SQUARE_CONNECT_REDIRECT_URI: z.string().optional(),
+
     ZOHO_CLIENT_ID: z.string().optional(),
     ZOHO_CLIENT_SECRET: z.string().optional(),
     ZOHO_REDIRECT_URI: z.string().optional(),

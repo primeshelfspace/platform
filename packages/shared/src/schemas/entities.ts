@@ -340,6 +340,17 @@ export const PAYMENT_GATEWAY_PROVIDERS = ['STRIPE', 'PAYPAL', 'SQUARE', 'AUTHORI
 export type PaymentGatewayProvider = (typeof PAYMENT_GATEWAY_PROVIDERS)[number];
 export const paymentGatewayProviderSchema = z.enum(PAYMENT_GATEWAY_PROVIDERS);
 
+/** Authorize.net has no OAuth consent screen for third parties — a brand
+ * connects by pasting its own API Login ID and Transaction Key rather than
+ * authorising through a redirect, the same shape Stripe's pre-Connect flow
+ * used before it moved to OAuth. See AuthorizeNetAccountService. */
+export const authorizeNetConnectSchema = z.object({
+  apiLoginId: z.string().trim().min(1, 'API Login ID is required'),
+  transactionKey: z.string().trim().min(1, 'Transaction Key is required'),
+  environment: z.enum(['sandbox', 'production']),
+});
+export type AuthorizeNetConnectInput = z.infer<typeof authorizeNetConnectSchema>;
+
 // --- Customer --------------------------------------------------------------
 
 export const customerTypeSchema = z.enum(['BUSINESS', 'INDIVIDUAL']);

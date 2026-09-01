@@ -89,13 +89,13 @@ export default async function PaymentMethodsPage({
             )}
 
             {/* Stripe's own connection card lives on the Payment Gateways tab
-                of /settings/integrations now — this page only owns which
-                methods the public payment page offers. */}
+                of /brand-settings now — this page only owns which methods
+                the public payment page offers. */}
             {activeBrand && (
               <p className="mt-6 text-sm text-ink-muted">
                 Card payments need a connected gateway to actually charge anything — connect one on{' '}
                 <Link
-                  href={`/settings/integrations?tab=payments&brandId=${activeBrand.id}`}
+                  href={`/brand-settings?tab=payments&brandId=${activeBrand.id}`}
                   className="font-medium text-ink-strong underline"
                 >
                   the Payment Gateways tab

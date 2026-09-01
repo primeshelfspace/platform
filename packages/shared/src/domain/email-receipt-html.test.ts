@@ -12,8 +12,6 @@ const base: EmailReceiptHtmlInput = {
   body: 'Hi Harborline,\n\nYour invoice is ready.',
   variables: { invoiceNumber: 'INV-3021', amountDue: '$4,820.00', dueDate: 'Aug 26, 2026' },
   linkUrl: 'https://pay.example.com/i/tok_123',
-  termsUrl: 'https://admin.example.com/terms',
-  privacyUrl: 'https://admin.example.com/privacy',
 };
 
 describe('renderEmailReceiptHtml', () => {
@@ -95,13 +93,6 @@ describe('renderEmailReceiptHtml', () => {
     expect(html).toContain('Due date');
   });
 
-  it('closes with the legal footer, linked absolutely', () => {
-    const html = renderEmailReceiptHtml(base);
-    expect(html).toContain('href="https://admin.example.com/terms"');
-    expect(html).toContain('href="https://admin.example.com/privacy"');
-    expect(html).toContain('Terms &amp; Conditions');
-    expect(html).toContain('Privacy Policy');
-  });
 
   it('stretches the call to action to full width', () => {
     expect(renderEmailReceiptHtml(base)).toContain('display:block;width:100%');

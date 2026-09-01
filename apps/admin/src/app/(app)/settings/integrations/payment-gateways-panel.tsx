@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -14,26 +14,26 @@ import type {
 } from '@/lib/api';
 import { Toggle } from '@/components/ui/toggle';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
+import { GatewayMark } from './gateway-mark';
 import {
+  connectAuthorizeNetAction,
   connectPaymentGatewayAction,
   disconnectPaymentGatewayAction,
   updatePaymentMethodSettingsAction,
 } from './actions';
 
-/** Colours are each gateway's own brand colour — same "coloured square +
- * initial" convention IntegrationsPanel already uses for Zoho's "Z". */
-const GATEWAY_STYLE: Record<PaymentGatewayProvider, { badge: string; bg: string }> = {
-  STRIPE: { badge: 'S', bg: '#635BFF' },
-  PAYPAL: { badge: 'P', bg: '#003087' },
-  SQUARE: { badge: 'Sq', bg: '#1A1A1A' },
-  AUTHORIZE_NET: { badge: 'A', bg: '#EF7622' },
-};
+/** Providers that link straight to their own OAuth consent screen rather
+ * than calling connectPaymentGatewayAction. */
+type OAuthProvider = Extract<PaymentGatewayProvider, 'STRIPE' | 'SQUARE'>;
+function isOAuthProvider(provider: PaymentGatewayProvider): provider is OAuthProvider {
+  return provider === 'STRIPE' || provider === 'SQUARE';
+}
 
 const GATEWAY_DESCRIPTION: Record<PaymentGatewayProvider, string> = {
-  STRIPE: 'Accept credit cards, ACH and digital wallets through Stripe Connect.',
-  PAYPAL: 'Let customers pay with their PayPal balance, card or bank account.',
-  SQUARE: 'Process card payments through a Square merchant account.',
-  AUTHORIZE_NET: 'Route card and eCheck payments through Authorize.net.',
+  STRIPE: 'Card, ACH, Apple Pay & Google Pay — payouts land straight in your Stripe account',
+  PAYPAL: 'Accept PayPal and major cards through your own PayPal Business account',
+  SQUARE: 'Card payments processed through your existing Square account',
+  AUTHORIZE_NET: 'Card and eCheck payments through your Authorize.net merchant account',
 };
 
 const METHOD_LABEL: Record<PaymentTransaction['method'], string> = {
@@ -71,19 +71,6 @@ function formatDateTime(iso: string): string {
   });
 }
 
-function GatewayBadge({ provider }: { provider: PaymentGatewayProvider }) {
-  const style = GATEWAY_STYLE[provider];
-  return (
-    <span
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white"
-      style={{ backgroundColor: style.bg }}
-      aria-hidden
-    >
-      {style.badge}
-    </span>
-  );
-}
-
 /**
  * Brand Settings → Payment Gateways. A list of the four gateways this
  * platform can offer, and — once one is connected — a detail view for it:
@@ -99,7 +86,9 @@ function GatewayBadge({ provider }: { provider: PaymentGatewayProvider }) {
 export function PaymentGatewaysPanel({
   brandId,
   brandDisplayName,
+  basePath,
   stripeConnectUrl,
+  squareConnectUrl,
   initialGateways,
   selected,
   initialMethodSettings,
@@ -107,45 +96,74 @@ export function PaymentGatewaysPanel({
 }: {
   brandId: string;
   brandDisplayName: string;
+  /** Where this panel's own list/detail links point — the page embedding it
+   * owns the tab query param(s) that get this panel rendered in the first
+   * place, so the panel itself doesn't hardcode which page that is. */
+  basePath: string;
   stripeConnectUrl: string;
+  squareConnectUrl: string;
   initialGateways: PaymentGatewaySummary[];
   selected: PaymentGatewayProvider | null;
   initialMethodSettings: PaymentMethodSettings | null;
   initialTransactions: PaymentTransactionListResponse | null;
 }) {
+  const router = useRouter();
   const [gateways, setGateways] = useState(initialGateways);
-  const listHref = `/settings/integrations?tab=payments&brandId=${brandId}`;
+  const [authorizeNetModalOpen, setAuthorizeNetModalOpen] = useState(false);
+  const listHref = `${basePath}&brandId=${brandId}`;
+
+  const connectUrls: Record<OAuthProvider, string> = {
+    STRIPE: stripeConnectUrl,
+    SQUARE: squareConnectUrl,
+  };
+
+  function onAuthorizeNetConnected() {
+    setAuthorizeNetModalOpen(false);
+    setGateways((prev) =>
+      prev.map((g) => (g.provider === 'AUTHORIZE_NET' ? { ...g, connected: true } : g)),
+    );
+    router.push(`${listHref}&gateway=authorize_net`);
+  }
 
   const selectedGateway = selected ? gateways.find((g) => g.provider === selected) : null;
 
-  if (!selected || !selectedGateway) {
-    return (
-      <GatewayList
-        brandId={brandId}
-        listHref={listHref}
-        gateways={gateways}
-        stripeConnectUrl={stripeConnectUrl}
-        onConnected={(provider) =>
-          setGateways((prev) =>
-            prev.map((g) => (g.provider === provider ? { ...g, connected: true } : g)),
-          )
-        }
-      />
-    );
-  }
-
   return (
-    <GatewayDetail
-      brandId={brandId}
-      brandDisplayName={brandDisplayName}
-      listHref={listHref}
-      gateway={selectedGateway}
-      otherGateways={gateways.filter((g) => g.provider !== selectedGateway.provider)}
-      stripeConnectUrl={stripeConnectUrl}
-      initialMethodSettings={initialMethodSettings}
-      initialTransactions={initialTransactions}
-      onGatewaysChange={setGateways}
-    />
+    <>
+      {!selected || !selectedGateway ? (
+        <GatewayList
+          brandId={brandId}
+          listHref={listHref}
+          gateways={gateways}
+          connectUrls={connectUrls}
+          onConnected={(provider) =>
+            setGateways((prev) =>
+              prev.map((g) => (g.provider === provider ? { ...g, connected: true } : g)),
+            )
+          }
+          onConnectAuthorizeNet={() => setAuthorizeNetModalOpen(true)}
+        />
+      ) : (
+        <GatewayDetail
+          brandId={brandId}
+          brandDisplayName={brandDisplayName}
+          listHref={listHref}
+          gateway={selectedGateway}
+          otherGateways={gateways.filter((g) => g.provider !== selectedGateway.provider)}
+          connectUrls={connectUrls}
+          initialMethodSettings={initialMethodSettings}
+          initialTransactions={initialTransactions}
+          onGatewaysChange={setGateways}
+          onConnectAuthorizeNet={() => setAuthorizeNetModalOpen(true)}
+        />
+      )}
+      {authorizeNetModalOpen && (
+        <AuthorizeNetConnectModal
+          brandId={brandId}
+          onClose={() => setAuthorizeNetModalOpen(false)}
+          onConnected={onAuthorizeNetConnected}
+        />
+      )}
+    </>
   );
 }
 
@@ -153,20 +171,22 @@ function GatewayList({
   brandId,
   listHref,
   gateways,
-  stripeConnectUrl,
+  connectUrls,
   onConnected,
+  onConnectAuthorizeNet,
 }: {
   brandId: string;
   listHref: string;
   gateways: PaymentGatewaySummary[];
-  stripeConnectUrl: string;
+  connectUrls: Record<OAuthProvider, string>;
   onConnected: (provider: PaymentGatewayProvider) => void;
+  onConnectAuthorizeNet: () => void;
 }) {
   const router = useRouter();
   const [connecting, setConnecting] = useState<PaymentGatewayProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function connect(provider: Exclude<PaymentGatewayProvider, 'STRIPE'>) {
+  async function connect(provider: Extract<PaymentGatewayProvider, 'PAYPAL'>) {
     setConnecting(provider);
     setError(null);
     const result = await connectPaymentGatewayAction(brandId, provider);
@@ -188,7 +208,7 @@ function GatewayList({
           className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-5"
         >
           <div className="flex items-center gap-4">
-            <GatewayBadge provider={gateway.provider} />
+            <GatewayMark provider={gateway.provider} />
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <p className="font-bold text-ink-strong">{gateway.displayName}</p>
@@ -215,20 +235,27 @@ function GatewayList({
               View Details
               <ChevronRight className="h-4 w-4" aria-hidden />
             </Link>
-          ) : gateway.provider === 'STRIPE' ? (
+          ) : isOAuthProvider(gateway.provider) ? (
             <a
-              href={stripeConnectUrl}
+              href={connectUrls[gateway.provider]}
               className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black"
             >
               <Link2 className="h-4 w-4" aria-hidden />
               Connect
             </a>
+          ) : gateway.provider === 'AUTHORIZE_NET' ? (
+            <button
+              type="button"
+              onClick={onConnectAuthorizeNet}
+              className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black"
+            >
+              <Link2 className="h-4 w-4" aria-hidden />
+              Connect
+            </button>
           ) : (
             <button
               type="button"
-              onClick={() =>
-                void connect(gateway.provider as Exclude<PaymentGatewayProvider, 'STRIPE'>)
-              }
+              onClick={() => void connect(gateway.provider as Extract<PaymentGatewayProvider, 'PAYPAL'>)}
               disabled={connecting === gateway.provider}
               className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black disabled:opacity-60"
             >
@@ -252,20 +279,22 @@ function GatewayDetail({
   listHref,
   gateway,
   otherGateways,
-  stripeConnectUrl,
+  connectUrls,
   initialMethodSettings,
   initialTransactions,
   onGatewaysChange,
+  onConnectAuthorizeNet,
 }: {
   brandId: string;
   brandDisplayName: string;
   listHref: string;
   gateway: PaymentGatewaySummary;
   otherGateways: PaymentGatewaySummary[];
-  stripeConnectUrl: string;
+  connectUrls: Record<OAuthProvider, string>;
   initialMethodSettings: PaymentMethodSettings | null;
   initialTransactions: PaymentTransactionListResponse | null;
   onGatewaysChange: (updater: (prev: PaymentGatewaySummary[]) => PaymentGatewaySummary[]) => void;
+  onConnectAuthorizeNet: () => void;
 }) {
   const router = useRouter();
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
@@ -306,7 +335,7 @@ function GatewayDetail({
     }
   }
 
-  async function connectOther(provider: Exclude<PaymentGatewayProvider, 'STRIPE'>) {
+  async function connectOther(provider: Extract<PaymentGatewayProvider, 'PAYPAL'>) {
     setConnectingOther(provider);
     const result = await connectPaymentGatewayAction(brandId, provider);
     setConnectingOther(null);
@@ -372,7 +401,7 @@ function GatewayDetail({
                 className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
               >
                 <div className="flex items-center gap-3">
-                  <GatewayBadge provider={other.provider} />
+                  <GatewayMark provider={other.provider} />
                   <div>
                     <p className="text-sm font-bold text-ink-strong">{other.displayName}</p>
                     <p className="text-xs text-ink-muted">{GATEWAY_DESCRIPTION[other.provider]}</p>
@@ -386,18 +415,26 @@ function GatewayDetail({
                     View Details
                     <ChevronRight className="h-3.5 w-3.5" aria-hidden />
                   </Link>
-                ) : other.provider === 'STRIPE' ? (
+                ) : isOAuthProvider(other.provider) ? (
                   <a
-                    href={stripeConnectUrl}
+                    href={connectUrls[other.provider]}
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-ink-strong px-3 py-1.5 text-xs font-bold text-white hover:bg-black"
                   >
                     Connect
                   </a>
+                ) : other.provider === 'AUTHORIZE_NET' ? (
+                  <button
+                    type="button"
+                    onClick={onConnectAuthorizeNet}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-ink-strong px-3 py-1.5 text-xs font-bold text-white hover:bg-black"
+                  >
+                    Connect
+                  </button>
                 ) : (
                   <button
                     type="button"
                     onClick={() =>
-                      void connectOther(other.provider as Exclude<PaymentGatewayProvider, 'STRIPE'>)
+                      void connectOther(other.provider as Extract<PaymentGatewayProvider, 'PAYPAL'>)
                     }
                     disabled={connectingOther === other.provider}
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-ink-strong px-3 py-1.5 text-xs font-bold text-white hover:bg-black disabled:opacity-60"
@@ -458,6 +495,142 @@ function GatewayDetail({
           document.body,
         )}
     </div>
+  );
+}
+
+/**
+ * Authorize.net has no consent screen to redirect to, so "Connect" opens
+ * this instead: the brand's own API Login ID and Transaction Key, verified
+ * against Authorize.net (AuthorizeNetAccountService.connect) before anything
+ * is stored — a wrong pair is refused right here with the provider's own
+ * message, not discovered later at the first payment attempt.
+ */
+function AuthorizeNetConnectModal({
+  brandId,
+  onClose,
+  onConnected,
+}: {
+  brandId: string;
+  onClose: () => void;
+  onConnected: () => void;
+}) {
+  const [apiLoginId, setApiLoginId] = useState('');
+  const [transactionKey, setTransactionKey] = useState('');
+  const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const dialogRef = useDismissablePanel<HTMLFormElement>(true, onClose);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    const result = await connectAuthorizeNetAction(brandId, {
+      apiLoginId: apiLoginId.trim(),
+      transactionKey: transactionKey.trim(),
+      environment,
+    });
+    setSubmitting(false);
+    if (result.ok) {
+      onConnected();
+    } else {
+      setError(result.error);
+    }
+  }
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="authorize-net-connect-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    >
+      <form
+        ref={dialogRef}
+        onSubmit={(event) => void submit(event)}
+        className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-lg"
+      >
+        <h2 id="authorize-net-connect-title" className="text-base font-bold text-ink-strong">
+          Connect Authorize.net
+        </h2>
+        <p className="mt-2 text-sm text-ink-muted">
+          From your Authorize.net Merchant Interface: Account &rarr; Settings &rarr; Security
+          Settings &rarr; API Credentials &amp; Keys.
+        </p>
+
+        {error && (
+          <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">{error}</div>
+        )}
+
+        <div className="mt-4 space-y-3">
+          <label className="block">
+            <span className="text-sm font-medium text-ink-strong">API Login ID</span>
+            <input
+              type="text"
+              required
+              autoFocus
+              value={apiLoginId}
+              onChange={(e) => setApiLoginId(e.target.value)}
+              className="mt-1 w-full rounded-[10px] border border-border bg-surface px-3 py-2 text-sm text-ink-strong"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-ink-strong">Transaction Key</span>
+            <input
+              type="password"
+              required
+              value={transactionKey}
+              onChange={(e) => setTransactionKey(e.target.value)}
+              className="mt-1 w-full rounded-[10px] border border-border bg-surface px-3 py-2 text-sm text-ink-strong"
+            />
+          </label>
+          <fieldset className="flex gap-4">
+            <legend className="text-sm font-medium text-ink-strong">Environment</legend>
+            {(['sandbox', 'production'] as const).map((option) => (
+              <label key={option} className="flex items-center gap-1.5 text-sm text-ink-strong">
+                <input
+                  type="radio"
+                  name="environment"
+                  value={option}
+                  checked={environment === option}
+                  onChange={() => setEnvironment(option)}
+                />
+                {option === 'sandbox' ? 'Sandbox' : 'Production'}
+              </label>
+            ))}
+          </fieldset>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black disabled:opacity-60"
+          >
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
+            {submitting ? 'Connecting…' : 'Connect'}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body,
   );
 }
 

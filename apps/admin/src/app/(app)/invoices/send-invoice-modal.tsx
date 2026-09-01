@@ -110,17 +110,6 @@ function EmailPreview({
           </dl>
         </div>
       </div>
-
-      <div className="border-t border-[#E5E7EB] bg-surface-muted px-6 py-6 text-center text-sm text-ink-muted">
-        {brand.displayName} ·{' '}
-        <a href="/terms" className="underline hover:text-ink-strong">
-          Terms &amp; Conditions
-        </a>{' '}
-        ·{' '}
-        <a href="/privacy" className="underline hover:text-ink-strong">
-          Privacy Policy
-        </a>
-      </div>
     </div>
   );
 }

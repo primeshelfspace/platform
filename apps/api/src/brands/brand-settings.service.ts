@@ -335,8 +335,6 @@ export class BrandSettingsService {
         body,
         variables,
         linkUrl: '#',
-        termsUrl: `${this.env.ADMIN_PUBLIC_URL}/terms`,
-        privacyUrl: `${this.env.ADMIN_PUBLIC_URL}/privacy`,
         badgeLabel: 'Test send',
       }),
       attachments: logo ? [logo] : undefined,

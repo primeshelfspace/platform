@@ -4,6 +4,7 @@ export const BRAND_SETTINGS_TABS = [
   { key: 'details', label: 'Brand Details' },
   { key: 'branding', label: 'Branding' },
   { key: 'integrations', label: 'Integrations' },
+  { key: 'payments', label: 'Payment Gateways' },
 ] as const;
 
 export type BrandSettingsTab = (typeof BRAND_SETTINGS_TABS)[number]['key'];
@@ -31,14 +32,14 @@ function tabHref(brandId: string | undefined, query: Record<string, string>): st
 }
 
 /**
- * Top-level sections of Brand Settings. Brand Details, Branding and
- * Integrations render in this page (a query-param tab, same convention as
- * everywhere else brand-scoped pages in this app carry state — shareable,
- * bookmarkable, survives a refresh). Payment Gateways already has a real
- * standalone page elsewhere in the app (Settings → Integrations' "Payment
- * Gateways" tab, the connect/disconnect flow for Stripe, PayPal, Square and
- * Authorize.net) — rather than duplicate it, this one is a plain link out to
- * that page so there is exactly one place it lives.
+ * Top-level sections of Brand Settings — Brand Details, Branding,
+ * Integrations and Payment Gateways all render in this page (a query-param
+ * tab, same convention as everywhere else brand-scoped pages in this app
+ * carry state — shareable, bookmarkable, survives a refresh), so the tab bar
+ * and the "DynoJerky / Brand Settings" header stay on screen no matter which
+ * one is open. Payment Gateways used to be a plain link out to a standalone
+ * page with its own separate header/tabs — folded in here instead so
+ * connecting a gateway doesn't visually leave Brand Settings.
  */
 export function BrandSettingsTabs({
   active,
@@ -47,13 +48,6 @@ export function BrandSettingsTabs({
   active: BrandSettingsTab;
   brandId: string | undefined;
 }) {
-  const linkOutTabs = [
-    {
-      href: `/settings/integrations?tab=payments${brandId ? `&brandId=${brandId}` : ''}`,
-      label: 'Payment Gateways',
-    },
-  ];
-
   const tabClass = (selected: boolean) =>
     `block whitespace-nowrap border-b-2 px-1 pb-2 text-sm transition-colors ${
       selected
@@ -62,7 +56,10 @@ export function BrandSettingsTabs({
     }`;
 
   return (
-    <nav className="mt-3 border-b border-border" aria-label="Brand settings sections">
+    <nav
+      className="sticky top-0 z-10 mt-3 border-b border-border bg-canvas"
+      aria-label="Brand settings sections"
+    >
       <ul className="-mb-px flex gap-6 overflow-x-auto">
         {BRAND_SETTINGS_TABS.map((tab) => (
           <li key={tab.key}>
@@ -71,13 +68,6 @@ export function BrandSettingsTabs({
               aria-current={tab.key === active ? 'page' : undefined}
               className={tabClass(tab.key === active)}
             >
-              {tab.label}
-            </Link>
-          </li>
-        ))}
-        {linkOutTabs.map((tab) => (
-          <li key={tab.label}>
-            <Link href={tab.href} className={tabClass(false)}>
               {tab.label}
             </Link>
           </li>

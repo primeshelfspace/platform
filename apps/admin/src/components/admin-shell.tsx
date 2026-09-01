@@ -158,11 +158,12 @@ export function AdminShell({
   // The brands list is a prop from the (app) layout's server component, so a
   // push alone would land on the new brand's id before that list has ever
   // been refetched with it in it — refresh forces the layout to rerun and
-  // pick the new brand up.
+  // pick the new brand up. Lands on Brand Settings regardless of which page
+  // "Add Brand" was opened from — a brand new brand has nothing configured
+  // yet, so that's the next thing worth seeing, not wherever the sidebar
+  // happened to be.
   function onBrandCreated(brandId: string): void {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('brandId', brandId);
-    router.push(`${pathname}?${params.toString()}`);
+    router.push(`/brand-settings?brandId=${brandId}`);
     router.refresh();
     setAddBrandOpen(false);
   }

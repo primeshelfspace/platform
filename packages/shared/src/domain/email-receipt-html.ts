@@ -10,10 +10,9 @@
  * This file and PreviewBody (apps/admin/.../email-receipt-editor.tsx) are two
  * renderers of one design, so every visible element here has a counterpart
  * there: the sender line under the brand name, the colour band above HERO and
- * CLASSIC, the emphasised variables, the full-width button, the bordered
- * "Invoice summary" card and the legal footer. A change to one is a change to
- * both; a merchant reads the preview as a promise about their customer's
- * inbox.
+ * CLASSIC, the emphasised variables, the full-width button and the bordered
+ * "Invoice summary" card. A change to one is a change to both; a merchant
+ * reads the preview as a promise about their customer's inbox.
  *
  * Table-based markup with inline styles throughout: Gmail strips <style>
  * blocks, Outlook renders through Word, and neither supports flexbox or
@@ -55,10 +54,6 @@ export interface EmailReceiptHtmlInput {
     readonly brandName?: string;
   };
   readonly linkUrl: string;
-  /** Absolute, both of them: the preview links the admin app's own /terms and
-   * /privacy as relative paths, which resolve to nothing in an inbox. */
-  readonly termsUrl: string;
-  readonly privacyUrl: string;
   /** Overrides the brand name in the header — the test send says "Test send"
    * there so a merchant can never mistake one for a real invoice mail. */
   readonly badgeLabel?: string;
@@ -102,7 +97,6 @@ export function renderEmailReceiptHtml(input: EmailReceiptHtmlInput): string {
         </a>
         ${summary(input)}
       </td></tr>
-      ${footer(input, brandName)}
     </table>
   </body>
 </html>`;
@@ -160,18 +154,6 @@ function summary(input: EmailReceiptHtmlInput): string {
           ${row('Amount due', input.variables.amountDue)}
           ${row('Due date', input.variables.dueDate)}
         </table>`;
-}
-
-/** The legal footer. Not brand-specific — the same public pages the sign-up
- * form links, which is why the URLs are passed in absolute rather than built
- * from the brand. */
-function footer(input: EmailReceiptHtmlInput, brandName: string): string {
-  const link = (href: string, label: string): string =>
-    `<a href="${escapeHtml(href)}" style="color:${MUTED};text-decoration:underline;">${label}</a>`;
-
-  return `<tr><td style="border-top:1px solid ${BORDER};background:${SURFACE_MUTED};padding:24px;text-align:center;font-size:14px;color:${MUTED};">
-        ${brandName} &middot; ${link(input.termsUrl, 'Terms &amp; Conditions')} &middot; ${link(input.privacyUrl, 'Privacy Policy')}
-      </td></tr>`;
 }
 
 /** The logo, or the brand's first initial on a coloured disc when there is

@@ -665,9 +665,11 @@ export function InvoicePdfEditor({
     // descendant submit rather than a button associated across the DOM by a
     // `form="id"` attribute. See save-bar.tsx.
     <form action={formAction}>
-      <SaveBar dirty={isDirty} pending={pending} onDiscard={handleDiscard} />
+      <div className="mt-4">
+        <BrandingSubTabs active={activeSub} brandId={brand.id} />
+      </div>
       <div
-        className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
+        className="mt-4 flex w-full flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
                  border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
       >
         <section className="w-[350px] shrink-0 p-6">
@@ -957,15 +959,8 @@ export function InvoicePdfEditor({
           </div>
         </section>
 
-        <section className="min-w-0 w-[744px] max-w-full p-6">
-          {/* BrandingSubTabs carries its own mt-6, meant for sitting below the
-            "Brand Settings" page heading — here it's the first thing in a
-            padded card, so that margin is cancelled rather than stacking
-            with the section's own p-6. */}
-          <div className="-mt-6">
-            <BrandingSubTabs active={activeSub} brandId={brand.id} />
-          </div>
-          <div className="mt-6 flex items-center justify-between">
+        <section className="min-w-0 max-w-[640px] flex-1 p-6">
+          <div className="flex items-center justify-between">
             <h3 className="text-base font-bold text-ink-strong">Preview</h3>
             {/* text-black, not the faded look opacity-50 used to give it —
               the border/bg alone (plus cursor-not-allowed and the title
@@ -1002,6 +997,7 @@ export function InvoicePdfEditor({
           </div>
         </section>
       </div>
+      <SaveBar dirty={isDirty} pending={pending} onDiscard={handleDiscard} />
     </form>
   );
 }

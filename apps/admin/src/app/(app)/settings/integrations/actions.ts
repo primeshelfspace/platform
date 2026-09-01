@@ -1,11 +1,13 @@
 'use server';
 
 import {
+  connectAuthorizeNet,
   connectPaymentGateway,
   disconnectPaymentGateway,
   disconnectZoho,
   updatePaymentMethodSettings,
   updateZohoSyncSettings,
+  type AuthorizeNetConnectInput,
   type PaymentGatewayProvider,
   type PaymentMethodSettings,
   type ZohoConnectionStatus,
@@ -45,18 +47,36 @@ export async function disconnectZohoAction(brandId: string): Promise<ActionResul
   }
 }
 
-/** PayPal, Square or Authorize.net's "Connect" button on the Payment
- * Gateways list — Stripe instead links straight to stripeConnectUrl's OAuth
- * redirect, so it never calls this. */
+/** PayPal's "Connect" button on the Payment Gateways list — Stripe and
+ * Square instead link straight to their own OAuth redirect, and
+ * Authorize.net goes through connectAuthorizeNetAction's credential form, so
+ * none of those three ever call this. */
 export async function connectPaymentGatewayAction(
   brandId: string,
-  provider: Exclude<PaymentGatewayProvider, 'STRIPE'>,
+  provider: Extract<PaymentGatewayProvider, 'PAYPAL'>,
 ): Promise<ActionResult<{ ok: true }>> {
   try {
     const result = await connectPaymentGateway(brandId, provider);
     return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: describeActionError(error, 'Could not connect this gateway.') };
+  }
+}
+
+/** Authorize.net's "Connect" form — verifies the pasted API Login ID and
+ * Transaction Key against Authorize.net before anything is stored. */
+export async function connectAuthorizeNetAction(
+  brandId: string,
+  input: AuthorizeNetConnectInput,
+): Promise<ActionResult<{ ok: true }>> {
+  try {
+    const result = await connectAuthorizeNet(brandId, input);
+    return { ok: true, data: result };
+  } catch (error) {
+    return {
+      ok: false,
+      error: describeActionError(error, 'Could not connect Authorize.net with these credentials.'),
+    };
   }
 }
 

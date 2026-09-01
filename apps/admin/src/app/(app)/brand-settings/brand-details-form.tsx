@@ -341,7 +341,6 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
     // rather than being boxed in by a 672px containing block that no
     // negative margin can escape.
     <form action={formAction}>
-      <SaveBar dirty={isDirty} pending={pending} onDiscard={handleDiscard} />
       <input type="hidden" name="sameAsMailing" value={values.sameAsMailing ? '1' : ''} />
 
       {/* Locks every field while a save is in flight — belt-and-braces
@@ -456,10 +455,9 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
           </div>
         </section>
 
-        {/* Full-width, not confined to the max-w-2xl field column — same
-            -mx-6/-mx-10 bleed as the sticky Save/Discard bar below, so the
-            line runs edge-to-edge with the page like it does in the
-            reference design. */}
+        {/* Full-width, not confined to the max-w-2xl field column — runs
+            edge-to-edge with the page like it does in the reference
+            design. */}
         <hr className="-mx-6 border-t border-[#E5E7EB] sm:-mx-10" />
 
         <section className="max-w-2xl">
@@ -467,10 +465,9 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
           <AddressFields prefix="mailing" value={values.mailing} onChange={updateMailing} />
         </section>
 
-        {/* Full-width, not confined to the max-w-2xl field column — same
-            -mx-6/-mx-10 bleed as the sticky Save/Discard bar below, so the
-            line runs edge-to-edge with the page like it does in the
-            reference design. */}
+        {/* Full-width, not confined to the max-w-2xl field column — runs
+            edge-to-edge with the page like it does in the reference
+            design. */}
         <hr className="-mx-6 border-t border-[#E5E7EB] sm:-mx-10" />
 
         <section className="max-w-2xl">
@@ -521,6 +518,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
           </p>
         )}
       </fieldset>
+      <SaveBar dirty={isDirty} pending={pending} onDiscard={handleDiscard} />
     </form>
   );
 }

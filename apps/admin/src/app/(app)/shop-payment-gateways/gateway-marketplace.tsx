@@ -133,8 +133,8 @@ export function GatewayMarketplace() {
   const searchParams = useSearchParams();
   const brandId = searchParams.get('brandId');
   const connectHref = brandId
-    ? `/settings/integrations?tab=payments&brandId=${brandId}`
-    : '/settings/integrations?tab=payments';
+    ? `/brand-settings?tab=payments&brandId=${brandId}`
+    : '/brand-settings?tab=payments';
 
   const [filter, setFilter] = useState<FilterKey>('all');
   const [query, setQuery] = useState('');

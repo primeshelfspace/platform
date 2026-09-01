@@ -795,6 +795,11 @@ export function stripeConnectUrl(brandId: string): string {
   return `/settings/stripe/connect?brandId=${encodeURIComponent(brandId)}`;
 }
 
+/** Same BFF-redirect shape as stripeConnectUrl, for Square Connect. */
+export function squareConnectUrl(brandId: string): string {
+  return `/settings/square/connect?brandId=${encodeURIComponent(brandId)}`;
+}
+
 // --- Payment gateways (Brand Settings > Payment Gateways) --------------------
 
 export type PaymentGatewayProvider = 'STRIPE' | 'PAYPAL' | 'SQUARE' | 'AUTHORIZE_NET';
@@ -803,7 +808,8 @@ export interface PaymentGatewaySummary {
   provider: PaymentGatewayProvider;
   displayName: string;
   connected: boolean;
-  /** Stripe's own account label; null for a manual gateway. */
+  /** Stripe/Square's own account label, or Authorize.net's masked API Login
+   * ID; null for PayPal, which has no handshake of its own yet. */
   accountLabel: string | null;
   connectedAt: string | null;
 }
@@ -812,25 +818,46 @@ export function listPaymentGateways(brandId: string): Promise<PaymentGatewaySumm
   return apiFetch<PaymentGatewaySummary[]>(`/brands/${brandId}/integrations/gateways`);
 }
 
-/** PayPal, Square and Authorize.net only — Stripe connects through
- * stripeConnectUrl's OAuth redirect instead. */
+/** PayPal only — Stripe and Square connect through their own OAuth redirect
+ * (stripeConnectUrl / squareConnectUrl) and Authorize.net through
+ * connectAuthorizeNet's credential form instead. */
 export function connectPaymentGateway(
   brandId: string,
-  provider: Exclude<PaymentGatewayProvider, 'STRIPE'>,
+  provider: Extract<PaymentGatewayProvider, 'PAYPAL'>,
 ): Promise<{ ok: true }> {
   return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/gateways/${provider}/connect`, {
     method: 'POST',
   });
 }
 
-/** Any of the four — dispatches to Stripe's own deauthorisation server-side
- * when provider is STRIPE. */
+/** Any of the four — dispatches to the right provider's own disconnect
+ * server-side (Stripe's deauthorisation, Square's token revoke, or a plain
+ * status flip for PayPal/Authorize.net). */
 export function disconnectPaymentGateway(
   brandId: string,
   provider: PaymentGatewayProvider,
 ): Promise<{ ok: true }> {
   return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/gateways/${provider}/disconnect`, {
     method: 'POST',
+  });
+}
+
+export interface AuthorizeNetConnectInput {
+  apiLoginId: string;
+  transactionKey: string;
+  environment: 'sandbox' | 'production';
+}
+
+/** Authorize.net has no consent screen to redirect to — this posts the
+ * brand's own API Login ID and Transaction Key, which the API verifies
+ * against Authorize.net before storing anything. */
+export function connectAuthorizeNet(
+  brandId: string,
+  input: AuthorizeNetConnectInput,
+): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/authorize-net/connect`, {
+    method: 'POST',
+    body: JSON.stringify(input),
   });
 }
 

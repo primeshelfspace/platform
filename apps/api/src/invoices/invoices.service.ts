@@ -305,8 +305,6 @@ export class InvoicesService {
         body: input.body,
         variables: summary,
         linkUrl,
-        termsUrl: `${this.env.ADMIN_PUBLIC_URL}/terms`,
-        privacyUrl: `${this.env.ADMIN_PUBLIC_URL}/privacy`,
       }),
       attachments: logo ? [logo] : undefined,
       messageTag: { brandId, invoiceId: id, templateKey: 'email-receipt.invoice-send' },
