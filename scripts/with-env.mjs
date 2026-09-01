@@ -9,38 +9,10 @@
  *
  *   node ../../scripts/with-env.mjs prisma migrate deploy
  */
-import fs from 'node:fs';
-import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { loadRootEnv } from './lib/env.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const envPath = path.join(ROOT, '.env');
-
-if (fs.existsSync(envPath)) {
-  for (const rawLine of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#')) continue;
-    const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    if (key in process.env) continue;
-    process.env[key] = parseValue(line.slice(eq + 1));
-  }
-}
-
-/** Unquotes, or strips a trailing ` # comment` from an unquoted value. */
-function parseValue(raw) {
-  const value = raw.trim();
-  if (
-    (value.startsWith('"') && value.endsWith('"') && value.length >= 2) ||
-    (value.startsWith("'") && value.endsWith("'") && value.length >= 2)
-  ) {
-    return value.slice(1, -1);
-  }
-  const comment = value.search(/\s#/);
-  return comment === -1 ? value : value.slice(0, comment).trim();
-}
+loadRootEnv();
 
 /**
  * Expands bash-style ${VAR:-default} tokens.
