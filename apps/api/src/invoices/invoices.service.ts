@@ -252,7 +252,9 @@ export class InvoicesService {
     const invoice = await this.prisma.withScope(scope, (tx) =>
       tx.invoice.findFirst({
         where: { id, brandId },
-        include: { brand: { include: { settings: true } } },
+        // customer only so the body can emphasise their name the way the
+        // editor's preview does; nothing else here reads it.
+        include: { customer: true, brand: { include: { settings: true } } },
       }),
     );
     if (!invoice) throw new NotFoundException('invoice not found');
@@ -273,6 +275,8 @@ export class InvoicesService {
       invoiceNumber: invoice.number,
       amountDue: formatMinorForDisplay(Number(invoice.balanceMinor), currency),
       dueDate: formatDateForDisplay(invoice.dueDate),
+      customerName: invoice.customer.displayName,
+      brandName: invoice.brand.displayName,
     };
     const linkUrl = `${this.env.PAYMENT_PUBLIC_URL}/i/${invoice.publicToken}`;
 
@@ -296,10 +300,13 @@ export class InvoicesService {
         themeColor: invoice.brand.themeColor,
         accentColor,
         logoSrc: logo ? `cid:${LOGO_CID}` : null,
+        senderAddress: parseFrom(this.env.MAIL_FROM).address,
         subject: input.subject,
         body: input.body,
         variables: summary,
         linkUrl,
+        termsUrl: `${this.env.ADMIN_PUBLIC_URL}/terms`,
+        privacyUrl: `${this.env.ADMIN_PUBLIC_URL}/privacy`,
       }),
       attachments: logo ? [logo] : undefined,
       messageTag: { brandId, invoiceId: id, templateKey: 'email-receipt.invoice-send' },
