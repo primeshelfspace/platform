@@ -33,7 +33,11 @@ interface SquareConnectConfig {
   readonly accessTokenExpiresAt: string; // ISO
 }
 
-type ConnectionRow = { status: string; encryptedCredentials: string | null; config: unknown } | null;
+type ConnectionRow = {
+  status: string;
+  encryptedCredentials: string | null;
+  config: unknown;
+} | null;
 
 interface SquareTokenResponse {
   readonly access_token: string;
@@ -162,7 +166,11 @@ export class SquareAccountService {
    * minutes of expiring, mirroring the safety buffer Zoho's cached-token path
    * uses for the same reason: never hand out a token that could expire
    * mid-request. */
-  private async freshAccessToken(scope: Scope, brandId: string, row: ConnectionRow): Promise<string> {
+  private async freshAccessToken(
+    scope: Scope,
+    brandId: string,
+    row: ConnectionRow,
+  ): Promise<string> {
     if (!row?.encryptedCredentials) throw new Error('no Square credentials stored');
     const config = row.config as unknown as SquareConnectConfig;
     const { accessToken, refreshToken } = this.decryptCredentials(row.encryptedCredentials);
@@ -170,12 +178,19 @@ export class SquareAccountService {
     const expiresInMs = new Date(config.accessTokenExpiresAt).getTime() - Date.now();
     if (expiresInMs > 5 * 60 * 1000) return accessToken;
 
-    const refreshed = await this.requestToken({ grant_type: 'refresh_token', refresh_token: refreshToken });
+    const refreshed = await this.requestToken({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    });
     await this.persistToken(scope, brandId, refreshed);
     return refreshed.access_token;
   }
 
-  private async persistToken(scope: Scope, brandId: string, token: SquareTokenResponse): Promise<void> {
+  private async persistToken(
+    scope: Scope,
+    brandId: string,
+    token: SquareTokenResponse,
+  ): Promise<void> {
     const credentials: SquareCredentials = {
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
@@ -184,7 +199,10 @@ export class SquareAccountService {
       merchantId: token.merchant_id,
       accessTokenExpiresAt: token.expires_at,
     };
-    const encrypted = encryptCredential(JSON.stringify(credentials), this.env.CREDENTIAL_ENCRYPTION_KEY);
+    const encrypted = encryptCredential(
+      JSON.stringify(credentials),
+      this.env.CREDENTIAL_ENCRYPTION_KEY,
+    );
 
     await this.prisma.withScope(scope, (tx) =>
       tx.integrationConnection.upsert({
@@ -207,11 +225,12 @@ export class SquareAccountService {
     );
   }
 
-  private async requestToken(
-    body: Record<string, string>,
-  ): Promise<SquareTokenResponse> {
+  private async requestToken(body: Record<string, string>): Promise<SquareTokenResponse> {
     const clientId = this.required(this.env.SQUARE_APPLICATION_ID, 'SQUARE_APPLICATION_ID');
-    const clientSecret = this.required(this.env.SQUARE_APPLICATION_SECRET, 'SQUARE_APPLICATION_SECRET');
+    const clientSecret = this.required(
+      this.env.SQUARE_APPLICATION_SECRET,
+      'SQUARE_APPLICATION_SECRET',
+    );
 
     const response = await fetch(`${this.baseUrl()}/oauth2/token`, {
       method: 'POST',
@@ -220,9 +239,7 @@ export class SquareAccountService {
     });
 
     const payload = (await response.json().catch(() => null)) as
-      | SquareTokenResponse
-      | { error_description?: string; message?: string }
-      | null;
+      SquareTokenResponse | { error_description?: string; message?: string } | null;
 
     if (!response.ok || !payload || !('access_token' in payload)) {
       const message =
@@ -243,7 +260,10 @@ export class SquareAccountService {
 
   private async revokeToken(accessToken: string): Promise<void> {
     const clientId = this.required(this.env.SQUARE_APPLICATION_ID, 'SQUARE_APPLICATION_ID');
-    const clientSecret = this.required(this.env.SQUARE_APPLICATION_SECRET, 'SQUARE_APPLICATION_SECRET');
+    const clientSecret = this.required(
+      this.env.SQUARE_APPLICATION_SECRET,
+      'SQUARE_APPLICATION_SECRET',
+    );
 
     const response = await fetch(`${this.baseUrl()}/oauth2/revoke`, {
       method: 'POST',

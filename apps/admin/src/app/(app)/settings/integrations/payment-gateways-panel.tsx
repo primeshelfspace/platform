@@ -255,7 +255,9 @@ function GatewayList({
           ) : (
             <button
               type="button"
-              onClick={() => void connect(gateway.provider as Extract<PaymentGatewayProvider, 'PAYPAL'>)}
+              onClick={() =>
+                void connect(gateway.provider as Extract<PaymentGatewayProvider, 'PAYPAL'>)
+              }
               disabled={connecting === gateway.provider}
               className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black disabled:opacity-60"
             >

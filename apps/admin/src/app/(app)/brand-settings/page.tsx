@@ -312,7 +312,12 @@ export default async function BrandSettingsPage({
       ]);
     }
   }
-  if (brand && activeTab !== 'details' && activeTab !== 'integrations' && activeTab !== 'payments') {
+  if (
+    brand &&
+    activeTab !== 'details' &&
+    activeTab !== 'integrations' &&
+    activeTab !== 'payments'
+  ) {
     if (activeSub === 'payment-page') {
       const [display, previewInvoice] = await Promise.all([
         getPaymentPageDisplaySettings(brand.id),

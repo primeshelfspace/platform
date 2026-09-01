@@ -1,4 +1,13 @@
-import { BadGatewayException, BadRequestException, Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+} from '@nestjs/common';
 import {
   authorizeNetConnectSchema,
   idSchema,
@@ -8,7 +17,10 @@ import {
 } from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
-import { AuthorizeNetAccountService, type AuthorizeNetStatus } from './authorize-net-account.service.js';
+import {
+  AuthorizeNetAccountService,
+  type AuthorizeNetStatus,
+} from './authorize-net-account.service.js';
 
 /**
  * Authorize.net, per brand. Unlike Stripe/Square there is no redirect

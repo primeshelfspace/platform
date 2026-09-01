@@ -106,7 +106,11 @@ export class AuthorizeNetAccountService {
       return { connected: false, apiLoginIdLast4: null, environment: null };
     }
     const config = row.config as unknown as AuthorizeNetConfig;
-    return { connected: true, apiLoginIdLast4: config.apiLoginIdLast4, environment: config.environment };
+    return {
+      connected: true,
+      apiLoginIdLast4: config.apiLoginIdLast4,
+      environment: config.environment,
+    };
   }
 
   /**
@@ -141,7 +145,10 @@ export class AuthorizeNetAccountService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           authenticateTestRequest: {
-            merchantAuthentication: { name: input.apiLoginId, transactionKey: input.transactionKey },
+            merchantAuthentication: {
+              name: input.apiLoginId,
+              transactionKey: input.transactionKey,
+            },
           },
         }),
       });

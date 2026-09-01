@@ -40,7 +40,9 @@ export function GatewayMark({
         >
           P
         </span>
-        <span className={`relative font-black text-[#003087] ${size === 'lg' ? 'text-2xl' : 'text-xl'}`}>
+        <span
+          className={`relative font-black text-[#003087] ${size === 'lg' ? 'text-2xl' : 'text-xl'}`}
+        >
           P
         </span>
       </span>
@@ -50,14 +52,19 @@ export function GatewayMark({
   if (provider === 'SQUARE') {
     return (
       <span className={`flex ${box} shrink-0 items-center justify-center bg-black`} aria-hidden>
-        <span className={`rounded-[5px] border-2 border-white ${size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'}`} />
+        <span
+          className={`rounded-[5px] border-2 border-white ${size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'}`}
+        />
       </span>
     );
   }
 
   // AUTHORIZE_NET
   return (
-    <span className={`relative flex ${box} shrink-0 items-center justify-center bg-[#0F4C9B]`} aria-hidden>
+    <span
+      className={`relative flex ${box} shrink-0 items-center justify-center bg-[#0F4C9B]`}
+      aria-hidden
+    >
       <span className={`font-bold text-white ${size === 'lg' ? 'text-2xl' : 'text-xl'}`}>a</span>
       <span
         className={`absolute rounded-full bg-[#F5A623] ${size === 'lg' ? 'right-2 top-2.5 h-1.5 w-1.5' : 'right-1.5 top-2 h-1 w-1'}`}

@@ -93,7 +93,6 @@ describe('renderEmailReceiptHtml', () => {
     expect(html).toContain('Due date');
   });
 
-
   it('stretches the call to action to full width', () => {
     expect(renderEmailReceiptHtml(base)).toContain('display:block;width:100%');
   });
