@@ -14,6 +14,16 @@ const DRAFT_UNSENT_ATTENTION_DAYS = 3;
 const DUE_SOON_HOURS = 24;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** The KPI cards' and By Brand rollup's window — defaults to the current
+ * calendar month, overridable by the header's date-range selector (This
+ * Month / Last Month / This Quarter / ...), resolved to concrete bounds on
+ * the client rather than a preset enum here, so a new preset needs no API
+ * change. `end` is exclusive. */
+export interface DateRange {
+  readonly start: Date;
+  readonly end: Date;
+}
+
 export interface DashboardSummary {
   readonly currency: CurrencyCode;
   readonly invoicedMinor: number;
@@ -113,6 +123,11 @@ export interface CrossBrandCustomersResult {
   readonly matchedCount: number;
 }
 
+export interface IntegrationsStatus {
+  readonly connected: boolean;
+  readonly lastSyncAt: Date | null;
+}
+
 /** Bucket a single invoice into the donut chart's five-way grouping. The
  * `overdue` overlay always wins over the raw status, same convention as
  * `invoiceListStatus` (packages/shared/src/tokens/tokens.ts) — this is a
@@ -163,8 +178,12 @@ export class DashboardService {
     private readonly queue: QueueService,
   ) {}
 
-  async getSummary(scope: Scope, brandId: string | null): Promise<DashboardSummary> {
-    const { start, end } = monthBounds(0);
+  async getSummary(
+    scope: Scope,
+    brandId: string | null,
+    range?: DateRange,
+  ): Promise<DashboardSummary> {
+    const { start, end } = range ?? monthBounds(0);
     return this.prisma.withScope(scope, async (tx) => {
       const [invoicedByCurrency, collectedByCurrency, overdueByCurrency] = await Promise.all([
         tx.invoice.groupBy({
@@ -571,8 +590,8 @@ export class DashboardService {
 
   /** brandId is always omitted here — a per-brand rollup scoped to one brand
    * is a contradiction in terms. */
-  async getByBrand(scope: Scope): Promise<BrandRollup[]> {
-    const { start, end } = monthBounds(0);
+  async getByBrand(scope: Scope, range?: DateRange): Promise<BrandRollup[]> {
+    const { start, end } = range ?? monthBounds(0);
     return this.prisma.withScope(scope, async (tx) => {
       const [brands, invoiced, collected, overdue] = await Promise.all([
         tx.brand.findMany({ orderBy: { createdAt: 'asc' } }),
@@ -677,6 +696,31 @@ export class DashboardService {
       });
 
       return { rows, matchedCount };
+    });
+  }
+
+  /**
+   * Whether any provider (Zoho, a payment gateway) is connected in scope —
+   * one signal for both single-brand and All Brands mode, so the header
+   * banner doesn't need brand-by-brand connection calls of its own. "In
+   * scope" is doing the real work: with brandId omitted, RLS already
+   * restricts this to the readable brands, so "connected" here means "at
+   * least one of my brands is", the same sense the KPI cards are already
+   * summed across.
+   */
+  async getIntegrationsStatus(scope: Scope, brandId: string | null): Promise<IntegrationsStatus> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const connections = await tx.integrationConnection.findMany({
+        where: { status: 'CONNECTED', ...(brandId ? { brandId } : {}) },
+        orderBy: { lastSyncAt: 'desc' },
+        select: { provider: true, lastSyncAt: true },
+        take: 1,
+      });
+      const latest = connections[0];
+      return {
+        connected: connections.length > 0,
+        lastSyncAt: latest?.lastSyncAt ?? null,
+      };
     });
   }
 

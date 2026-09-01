@@ -918,11 +918,26 @@ export function getZohoActivity(brandId: string): Promise<ZohoActivityEntry[]> {
 
 // --- Dashboard --------------------------------------------------------------
 
+/** A resolved date-range preset (see lib/date-range.ts), as concrete bounds
+ * ready for the wire — `undefined` lets the API fall back to its own
+ * default (the current calendar month). */
+export interface DashboardRange {
+  start: Date;
+  end: Date;
+}
+
 /** `null` means "All Brands" — every dashboard endpoint below omits the
  * query param entirely in that case, which is what makes the backend widen
  * to every brand the caller's role can read (see DashboardController). */
-function dashboardQuery(brandId: string | null): string {
-  return brandId ? `?brandId=${brandId}` : '';
+function dashboardQuery(brandId: string | null, range?: DashboardRange): string {
+  const params = new URLSearchParams();
+  if (brandId) params.set('brandId', brandId);
+  if (range) {
+    params.set('from', range.start.toISOString());
+    params.set('to', range.end.toISOString());
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
 }
 
 export interface DashboardSummary {
@@ -935,8 +950,11 @@ export interface DashboardSummary {
   otherCurrencyBrandCount: number;
 }
 
-export function getDashboardSummary(brandId: string | null): Promise<DashboardSummary> {
-  return apiFetch<DashboardSummary>(`/dashboard/summary${dashboardQuery(brandId)}`);
+export function getDashboardSummary(
+  brandId: string | null,
+  range?: DashboardRange,
+): Promise<DashboardSummary> {
+  return apiFetch<DashboardSummary>(`/dashboard/summary${dashboardQuery(brandId, range)}`);
 }
 
 export interface DashboardTrendPoint {
@@ -1032,8 +1050,8 @@ export interface BrandRollup {
 }
 
 /** Only meaningful in All Brands mode. */
-export function getDashboardByBrand(): Promise<BrandRollup[]> {
-  return apiFetch<BrandRollup[]>('/dashboard/by-brand');
+export function getDashboardByBrand(range?: DashboardRange): Promise<BrandRollup[]> {
+  return apiFetch<BrandRollup[]>(`/dashboard/by-brand${dashboardQuery(null, range)}`);
 }
 
 export interface CrossBrandCustomerRow {
@@ -1054,6 +1072,22 @@ export function getDashboardCrossBrandCustomers(): Promise<CrossBrandCustomersRe
 
 export function retrySyncJob(jobId: string): Promise<{ queued: true }> {
   return apiFetch<{ queued: true }>(`/dashboard/sync-jobs/${jobId}/retry`, { method: 'POST' });
+}
+
+export interface DashboardIntegrationsStatus {
+  connected: boolean;
+  lastSyncAt: string | null;
+}
+
+/** One signal for both single-brand and All Brands mode — see
+ * DashboardService.getIntegrationsStatus for why a per-brand Zoho-only call
+ * isn't enough once "All Brands" is on the table. */
+export function getDashboardIntegrationsStatus(
+  brandId: string | null,
+): Promise<DashboardIntegrationsStatus> {
+  return apiFetch<DashboardIntegrationsStatus>(
+    `/dashboard/integrations-status${dashboardQuery(brandId)}`,
+  );
 }
 
 export { API_URL };

@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { BarChart3 } from 'lucide-react';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { palette } from '@fenwick/shared/tokens';
 import type { DashboardTrendPoint } from '@/lib/api';
@@ -29,6 +30,7 @@ export function InvoicedVsCollectedChart({
   currency: string;
 }) {
   const code = toCurrencyCode(currency);
+  const hasData = trend.some((point) => point.invoicedMinor > 0 || point.collectedMinor > 0);
   const data = trend.map((point) => ({
     label: point.label,
     invoicedMinor: point.invoicedMinor,
@@ -45,43 +47,53 @@ export function InvoicedVsCollectedChart({
           </p>
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 8 }} barGap={4}>
-          <CartesianGrid vertical={false} stroke={palette.border} />
-          <XAxis
-            dataKey="label"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: palette.inkSubtle, fontSize: 12 }}
-          />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: palette.inkSubtle, fontSize: 12 }}
-            tickFormatter={(v: number) => formatMinorForDisplay(v, code)}
-            width={72}
-          />
-          <Tooltip
-            formatter={(value: number, name: string) => [formatMinorForDisplay(value, code), name]}
-            contentStyle={{ borderRadius: 8, borderColor: palette.border, fontSize: 12 }}
-          />
-          <Legend
-            iconType="circle"
-            iconSize={8}
-            wrapperStyle={{ fontSize: 12, color: palette.inkMuted }}
-          />
-          {SERIES.map((series) => (
-            <Bar
-              key={series.key}
-              dataKey={series.key}
-              name={series.label}
-              fill={series.color}
-              radius={[4, 4, 0, 0]}
-              maxBarSize={28}
+      {!hasData ? (
+        <div className="flex h-[260px] flex-col items-center justify-center gap-2 text-center">
+          <BarChart3 className="h-8 w-8 text-ink-subtle" aria-hidden />
+          <p className="text-sm text-ink-subtle">No billing activity recorded yet.</p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 8 }} barGap={4}>
+            <CartesianGrid vertical={false} stroke={palette.border} />
+            <XAxis
+              dataKey="label"
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: palette.inkSubtle, fontSize: 12 }}
             />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: palette.inkSubtle, fontSize: 12 }}
+              tickFormatter={(v: number) => formatMinorForDisplay(v, code)}
+              width={72}
+            />
+            <Tooltip
+              formatter={(value: number, name: string) => [
+                formatMinorForDisplay(value, code),
+                name,
+              ]}
+              contentStyle={{ borderRadius: 8, borderColor: palette.border, fontSize: 12 }}
+            />
+            <Legend
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ fontSize: 12, color: palette.inkMuted }}
+            />
+            {SERIES.map((series) => (
+              <Bar
+                key={series.key}
+                dataKey={series.key}
+                name={series.label}
+                fill={series.color}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={28}
+              />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   );
 }

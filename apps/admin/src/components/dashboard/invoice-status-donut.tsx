@@ -1,6 +1,7 @@
 'use client';
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
+import { PieChart as PieChartIcon } from 'lucide-react';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { palette } from '@fenwick/shared/tokens';
 import type { DashboardStatusBucket, DashboardStatusBucketName } from '@/lib/api';
@@ -29,7 +30,10 @@ export function InvoiceStatusDonut({
     <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
       <h2 className="mb-4 font-medium text-ink-strong">Invoice Status</h2>
       {!hasData ? (
-        <p className="py-10 text-center text-sm text-ink-subtle">No invoices yet.</p>
+        <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+          <PieChartIcon className="h-8 w-8 text-ink-subtle" aria-hidden />
+          <p className="text-sm text-ink-subtle">No invoices to break down yet.</p>
+        </div>
       ) : (
         <div className="flex flex-col items-center gap-4 sm:flex-row">
           <div className="h-[180px] w-[180px] shrink-0">

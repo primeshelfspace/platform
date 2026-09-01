@@ -9,10 +9,18 @@ import {
   type DashboardStatusBucket,
   type DashboardSummary,
   type DashboardTrendPoint,
+  type DateRange,
+  type IntegrationsStatus,
   type NeedsAttentionResult,
   type RecentActivityItem,
   type TopOverdueCustomer,
 } from './dashboard.service.js';
+
+/** `undefined` (not present in the query) falls through to each service
+ * method's own default of the current calendar month. */
+function rangeFrom(query: DashboardQuery): DateRange | undefined {
+  return query.from && query.to ? { start: query.from, end: query.to } : undefined;
+}
 
 /**
  * Not nested under /brands/:brandId like every other feature controller —
@@ -33,7 +41,7 @@ export class DashboardController {
     @CurrentScope() scope: Scope,
     @Query(zodPipe(dashboardQuerySchema)) query: DashboardQuery,
   ): Promise<DashboardSummary> {
-    return this.dashboard.getSummary(scope, query.brandId ?? null);
+    return this.dashboard.getSummary(scope, query.brandId ?? null, rangeFrom(query));
   }
 
   @Get('trend')
@@ -84,14 +92,26 @@ export class DashboardController {
   /** Meaningless for one brand — always "every brand I can read". */
   @Get('by-brand')
   @RequirePermission('REPORTS', 'READ', { brandFrom: 'none' })
-  byBrand(@CurrentScope() scope: Scope): Promise<BrandRollup[]> {
-    return this.dashboard.getByBrand(scope);
+  byBrand(
+    @CurrentScope() scope: Scope,
+    @Query(zodPipe(dashboardQuerySchema)) query: DashboardQuery,
+  ): Promise<BrandRollup[]> {
+    return this.dashboard.getByBrand(scope, rangeFrom(query));
   }
 
   @Get('cross-brand-customers')
   @RequirePermission('REPORTS', 'READ', { brandFrom: 'none' })
   crossBrandCustomers(@CurrentScope() scope: Scope): Promise<CrossBrandCustomersResult> {
     return this.dashboard.getCrossBrandCustomers(scope);
+  }
+
+  @Get('integrations-status')
+  @RequirePermission('REPORTS', 'READ', { brandFrom: 'query' })
+  integrationsStatus(
+    @CurrentScope() scope: Scope,
+    @Query(zodPipe(dashboardQuerySchema)) query: DashboardQuery,
+  ): Promise<IntegrationsStatus> {
+    return this.dashboard.getIntegrationsStatus(scope, query.brandId ?? null);
   }
 
   /** brandFrom: 'none' — the job's own brandId (read after lookup, inside

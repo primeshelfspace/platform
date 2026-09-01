@@ -1,27 +1,30 @@
 import Link from 'next/link';
-import { CircleCheck, CircleDashed } from 'lucide-react';
 import { toCurrencyCode } from '@fenwick/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
+import { BrandScopeSelect } from '@/components/dashboard/brand-scope-select';
 import { ByBrandCards } from '@/components/dashboard/by-brand-cards';
 import { CollectionRateTrendChart } from '@/components/dashboard/collection-rate-trend-chart';
 import { CrossBrandCustomersTable } from '@/components/dashboard/cross-brand-customers-table';
+import { DateRangeSelect } from '@/components/dashboard/date-range-select';
+import { IntegrationsStatusBanner } from '@/components/dashboard/integrations-status-banner';
 import { InvoicedVsCollectedChart } from '@/components/dashboard/invoiced-vs-collected-chart';
 import { InvoiceStatusDonut } from '@/components/dashboard/invoice-status-donut';
 import { KpiCards } from '@/components/dashboard/kpi-cards';
 import { NeedsAttention } from '@/components/dashboard/needs-attention';
 import { RecentActivity } from '@/components/dashboard/recent-activity';
 import { TopOverdueCustomers } from '@/components/dashboard/top-overdue-customers';
+import { DATE_RANGE_LABELS, isDateRangePreset, rangeBoundsFor } from '@/lib/date-range';
 import {
   ApiError,
   getDashboardByBrand,
   getDashboardCrossBrandCustomers,
+  getDashboardIntegrationsStatus,
   getDashboardNeedsAttention,
   getDashboardRecentActivity,
   getDashboardStatusBreakdown,
   getDashboardSummary,
   getDashboardTopOverdueCustomers,
   getDashboardTrend,
-  getZohoStatus,
   listBrands,
   type Brand,
   type BrandRollup,
@@ -46,7 +49,7 @@ function settled<T>(outcome: PromiseSettledResult<T>, fallback: T): T {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ brandId?: string; brandCreated?: string }>;
+  searchParams: Promise<{ brandId?: string; brandCreated?: string; range?: string }>;
 }) {
   const params = await searchParams;
 
@@ -68,6 +71,15 @@ export default async function DashboardPage({
   // endpoint below treats that as its own request, not a client-side loop.
   const scopeBrandId = allBrandsSelected ? null : (activeBrand?.id ?? null);
 
+  const rangePreset = isDateRangePreset(params.range) ? params.range : 'this_month';
+  const range = rangeBoundsFor(rangePreset);
+  const rangeLabel = DATE_RANGE_LABELS[rangePreset];
+
+  // Brand Settings has no All-Brands view — "Connect Now" always needs one
+  // concrete brand, same rule every other non-dashboard nav destination
+  // already follows (AdminShell.hrefFor).
+  const connectBrandId = activeBrand?.id ?? brands[0]?.id ?? null;
+
   let summary: DashboardSummary | null = null;
   let trend: DashboardTrendPoint[] = [];
   let statusBreakdown: DashboardStatusBucket[] = [];
@@ -76,8 +88,8 @@ export default async function DashboardPage({
   let recentActivity: RecentActivityItem[] = [];
   let byBrand: BrandRollup[] = [];
   let crossBrandCustomers: CrossBrandCustomersResult = { rows: [], matchedCount: 0 };
-  let zohoConnected = false;
-  let zohoLastSyncAt: string | null = null;
+  let integrationsConnected = false;
+  let integrationsLastSyncAt: string | null = null;
   let dataError: string | null = null;
 
   if (brands.length > 0) {
@@ -91,31 +103,20 @@ export default async function DashboardPage({
         recentActivityOutcome,
         byBrandOutcome,
         crossBrandOutcome,
-        zohoOutcome,
+        integrationsOutcome,
       ] = await Promise.allSettled([
-        getDashboardSummary(scopeBrandId),
+        getDashboardSummary(scopeBrandId, range),
         getDashboardTrend(scopeBrandId),
         getDashboardStatusBreakdown(scopeBrandId),
         getDashboardTopOverdueCustomers(scopeBrandId),
         getDashboardNeedsAttention(scopeBrandId),
         getDashboardRecentActivity(scopeBrandId),
         // Only meaningful in All Brands mode — skip the round trip otherwise.
-        scopeBrandId === null ? getDashboardByBrand() : Promise.resolve<BrandRollup[]>([]),
+        scopeBrandId === null ? getDashboardByBrand(range) : Promise.resolve<BrandRollup[]>([]),
         scopeBrandId === null
           ? getDashboardCrossBrandCustomers()
           : Promise.resolve<CrossBrandCustomersResult>({ rows: [], matchedCount: 0 }),
-        activeBrand
-          ? getZohoStatus(activeBrand.id)
-          : Promise.resolve({
-              connected: false,
-              organizationName: null,
-              lastSyncAt: null,
-              lastPulledAt: null,
-              health: null,
-              pullFrequencyMinutes: 15,
-              customerSyncEnabled: true,
-              invoiceSyncEnabled: true,
-            }),
+        getDashboardIntegrationsStatus(scopeBrandId),
       ]);
 
       if (summaryOutcome.status === 'rejected') {
@@ -129,18 +130,12 @@ export default async function DashboardPage({
       recentActivity = settled(recentActivityOutcome, []);
       byBrand = settled(byBrandOutcome, []);
       crossBrandCustomers = settled(crossBrandOutcome, { rows: [], matchedCount: 0 });
-      const zohoStatus = settled(zohoOutcome, {
+      const integrationsStatus = settled(integrationsOutcome, {
         connected: false,
-        organizationName: null,
         lastSyncAt: null,
-        lastPulledAt: null,
-        health: null,
-        pullFrequencyMinutes: 15,
-        customerSyncEnabled: true,
-        invoiceSyncEnabled: true,
       });
-      zohoConnected = zohoStatus.connected;
-      zohoLastSyncAt = zohoStatus.lastSyncAt;
+      integrationsConnected = integrationsStatus.connected;
+      integrationsLastSyncAt = integrationsStatus.lastSyncAt;
     } catch (cause) {
       dataError = cause instanceof ApiError ? cause.message : String(cause);
     }
@@ -153,12 +148,15 @@ export default async function DashboardPage({
       <PageContainer>
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm uppercase tracking-widest text-ink-subtle">
-              {activeBrand ? activeBrand.displayName : 'All Brands'}
-            </p>
-            <h1 className="mt-1 text-2xl font-semibold text-ink-strong">Dashboard</h1>
+            <h1 className="text-2xl font-semibold text-ink-strong">Dashboard</h1>
             <p className="text-sm text-ink-muted">Finance overview &amp; collection performance</p>
           </div>
+          {brands.length > 0 && (
+            <div className="flex shrink-0 items-center gap-3">
+              <DateRangeSelect current={rangePreset} />
+              <BrandScopeSelect brands={brands} activeBrandId={scopeBrandId} />
+            </div>
+          )}
         </header>
 
         {params.brandCreated && (
@@ -187,31 +185,18 @@ export default async function DashboardPage({
           </div>
         ) : (
           <>
-            {activeBrand && (
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm">
-                <span className="flex items-center gap-2 text-ink-muted">
-                  {zohoConnected ? (
-                    <CircleCheck className="h-4 w-4 text-success" aria-hidden />
-                  ) : (
-                    <CircleDashed className="h-4 w-4 text-ink-subtle" aria-hidden />
-                  )}
-                  Zoho Books: {zohoConnected ? 'Connected' : 'Not connected'}
-                  {zohoConnected && zohoLastSyncAt && (
-                    <span className="text-ink-subtle">
-                      · Last synced {new Date(zohoLastSyncAt).toLocaleString()}
-                    </span>
-                  )}
-                </span>
-                {needsAttention.totalCount > 0 && (
-                  <a href="#needs-attention" className="font-medium text-danger hover:underline">
-                    {needsAttention.totalCount} item{needsAttention.totalCount === 1 ? '' : 's'}{' '}
-                    need attention →
-                  </a>
-                )}
-              </div>
-            )}
+            <IntegrationsStatusBanner
+              connected={integrationsConnected}
+              lastSyncAt={integrationsLastSyncAt}
+              needsAttentionCount={needsAttention.totalCount}
+              connectHref={
+                connectBrandId
+                  ? `/brand-settings?brandId=${connectBrandId}&tab=integrations`
+                  : '/brand-settings'
+              }
+            />
 
-            <KpiCards summary={summary} />
+            <KpiCards summary={summary} rangeLabel={rangeLabel} />
 
             {scopeBrandId === null && <ByBrandCards brands={byBrand} />}
 

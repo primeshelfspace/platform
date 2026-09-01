@@ -39,7 +39,14 @@ function Card({
   );
 }
 
-export function KpiCards({ summary }: { summary: DashboardSummary }) {
+export function KpiCards({
+  summary,
+  rangeLabel,
+}: {
+  summary: DashboardSummary;
+  /** e.g. "This Month" / "Last Quarter" — the header's date-range selector. */
+  rangeLabel: string;
+}) {
   const currency = toCurrencyCode(summary.currency);
   return (
     <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -47,19 +54,19 @@ export function KpiCards({ summary }: { summary: DashboardSummary }) {
         icon={Receipt}
         label="Invoiced"
         value={formatMinorForDisplay(summary.invoicedMinor, currency)}
-        sublabel="This month"
+        sublabel={rangeLabel}
       />
       <Card
         icon={ArrowDownToLine}
         label="Collected"
         value={formatMinorForDisplay(summary.collectedMinor, currency)}
-        sublabel="This month"
+        sublabel={rangeLabel}
       />
       <Card
         icon={Percent}
         label="Collection Rate"
-        value={`${(summary.collectionRate * 100).toFixed(1)}%`}
-        sublabel="This month"
+        value={summary.invoicedMinor > 0 ? `${(summary.collectionRate * 100).toFixed(1)}%` : '—'}
+        sublabel={rangeLabel}
       />
       <Card
         icon={AlertCircle}

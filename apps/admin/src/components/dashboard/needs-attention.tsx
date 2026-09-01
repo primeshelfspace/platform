@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
-import { AlertTriangle, FileClock, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileClock, RefreshCw } from 'lucide-react';
 import { retrySyncJobAction } from '../../app/(app)/dashboard-actions';
 import type { NeedsAttentionItem, NeedsAttentionResult } from '@/lib/api';
 
@@ -68,7 +68,10 @@ export function NeedsAttention({
       </div>
 
       {result.items.length === 0 ? (
-        <p className="py-8 text-center text-sm text-ink-subtle">Nothing needs attention.</p>
+        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <CheckCircle2 className="h-8 w-8 text-ink-subtle" aria-hidden />
+          <p className="text-sm text-ink-subtle">Nothing needs attention right now.</p>
+        </div>
       ) : (
         <ul className="space-y-3">
           {result.items.map((item, index) => {

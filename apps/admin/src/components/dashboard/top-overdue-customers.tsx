@@ -1,3 +1,4 @@
+import { Users } from 'lucide-react';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import type { TopOverdueCustomer } from '@/lib/api';
 
@@ -26,11 +27,16 @@ export function TopOverdueCustomers({
           <h2 className="font-medium text-ink-strong">Top Overdue Customers</h2>
           <p className="text-xs text-ink-subtle">Sorted by amount</p>
         </div>
-        <span className="text-xs text-ink-subtle">{customers.length} customers</span>
+        {customers.length > 0 && (
+          <span className="text-xs text-ink-subtle">{customers.length} customers</span>
+        )}
       </div>
 
       {customers.length === 0 ? (
-        <p className="py-8 text-center text-sm text-ink-subtle">Nothing overdue.</p>
+        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <Users className="h-8 w-8 text-ink-subtle" aria-hidden />
+          <p className="text-sm text-ink-subtle">No overdue customers.</p>
+        </div>
       ) : (
         <ul className="space-y-1">
           {customers.map((customer, index) => (

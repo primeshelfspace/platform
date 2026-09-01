@@ -1,4 +1,4 @@
-import { CreditCard, ScrollText, UserPlus } from 'lucide-react';
+import { Activity, CreditCard, ScrollText, UserPlus } from 'lucide-react';
 import type { RecentActivityItem } from '@/lib/api';
 
 const ICON: Record<RecentActivityItem['kind'], typeof ScrollText> = {
@@ -24,7 +24,10 @@ export function RecentActivity({ items }: { items: RecentActivityItem[] }) {
       <h2 className="mb-4 font-medium text-ink-strong">Recent Activity</h2>
 
       {items.length === 0 ? (
-        <p className="py-8 text-center text-sm text-ink-subtle">Nothing yet.</p>
+        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <Activity className="h-8 w-8 text-ink-subtle" aria-hidden />
+          <p className="text-sm text-ink-subtle">No activity recorded yet.</p>
+        </div>
       ) : (
         <ul className="space-y-3">
           {items.map((item, index) => {
