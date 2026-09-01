@@ -1,68 +1,62 @@
+import { isPayable, terminalStatusLabel } from '@fenwick/shared';
 import { brandThemeVariables } from '@fenwick/shared/tokens';
 import { lookupInvoice } from '@/lib/invoice';
-import { InvoiceDocument } from './invoice-document';
+import { PaymentPageShell } from './payment-page-shell';
+import { PaymentForm } from './payment-form';
+import { Terminal, Unavailable } from './states';
 
 // Never cached, never statically rendered: a balance is not a static value.
 export const dynamic = 'force-dynamic';
 
 /**
- * The public invoice page — the invoice document alone (InvoiceDocument,
- * sized and laid out exactly like the admin's Invoice PDF preview), at
- * whatever status the invoice is actually in. No payment flow lives here
- * anymore (PaymentPageShell/PaymentFlow, removed at the user's request);
- * this is a view-only link, not a checkout page.
+ * The hosted payment page — where the "View & Pay Invoice" button in an
+ * invoice email actually lands (the API builds that link as
+ * `{PAYMENT_PUBLIC_URL}/i/{publicToken}`; see InvoicesService.send).
+ *
+ * Brand chrome comes from Brand Settings > Branding > Payment Page, so this
+ * renders as the layout and accent colour the merchant configured and
+ * previewed there. The invoice document itself is not here: it lives one
+ * level down at /i/{token}/invoice, behind this page's "Download invoice"
+ * action.
  */
-export default async function InvoicePage({ params }: { params: Promise<{ token: string }> }) {
+export default async function PaymentPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const result = await lookupInvoice(token);
 
   if (result.state === 'not-found') return <Terminal />;
-
-  if (result.state === 'unavailable') {
-    return (
-      <Shell>
-        <h1 className="text-lg font-medium text-ink-strong">We can&rsquo;t load this invoice</h1>
-        <p className="mt-2 text-sm text-ink-muted">
-          Something on our side is not responding. Your link is still valid — please try again in a
-          few minutes.
-        </p>
-        <p className="mt-4 font-mono text-xs text-ink-subtle">{result.detail}</p>
-      </Shell>
-    );
-  }
+  if (result.state === 'unavailable') return <Unavailable detail={result.detail} />;
 
   const { invoice } = result;
   const theme = brandThemeVariables(invoice.brand.themeColor);
 
+  // A settled or otherwise unpayable invoice keeps the whole branded page —
+  // the customer still needs the numbers and the invoice download — and gets
+  // a plain statement where the form would be. The admin editor previews the
+  // same substitution (SettledNotice), and PaymentsService rejects an attempt
+  // on these statuses server-side regardless of what renders here.
+  const settledLabel = terminalStatusLabel(invoice.status);
+
   return (
     <div className="min-h-full" style={theme as React.CSSProperties}>
-      <InvoiceDocument invoice={invoice} />
+      <PaymentPageShell invoice={invoice} token={token}>
+        {settledLabel ? (
+          <Notice>{settledLabel}</Notice>
+        ) : isPayable(invoice.status) ? (
+          <PaymentForm invoice={invoice} token={token} />
+        ) : (
+          <Notice>This invoice is not open for payment yet.</Notice>
+        )}
+      </PaymentPageShell>
     </div>
   );
 }
 
-/**
- * One terminal page for every "this link does not resolve" case. It names no
- * brand and no invoice, so it cannot be used to confirm that either exists.
- */
-function Terminal() {
+/** What the page shows in place of a payment form. Same block, same box —
+ * mirrors SettledNotice in the admin's Payment Page editor. */
+function Notice({ children }: { children: React.ReactNode }) {
   return (
-    <Shell>
-      <h1 className="text-lg font-medium text-ink-strong">This payment link is no longer valid</h1>
-      <p className="mt-2 text-sm text-ink-muted">
-        The link may have expired, or the invoice may already have been paid or cancelled. If you
-        think this is a mistake, reply to the email the invoice came from.
-      </p>
-    </Shell>
-  );
-}
-
-/** Unbranded fallback for the two states above where no brand is known yet
- * (or ever will be) — InvoiceDocument needs a real invoice to lay out. */
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="mx-auto flex min-h-full max-w-md flex-col justify-center px-6 py-16">
-      <div className="rounded-lg border border-border bg-surface p-8 shadow-sm">{children}</div>
-    </main>
+    <p className="rounded-lg border border-[#E5E7EB] bg-surface-muted px-4 py-6 text-center text-sm font-medium text-ink-strong">
+      {children}
+    </p>
   );
 }

@@ -350,13 +350,26 @@ function InvoicePreviewBody({
 }
 
 /**
- * The public invoice page's entire content — the invoice document alone,
- * rendered at the exact size and fidelity of the admin's own Invoice PDF
- * preview (a 744px-wide document card, not a condensed summary), centred on
- * the page. There is no payment flow here (removed at the user's request);
- * this is a view-only link.
+ * The invoice document itself, rendered at the exact size and fidelity of the
+ * admin's own Invoice PDF preview (a 744px-wide document card, not a
+ * condensed summary), centred on the page.
+ *
+ * This is what /i/{token}/invoice shows, reached from the payment page's
+ * "Download invoice" action — not what the emailed link opens. The payment
+ * page is the landing page; this is the document behind it.
+ *
+ * `actions` is the on-screen toolbar above the card (Download / Back). It is
+ * passed in rather than rendered here because it must not exist on paper:
+ * `print-hide` in globals.css drops it from the printed page, which is the
+ * whole point of the toolbar in the first place.
  */
-export function InvoiceDocument({ invoice }: { invoice: PublicInvoice }) {
+export function InvoiceDocument({
+  invoice,
+  actions,
+}: {
+  invoice: PublicInvoice;
+  actions?: React.ReactNode;
+}) {
   const currency = toCurrencyCode(invoice.currency);
   const pdf = invoice.invoicePdf;
   const money = (minor: number) => formatMinorForDisplay(minor, currency);
@@ -379,8 +392,9 @@ export function InvoiceDocument({ invoice }: { invoice: PublicInvoice }) {
   };
 
   return (
-    <main className="mx-auto flex min-h-full w-[744px] max-w-full flex-col justify-center px-6 py-16">
-      <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+    <main className="print-page mx-auto flex min-h-full w-[744px] max-w-full flex-col justify-center px-6 py-16">
+      {actions}
+      <div className="print-document overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
         <InvoicePreviewBody
           layout={pdf.invoicePdfLayout}
           themeColor={invoice.brand.themeColor}

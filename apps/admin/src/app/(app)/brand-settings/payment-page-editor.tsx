@@ -6,7 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
-  ExternalLink,
+  Download,
   FileCheck2,
   Landmark,
   Monitor,
@@ -37,14 +37,23 @@ export interface PaymentPagePreviewInvoice {
    * hosted payment page gives them — see apps/payment's own TERMINAL_STATUSES. */
   isSettled: boolean;
   settledLabel: string | null;
-  /** Null when the invoice is still a draft — there is no public link yet. */
+  /** The hosted payment page itself — what the emailed "View & Pay Invoice"
+   * button opens. Null when the invoice is still a draft: there is no public
+   * link yet. Read by the Email Receipt editor's preview, not by this one. */
   viewUrl: string | null;
+  /** The invoice document one level down, behind the payment page's own
+   * "Download invoice" action — which is the link this preview draws. Null
+   * for a draft, for the same reason. */
+  invoiceUrl: string | null;
 }
 
 /** Shown only when a brand has no invoices yet. Always paired with the
  * "Sample" badge below, which is what makes reusing the reference mockup's
  * own numbers safe here — it reads as a styled example, not a real invoice. */
-const SAMPLE_PREVIEW: Omit<PaymentPagePreviewInvoice, 'isSettled' | 'settledLabel' | 'viewUrl'> = {
+const SAMPLE_PREVIEW: Omit<
+  PaymentPagePreviewInvoice,
+  'isSettled' | 'settledLabel' | 'viewUrl' | 'invoiceUrl'
+> = {
   number: 'INV-3021',
   customerName: 'Harborline Distributors',
   amountLabel: '$4,820.00',
@@ -211,9 +220,13 @@ function InvoiceSummary({
             {data.dueDateLabel}
           </span>
         </span>
-        {invoice?.viewUrl && (
+        {/* "Download invoice", not "View Invoice": the real page's counterpart
+          of this slot links to the invoice document (PaymentPageShell in
+          apps/payment), because the payment page is now what the emailed
+          button opens and the document is what sits behind it. */}
+        {invoice?.invoiceUrl && (
           <a
-            href={invoice.viewUrl}
+            href={invoice.invoiceUrl}
             target="_blank"
             rel="noreferrer"
             className={`inline-flex items-center gap-1.5 rounded-lg border font-semibold ${
@@ -222,8 +235,8 @@ function InvoiceSummary({
                 : 'border-blue-600 bg-white px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50'
             }`}
           >
-            View Invoice
-            <ExternalLink className={light ? 'h-4 w-4' : 'h-3 w-3'} aria-hidden />
+            Download invoice
+            <Download className={light ? 'h-4 w-4' : 'h-3 w-3'} aria-hidden />
           </a>
         )}
       </div>

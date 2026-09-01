@@ -74,6 +74,11 @@ async function loadPreviewInvoice(brandId: string): Promise<PaymentPagePreviewIn
     settledLabel,
     // A draft has no public token worth linking to yet.
     viewUrl: latest.status === 'DRAFT' ? null : `${PAYMENT_PUBLIC_URL}/i/${latest.publicToken}`,
+    // The same link one level down: the payment page is what the emailed
+    // button opens, the invoice document is what its "Download invoice"
+    // action opens.
+    invoiceUrl:
+      latest.status === 'DRAFT' ? null : `${PAYMENT_PUBLIC_URL}/i/${latest.publicToken}/invoice`,
   };
 }
 

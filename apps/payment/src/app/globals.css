@@ -24,3 +24,56 @@ body {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+
+/**
+ * Print rules for the invoice document (/i/{token}/invoice).
+ *
+ * "Download invoice" there is window.print(), because no PDF renderer exists
+ * in this system — so the printed page IS the download, and has to look like
+ * the document rather than like a web page that happened to be printed.
+ *
+ * `print-color-adjust` is the load-bearing one: browsers drop background
+ * colours when printing by default, which would silently strip the brand
+ * colour out of the header band and the footer rule — the merchant's branding
+ * gone from the only artefact the customer keeps.
+ */
+@media print {
+  html,
+  body {
+    height: auto;
+    background: #ffffff;
+  }
+
+  /* Toolbars and anything else that is screen-only. */
+  .print-hide {
+    display: none !important;
+  }
+
+  /* The centring, padding and min-height that frame the card on screen are
+     wasted margin on paper — the sheet has its own. */
+  .print-page {
+    display: block;
+    width: 100%;
+    min-height: 0;
+    padding: 0;
+  }
+
+  /* On screen the document sits on a card; on paper it is the page. */
+  .print-document {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  /* Keep brand colour, which browsers otherwise strip from printed output. */
+  .print-document,
+  .print-document * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+}
