@@ -28,6 +28,31 @@ const gatewayOrigin = process.env.NEXT_PUBLIC_GATEWAY_ORIGIN ?? '';
 const assetOrigin = process.env.NEXT_PUBLIC_ASSET_ORIGIN ?? '';
 const isDev = process.env.NODE_ENV !== 'production';
 
+/**
+ * Whether *this* request actually arrived over HTTPS — the same question
+ * `isSecureRequest` answers in the admin app (apps/admin/src/lib/session.ts),
+ * and for the same reason: a production build served over plain HTTP (hitting
+ * an EC2 box directly by IP, with no TLS reverse proxy in front of it yet) is
+ * a deployment we actually run, so build mode is not a safe stand-in.
+ *
+ * It gates `upgrade-insecure-requests` below. Emitted on an HTTP origin, that
+ * directive tells the browser to rewrite every same-origin subresource to
+ * `https://` — which then fails the TLS handshake against a server that only
+ * speaks HTTP, so the stylesheet and every JS chunk are dropped and the
+ * invoice renders as unstyled markup. The server still logs a clean 200 for
+ * the document, and curl still fetches the assets fine, because neither one
+ * honours CSP; only a browser sees it.
+ *
+ * `x-forwarded-proto` is the standard signal a TLS-terminating proxy sets (an
+ * ALB, nginx and Cloudflare all do). Its absence means no proxy, which leaves
+ * `nextUrl.protocol` for the case where Next terminates TLS itself.
+ */
+function isSecureRequest(request: NextRequest): boolean {
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  if (forwardedProto) return forwardedProto.split(',')[0]?.trim().toLowerCase() === 'https';
+  return request.nextUrl.protocol === 'https:';
+}
+
 export function middleware(request: NextRequest): NextResponse {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
 
@@ -42,7 +67,7 @@ export function middleware(request: NextRequest): NextResponse {
     "font-src 'self'",
     `connect-src 'self' ${apiOrigin} https://api.stripe.com${gatewayOrigin ? ` ${gatewayOrigin}` : ''}${isDev ? ' ws: wss:' : ''}`,
     `frame-src https://js.stripe.com https://hooks.stripe.com${gatewayOrigin ? ` ${gatewayOrigin}` : ''}`,
-    'upgrade-insecure-requests',
+    ...(isSecureRequest(request) ? ['upgrade-insecure-requests'] : []),
   ].join('; ');
 
   const requestHeaders = new Headers(request.headers);
