@@ -648,8 +648,16 @@ export function updatePaymentMethodSettings(
 
 export type PaymentPageLayout = 'BANNER' | 'CENTERED' | 'SPLIT';
 
-export interface PaymentPageDisplaySettings {
+/** The two colours the Brand Elements panel edits. They live on different
+ * tables server-side (themeColor on Brand, accentColor on BrandSettings) but
+ * travel with every branding request so one Save is one atomic write — see
+ * BrandSettingsService.writeBranding. */
+export interface BrandElements {
+  themeColor: string;
   accentColor: string;
+}
+
+export interface PaymentPageDisplaySettings extends BrandElements {
   paymentPageLayout: PaymentPageLayout;
 }
 
@@ -673,7 +681,17 @@ export function updatePaymentPageDisplaySettings(
 
 export type EmailReceiptLayout = 'CLASSIC' | 'HERO' | 'MINIMAL';
 
-export interface EmailReceiptSettings {
+export interface EmailReceiptSettings extends BrandElements {
+  emailReceiptLayout: EmailReceiptLayout;
+  emailReceiptSubject: string;
+  emailReceiptBody: string;
+  /** Read-only: the address these emails actually come from (MAIL_FROM on
+   * the API), shown in the preview's sender line. Not part of the write
+   * shape below — it is platform configuration, not a brand setting. */
+  senderAddress: string;
+}
+
+export interface EmailReceiptSettingsInput extends BrandElements {
   emailReceiptLayout: EmailReceiptLayout;
   emailReceiptSubject: string;
   emailReceiptBody: string;
@@ -685,7 +703,7 @@ export function getEmailReceiptSettings(brandId: string): Promise<EmailReceiptSe
 
 export function updateEmailReceiptSettings(
   brandId: string,
-  input: EmailReceiptSettings,
+  input: EmailReceiptSettingsInput,
 ): Promise<EmailReceiptSettings> {
   return apiFetch<EmailReceiptSettings>(`/brands/${brandId}/settings/email-receipt`, {
     method: 'PATCH',
@@ -694,11 +712,12 @@ export function updateEmailReceiptSettings(
 }
 
 /** Actually sends — see BrandSettingsService.sendEmailReceiptTest. Renders
- * whatever subject/body is passed in, not the brand's saved settings, so a
- * draft can be tested before it's saved. */
+ * the whole draft that is passed in — layout and colours as well as
+ * subject/body — not the brand's saved settings, so a draft can be tested
+ * before it's saved and the test email matches the preview beside it. */
 export function sendEmailReceiptTest(
   brandId: string,
-  input: { to: string; emailReceiptSubject: string; emailReceiptBody: string },
+  input: EmailReceiptSettingsInput & { to: string },
 ): Promise<{ sent: true }> {
   return apiFetch<{ sent: true }>(`/brands/${brandId}/settings/email-receipt/test-send`, {
     method: 'POST',
@@ -711,7 +730,7 @@ export function sendEmailReceiptTest(
 export type InvoicePdfLayout = 'CLASSIC' | 'MODERN' | 'MINIMAL';
 export type InvoicePdfPaymentTerms = 'DUE_ON_RECEIPT' | 'NET_15' | 'NET_30' | 'NET_60';
 
-export interface InvoicePdfSettings {
+export interface InvoicePdfSettings extends BrandElements {
   invoicePdfLayout: InvoicePdfLayout;
   showCompanyAddress: boolean;
   showPaymentTerms: boolean;
@@ -729,7 +748,7 @@ export interface InvoicePdfSettings {
  * companyAddress are nullable here (null clears the override back to "use
  * the brand's own record"), where the read response always resolves them
  * to a concrete string. */
-export interface InvoicePdfSettingsInput {
+export interface InvoicePdfSettingsInput extends BrandElements {
   invoicePdfLayout: InvoicePdfLayout;
   showCompanyAddress: boolean;
   showPaymentTerms: boolean;

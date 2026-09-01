@@ -508,6 +508,14 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             {state.error}
           </p>
         )}
+        {state.warning && (
+          <p
+            role="status"
+            className="max-w-2xl rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            {state.warning}
+          </p>
+        )}
         {state.success && (
           <p className="max-w-2xl rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             Saved.

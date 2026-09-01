@@ -669,6 +669,12 @@ export function InvoicePdfEditor({
         <section className="w-[350px] shrink-0 p-6">
           <form id={saveFormId} action={formAction}>
             <input type="hidden" name="themeColor" value={themeColor} />
+            {/* This editor has no accent-colour control — the PDF doesn't use
+                one — but the save writes both Brand Elements colours in one
+                transaction, so the saved accent rides through untouched.
+                Same reasoning as showTaxBreakdown above: round-trip what is
+                stored rather than let an absent field overwrite it. */}
+            <input type="hidden" name="accentColor" value={settings.accentColor} />
             <input type="hidden" name="invoicePdfLayout" value={layout} />
             <input type="hidden" name="paymentTerms" value={paymentTerms} />
             {/* Company info's own fields live inside a collapsible section —
@@ -926,6 +932,14 @@ export function InvoicePdfEditor({
                 className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
               >
                 {state.error}
+              </p>
+            )}
+            {state.warning && (
+              <p
+                role="status"
+                className="mt-6 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+              >
+                {state.warning}
               </p>
             )}
             {state.success && (

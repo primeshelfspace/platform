@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '../adapters/mail/mail.module.js';
+import { StorageModule } from '../adapters/storage/storage.module.js';
 import { InvoicesController } from './invoices.controller.js';
 import { InvoicesService } from './invoices.service.js';
 
 @Module({
-  imports: [MailModule],
+  imports: [MailModule, StorageModule],
   controllers: [InvoicesController],
   providers: [InvoicesService],
   exports: [InvoicesService],

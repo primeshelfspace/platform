@@ -240,15 +240,22 @@ export default async function BrandSettingsPage({
       ]);
       paymentPageProps = { display, previewInvoice };
     } else if (activeSub === 'email-receipt') {
-      const [settings, display, previewInvoice, userEmail] = await Promise.all([
+      // The accent colour comes back on the email-receipt response itself —
+      // it is part of every branding section's shape now, so there is no
+      // second request to the payment-page endpoint to disagree with.
+      const [settings, previewInvoice, userEmail] = await Promise.all([
         getEmailReceiptSettings(brand.id),
-        getPaymentPageDisplaySettings(brand.id),
         loadPreviewInvoice(brand.id),
         getCurrentUser()
           .then((u) => u.email)
           .catch(() => null),
       ]);
-      emailReceiptProps = { settings, accentColor: display.accentColor, previewInvoice, userEmail };
+      emailReceiptProps = {
+        settings,
+        accentColor: settings.accentColor,
+        previewInvoice,
+        userEmail,
+      };
     } else if (activeSub === 'invoice-pdf') {
       const [settings, previewInvoice] = await Promise.all([
         getInvoicePdfSettings(brand.id),

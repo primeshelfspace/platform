@@ -11,18 +11,18 @@ import {
   isPublicScope,
   parseMinor,
   quantityFrom,
+  renderEmailReceiptHtml,
   renderEmailReceiptTemplate,
+  STORAGE_PORT,
   toCurrencyCode,
   type InvoiceDraftInput,
   type InvoiceListQuery,
   type MailPort,
   type Scope,
+  type StoragePort,
 } from '@fenwick/shared';
-import {
-  formatBrandAddress,
-  parseFrom,
-  renderEmailReceiptHtml,
-} from '../brands/brand-settings.service.js';
+import { formatBrandAddress, parseFrom } from '../brands/brand-settings.service.js';
+import { brandLogoAttachment, LOGO_CID } from '../common/logo-upload.js';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
@@ -74,6 +74,7 @@ export class InvoicesService {
     private readonly queue: QueueService,
     @Inject(MAIL_PORT) private readonly mail: MailPort,
     @Inject(ENV) private readonly env: Env,
+    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
   ) {}
 
   /**
@@ -232,10 +233,15 @@ export class InvoicesService {
    * to whatever the compose modal actually shows on screen (see
    * prepareEmail above for how that got pre-filled; the caller may have
    * edited any of it, including typing in an email for a customer with none
-   * on file). Unlike the old resend-only version, this never reads the
-   * brand's Email Receipt settings or the customer's stored email itself —
-   * the caller already resolved both, and re-deriving them here would let
-   * this send disagree with what the merchant reviewed before clicking Send.
+   * on file). The recipient and the wording are never re-derived here — the
+   * caller already resolved both, and re-deriving them would let this send
+   * disagree with what the merchant reviewed before clicking Send.
+   *
+   * The brand's *appearance* is read here rather than passed in, for the
+   * same reason: the compose modal cannot edit layout, colours or logo, so
+   * there is nothing on screen for a fresh read to contradict, and reading
+   * it at send time is what makes Brand Settings > Branding actually govern
+   * the email a customer receives.
    */
   async sendEmail(
     scope: Scope,
@@ -244,9 +250,23 @@ export class InvoicesService {
     input: { to: string; cc?: string; subject: string; body: string },
   ): Promise<void> {
     const invoice = await this.prisma.withScope(scope, (tx) =>
-      tx.invoice.findFirst({ where: { id, brandId }, include: { brand: true } }),
+      tx.invoice.findFirst({
+        where: { id, brandId },
+        include: { brand: { include: { settings: true } } },
+      }),
     );
     if (!invoice) throw new NotFoundException('invoice not found');
+
+    const branding = invoice.brand.settings;
+    // A brand always gets a settings row at creation (see BrandsService), so
+    // this is a defensive fallback rather than a real steady state — the
+    // schema's own column defaults, restated.
+    const layout = branding?.emailReceiptLayout ?? 'CLASSIC';
+    const accentColor = branding?.accentColor ?? '#171717';
+
+    // Outside the transaction on purpose — storage is a network call, and
+    // withScope holds a real transaction open for the whole callback.
+    const logo = await brandLogoAttachment(this.storage, invoice.brand.logoKey);
 
     const currency = toCurrencyCode(invoice.currency);
     const summary = {
@@ -271,12 +291,17 @@ export class InvoicesService {
         `View and pay: ${linkUrl}`,
       ].join('\n'),
       html: renderEmailReceiptHtml({
+        layout,
+        brandName: invoice.brand.displayName,
         themeColor: invoice.brand.themeColor,
+        accentColor,
+        logoSrc: logo ? `cid:${LOGO_CID}` : null,
+        subject: input.subject,
         body: input.body,
         variables: summary,
         linkUrl,
-        badgeLabel: invoice.brand.displayName,
       }),
+      attachments: logo ? [logo] : undefined,
       messageTag: { brandId, invoiceId: id, templateKey: 'email-receipt.invoice-send' },
       // Every click is a deliberate send — a merchant clicking twice in a
       // row (e.g. after fixing a typo'd address) expects two emails.

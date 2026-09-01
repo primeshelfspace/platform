@@ -177,6 +177,8 @@ export class PublicInvoicesService {
       const invoicePdf: InvoicePdfSettings = invoice.brand.settings
         ? toInvoicePdfSettings(invoice.brand.settings, invoice.brand)
         : {
+            themeColor: invoice.brand.themeColor,
+            accentColor: '#171717',
             invoicePdfLayout: 'CLASSIC',
             showCompanyAddress: true,
             showPaymentTerms: true,

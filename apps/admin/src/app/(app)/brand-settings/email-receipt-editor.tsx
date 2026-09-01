@@ -51,11 +51,6 @@ function initialOf(value: string): string {
  * (matching how the email will actually appear in a customer's inbox) — no
  * such field exists on Brand yet, so this derives one from the display name
  * rather than sending real mail from it. */
-function noReplyAddressFor(displayName: string): string {
-  const slug = displayName.toLowerCase().replace(/[^a-z0-9]+/g, '');
-  return `noreply@${slug || 'brand'}.com`;
-}
-
 type TemplateVariables = {
   brandName: string;
   customerName: string;
@@ -197,6 +192,8 @@ function PreviewBody({
   brand,
   themeColor,
   layout,
+  accentColor,
+  senderAddress,
   logoSrc,
   subjectTemplate,
   bodyTemplate,
@@ -210,6 +207,12 @@ function PreviewBody({
    * changing one colour in Brand Elements re-colours all three at once. */
   themeColor: string;
   layout: EmailReceiptLayout;
+  /** Colours the "View & Pay Invoice" button, the same as it does in the
+   * sent email (see renderEmailReceiptHtml). */
+  accentColor: string;
+  /** What recipients will actually see in the From line — the API's
+   * configured MAIL_FROM, not a guess made from the brand name. */
+  senderAddress: string;
   logoSrc: string | null;
   subjectTemplate: string;
   bodyTemplate: string;
@@ -217,8 +220,6 @@ function PreviewBody({
   invoiceLabel: { number: string; amountDue: string; dueDate: string };
   viewUrl: string | null;
 }) {
-  const senderAddress = noReplyAddressFor(brand.displayName);
-
   const avatar = (size: string, fallbackBg?: string) => (
     <span
       className={`flex ${size} shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white`}
@@ -303,12 +304,16 @@ function PreviewBody({
           )}
         </div>
 
+        {/* Accent colour, matching the sent email's button — this used to be
+          a flat bg-black, which made the accent control look like it did
+          nothing here and then quietly did nothing there either. */}
         <a
           href={viewUrl ?? '#'}
           onClick={(event) => {
             if (!viewUrl) event.preventDefault();
           }}
-          className="mt-5 block w-full rounded-lg bg-black px-5 py-3.5 text-center text-sm font-bold text-white transition-opacity hover:opacity-90"
+          style={{ backgroundColor: accentColor }}
+          className="mt-5 block w-full rounded-lg px-5 py-3.5 text-center text-sm font-bold text-white transition-opacity hover:opacity-90"
         >
           View &amp; Pay Invoice
         </a>
@@ -336,11 +341,13 @@ function PreviewBody({
 
       {/* Legal footer — links to the same public /terms and /privacy pages
           linked from the sign-up form (see apps/admin/src/app/terms and
-          .../privacy), not brand-specific. This preview is a mockup for
-          editing subject/body/layout, not a byte-for-byte match of the real
-          send (see renderEmailReceiptHtml in brand-settings.service.ts,
-          which is a separate, simpler template) — so the footer only needs
-          to exist here for now. */}
+          .../privacy), not brand-specific.
+
+          The rest of this preview now tracks the real send: layout, brand
+          colour, accent colour, logo and the subject-as-heading all render
+          from the same values renderEmailReceiptHtml (packages/shared) uses.
+          This footer is the one part that does not, since those routes are
+          relative paths on the admin app and an email needs absolute URLs. */}
       <div className="border-t border-[#E5E7EB] bg-surface-muted px-6 py-6 text-center text-sm text-ink-muted">
         {brand.displayName} ·{' '}
         <a href="/terms" className="underline hover:text-ink-strong">
@@ -692,6 +699,14 @@ export function EmailReceiptEditor({
                 {saveState.error}
               </p>
             )}
+            {saveState.warning && (
+              <p
+                role="status"
+                className="mt-6 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+              >
+                {saveState.warning}
+              </p>
+            )}
             {saveState.success && (
               <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                 Saved.
@@ -717,6 +732,12 @@ export function EmailReceiptEditor({
             <input type="hidden" name="to" value={userEmail ?? ''} />
             <input type="hidden" name="emailReceiptSubject" value={renderedSubject} />
             <input type="hidden" name="emailReceiptBody" value={renderedBody} />
+            {/* The look travels with the test too, not just the words — a
+              test send is meant to prove the preview, and the preview is
+              these three fields as much as the subject and body. */}
+            <input type="hidden" name="themeColor" value={themeColor} />
+            <input type="hidden" name="accentColor" value={accentColor} />
+            <input type="hidden" name="emailReceiptLayout" value={layout} />
             <p className="text-sm font-bold text-ink-strong">Send a test email</p>
             <p className="mt-1 text-sm text-ink-muted">
               Preview exactly what your customers will receive.
@@ -771,6 +792,8 @@ export function EmailReceiptEditor({
               brand={brand}
               themeColor={themeColor}
               layout={layout}
+              accentColor={accentColor}
+              senderAddress={settings.senderAddress}
               logoSrc={logoSrc}
               subjectTemplate={subject}
               bodyTemplate={body}

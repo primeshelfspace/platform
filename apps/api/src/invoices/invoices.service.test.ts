@@ -8,6 +8,7 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CustomerInput, InvoiceDraftInput, RequestScope } from '@fenwick/shared';
 import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
+import { LocalDiskAdapter } from '../adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -24,7 +25,8 @@ describeWithDb('InvoicesService', () => {
   const prisma = new PrismaService(env!);
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
-  const invoices = new InvoicesService(prisma, queue, createFakeMailPort(), env!);
+  const mail = createFakeMailPort();
+  const invoices = new InvoicesService(prisma, queue, mail, env!, new LocalDiskAdapter(env!));
   const owner = new PrismaClient({
     datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
   });
@@ -214,5 +216,68 @@ describeWithDb('InvoicesService', () => {
     const denied = await invoices.list(salesUser, solsticeId, { page: 1, pageSize: 25 });
     expect(denied.data).toEqual([]);
     expect(denied.total).toBe(0);
+  });
+
+  // The point of Brand Settings > Branding is that a customer's email looks
+  // like the brand's, so these assert the send actually reads it — the
+  // layout, colours and logo were stored and then ignored before this.
+  describe("email send honours the brand's Branding settings", () => {
+    // These rewrite the seed brand's branding columns, so the originals go
+    // back afterwards — a test run must leave the database as it found it.
+    let original: { emailReceiptLayout: string; accentColor: string };
+
+    beforeAll(async () => {
+      const row = await owner.brandSettings.findUniqueOrThrow({ where: { brandId: solsticeId } });
+      original = { emailReceiptLayout: row.emailReceiptLayout, accentColor: row.accentColor };
+    });
+
+    afterAll(async () => {
+      await owner.brandSettings.update({
+        where: { brandId: solsticeId },
+        data: original as {
+          emailReceiptLayout: 'CLASSIC' | 'HERO' | 'MINIMAL';
+          accentColor: string;
+        },
+      });
+    });
+
+    async function sentHtmlFor(overrides: {
+      emailReceiptLayout?: 'CLASSIC' | 'HERO' | 'MINIMAL';
+      accentColor?: string;
+    }): Promise<string> {
+      await owner.brandSettings.update({ where: { brandId: solsticeId }, data: overrides });
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      const invoice = await invoices.issue(ownerScope, solsticeId, created.id);
+
+      mail.outbox.length = 0;
+      await invoices.sendEmail(ownerScope, solsticeId, invoice.id, {
+        to: 'ap@example.com',
+        subject: 'Your invoice',
+        body: 'Please pay.',
+      });
+
+      const sent = mail.outbox.at(-1);
+      if (!sent) throw new Error('nothing was sent');
+      return sent.html;
+    }
+
+    it('uses the accent colour on the pay button', async () => {
+      const html = await sentHtmlFor({ accentColor: '#CC0066' });
+      expect(html).toContain('background:#CC0066');
+    });
+
+    it('uses the layout the brand chose', async () => {
+      const hero = await sentHtmlFor({ emailReceiptLayout: 'HERO' });
+      expect(hero).toContain('text-align:center;');
+
+      const minimal = await sentHtmlFor({ emailReceiptLayout: 'MINIMAL' });
+      expect(minimal).toContain('width:40px;height:6px');
+    });
+
+    it('carries the merchant-reviewed subject into the body, not just the header', async () => {
+      const html = await sentHtmlFor({});
+      expect(html).toContain('Your invoice');
+      expect(html).toContain('Please pay.');
+    });
   });
 });

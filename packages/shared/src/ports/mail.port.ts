@@ -12,6 +12,16 @@ export interface MailAttachment {
   /** Either inline content or a storage key the adapter resolves to a stream. */
   readonly content?: Buffer;
   readonly storageKey?: string;
+  /**
+   * Set to embed the part in the message body rather than list it as a
+   * download: the HTML references it as `src="cid:<this value>"`.
+   *
+   * This is how a brand logo reaches an email at all. A signed storage URL
+   * is time-limited by construction — an invoice email opened after the URL
+   * expires would show a broken image, and S3's own signing caps out at
+   * seven days — so the bytes travel with the message instead.
+   */
+  readonly cid?: string;
 }
 
 export interface SendMailInput {

@@ -1,9 +1,8 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { DEFAULT_BRAND_BUSINESS_TYPE, isBusinessType } from '@fenwick/shared';
+import { isBusinessType } from '@fenwick/shared';
 import {
-  getPaymentPageDisplaySettings,
   sendEmailReceiptTest,
   updateBrand,
   updateEmailReceiptSettings,
@@ -11,11 +10,11 @@ import {
   updatePaymentPageDisplaySettings,
   uploadBrandLogo,
   type Brand,
+  type BrandElements,
   type BrandFormInput,
   type EmailReceiptLayout,
   type InvoicePdfLayout,
   type InvoicePdfPaymentTerms,
-  type PaymentPageDisplaySettings,
   type PaymentPageLayout,
 } from '@/lib/api';
 import { addressFromForm, describeActionError, emptyToNull } from '@/lib/form';
@@ -23,6 +22,9 @@ import { addressFromForm, describeActionError, emptyToNull } from '@/lib/form';
 export interface BrandDetailsState {
   readonly error?: string;
   readonly success?: boolean;
+  /** The save committed, but something alongside it did not — today only a
+   * failed logo upload. Shown as a caution, not as a failure. */
+  readonly warning?: string;
 }
 
 /**
@@ -80,24 +82,69 @@ export async function saveBrandDetailsAction(
     return { error: describeActionError(error, 'Could not save these details.') };
   }
 
-  // Same convention as the onboarding Company Details form: a failed logo
-  // upload does not fail the save that already succeeded.
-  const logo = formData.get('logo');
-  if (logo instanceof File && logo.size > 0) {
-    try {
-      await uploadBrandLogo(brand.id, logo);
-    } catch {
-      // Intentionally ignored — see comment above.
-    }
-  }
+  const logoError = await saveLogo(brand.id, formData);
 
   revalidatePath('/brand-settings');
-  return { success: true };
+  return logoError ? { success: true, warning: logoError } : { success: true };
 }
+
+/**
+ * A select/radio value read back off the form, checked against the values the
+ * column actually accepts.
+ *
+ * Deliberately not `?? DEFAULT`: a missing or unrecognised value means the
+ * form and this action disagree about the field, and quietly writing the
+ * default would answer that by overwriting the merchant's saved choice with
+ * one they never made. Better a visible error on a save that changed nothing.
+ */
+function readChoice<T extends string>(
+  formData: FormData,
+  field: string,
+  allowed: readonly T[],
+): T | null {
+  const raw = emptyToNull(formData.get(field));
+  return allowed.find((value) => value === raw) ?? null;
+}
+
+/** Same reasoning as readChoice, for the two Brand Elements colours: a
+ * dropped colour field must not silently repaint the brand. */
+function readBrandElements(formData: FormData): BrandElements | null {
+  const themeColor = emptyToNull(formData.get('themeColor'));
+  const accentColor = emptyToNull(formData.get('accentColor'));
+  if (!themeColor || !accentColor) return null;
+  if (!HEX_COLOUR.test(themeColor) || !HEX_COLOUR.test(accentColor)) return null;
+  return { themeColor, accentColor };
+}
+
+const HEX_COLOUR = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * Uploads the logo if one was picked. A failed upload does not fail the save
+ * that already committed — the settings write is the thing the merchant
+ * asked for — but it is returned so the form can say so, rather than
+ * reporting an unqualified success for a logo that never landed.
+ */
+async function saveLogo(brandId: string, formData: FormData): Promise<string | null> {
+  const logo = formData.get('logo');
+  if (!(logo instanceof File) || logo.size === 0) return null;
+
+  try {
+    await uploadBrandLogo(brandId, logo);
+    return null;
+  } catch (error) {
+    return describeActionError(error, 'Your settings were saved, but the logo did not upload.');
+  }
+}
+
+const BRANDING_FORM_ERROR =
+  'That form did not submit cleanly — nothing was saved. Reload the page and try again.';
 
 export interface PaymentPageDisplayState {
   readonly error?: string;
   readonly success?: boolean;
+  /** The save committed, but something alongside it did not — today only a
+   * failed logo upload. Shown as a caution, not as a failure. */
+  readonly warning?: string;
 }
 
 const PAYMENT_PAGE_LAYOUTS: readonly PaymentPageLayout[] = ['BANNER', 'CENTERED', 'SPLIT'];
@@ -113,54 +160,28 @@ export async function savePaymentPageDisplayAction(
   _prevState: PaymentPageDisplayState,
   formData: FormData,
 ): Promise<PaymentPageDisplayState> {
-  const themeColor = emptyToNull(formData.get('themeColor')) ?? brand.themeColor;
-  const accentColor = emptyToNull(formData.get('accentColor')) ?? '#171717';
-  const layoutRaw = emptyToNull(formData.get('paymentPageLayout'));
-  const paymentPageLayout = PAYMENT_PAGE_LAYOUTS.find((l) => l === layoutRaw) ?? 'BANNER';
+  const elements = readBrandElements(formData);
+  const paymentPageLayout = readChoice(formData, 'paymentPageLayout', PAYMENT_PAGE_LAYOUTS);
+  if (!elements || !paymentPageLayout) return { error: BRANDING_FORM_ERROR };
 
   try {
-    if (themeColor !== brand.themeColor) {
-      const input: BrandFormInput = {
-        legalName: brand.legalName,
-        displayName: brand.displayName,
-        businessType: brand.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
-        salesPersonName: brand.salesPerson,
-        phone: brand.phone,
-        email: brand.email,
-        mailingAddress: brand.mailingAddress,
-        billingAddress: brand.billingAddress,
-        taxId: brand.taxId,
-        currency: brand.currency,
-        timezone: brand.timezone,
-        themeColor,
-      };
-      await updateBrand(brand.id, input);
-    }
-
-    const display: PaymentPageDisplaySettings = { accentColor, paymentPageLayout };
-    await updatePaymentPageDisplaySettings(brand.id, display);
+    await updatePaymentPageDisplaySettings(brand.id, { ...elements, paymentPageLayout });
   } catch (error) {
     return { error: describeActionError(error, 'Could not save the payment page display.') };
   }
 
-  // Same convention as Brand Details: a failed logo upload does not fail the
-  // save that already succeeded.
-  const logo = formData.get('logo');
-  if (logo instanceof File && logo.size > 0) {
-    try {
-      await uploadBrandLogo(brand.id, logo);
-    } catch {
-      // Intentionally ignored — see comment above.
-    }
-  }
+  const logoError = await saveLogo(brand.id, formData);
 
   revalidatePath('/brand-settings');
-  return { success: true };
+  return logoError ? { success: true, warning: logoError } : { success: true };
 }
 
 export interface EmailReceiptState {
   readonly error?: string;
   readonly success?: boolean;
+  /** The save committed, but something alongside it did not — today only a
+   * failed logo upload. Shown as a caution, not as a failure. */
+  readonly warning?: string;
 }
 
 const EMAIL_RECEIPT_LAYOUTS: readonly EmailReceiptLayout[] = ['CLASSIC', 'HERO', 'MINIMAL'];
@@ -176,41 +197,18 @@ export async function saveEmailReceiptSettingsAction(
   _prevState: EmailReceiptState,
   formData: FormData,
 ): Promise<EmailReceiptState> {
-  const themeColor = emptyToNull(formData.get('themeColor')) ?? brand.themeColor;
-  const accentColor = emptyToNull(formData.get('accentColor')) ?? '#171717';
-  const layoutRaw = emptyToNull(formData.get('emailReceiptLayout'));
-  const emailReceiptLayout = EMAIL_RECEIPT_LAYOUTS.find((l) => l === layoutRaw) ?? 'CLASSIC';
+  const elements = readBrandElements(formData);
+  const emailReceiptLayout = readChoice(formData, 'emailReceiptLayout', EMAIL_RECEIPT_LAYOUTS);
+  if (!elements || !emailReceiptLayout) return { error: BRANDING_FORM_ERROR };
+
   const emailReceiptSubject = emptyToNull(formData.get('emailReceiptSubject'));
   const emailReceiptBody = emptyToNull(formData.get('emailReceiptBody'));
-
   if (!emailReceiptSubject) return { error: 'Subject is required.' };
   if (!emailReceiptBody) return { error: 'Body is required.' };
 
   try {
-    if (themeColor !== brand.themeColor) {
-      const input: BrandFormInput = {
-        legalName: brand.legalName,
-        displayName: brand.displayName,
-        businessType: brand.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
-        salesPersonName: brand.salesPerson,
-        phone: brand.phone,
-        email: brand.email,
-        mailingAddress: brand.mailingAddress,
-        billingAddress: brand.billingAddress,
-        taxId: brand.taxId,
-        currency: brand.currency,
-        timezone: brand.timezone,
-        themeColor,
-      };
-      await updateBrand(brand.id, input);
-    }
-
-    const currentDisplay = await getPaymentPageDisplaySettings(brand.id);
-    if (accentColor !== currentDisplay.accentColor) {
-      await updatePaymentPageDisplaySettings(brand.id, { ...currentDisplay, accentColor });
-    }
-
     await updateEmailReceiptSettings(brand.id, {
+      ...elements,
       emailReceiptLayout,
       emailReceiptSubject,
       emailReceiptBody,
@@ -219,17 +217,10 @@ export async function saveEmailReceiptSettingsAction(
     return { error: describeActionError(error, 'Could not save the email receipt settings.') };
   }
 
-  const logo = formData.get('logo');
-  if (logo instanceof File && logo.size > 0) {
-    try {
-      await uploadBrandLogo(brand.id, logo);
-    } catch {
-      // Intentionally ignored — see the same convention above.
-    }
-  }
+  const logoError = await saveLogo(brand.id, formData);
 
   revalidatePath('/brand-settings');
-  return { success: true };
+  return logoError ? { success: true, warning: logoError } : { success: true };
 }
 
 export interface SendTestEmailState {
@@ -237,24 +228,36 @@ export interface SendTestEmailState {
   readonly success?: boolean;
 }
 
-/** Sends whatever subject/body is currently in the form — not what's saved —
- * so a draft can be tested before committing to it. */
+/** Sends whatever is currently in the form — layout and colours as well as
+ * subject/body, none of it necessarily saved — so a draft can be tested
+ * before committing to it, and what lands in the inbox is what the preview
+ * beside the button is showing. */
 export async function sendTestEmailAction(
   brand: Brand,
   _prevState: SendTestEmailState,
   formData: FormData,
 ): Promise<SendTestEmailState> {
   const to = emptyToNull(formData.get('to'));
+  if (!to) return { error: 'Enter an email address.' };
+
+  const elements = readBrandElements(formData);
+  const emailReceiptLayout = readChoice(formData, 'emailReceiptLayout', EMAIL_RECEIPT_LAYOUTS);
+  if (!elements || !emailReceiptLayout) return { error: BRANDING_FORM_ERROR };
+
   const emailReceiptSubject = emptyToNull(formData.get('emailReceiptSubject'));
   const emailReceiptBody = emptyToNull(formData.get('emailReceiptBody'));
-
-  if (!to) return { error: 'Enter an email address.' };
   if (!emailReceiptSubject || !emailReceiptBody) {
     return { error: 'Subject and body are required.' };
   }
 
   try {
-    await sendEmailReceiptTest(brand.id, { to, emailReceiptSubject, emailReceiptBody });
+    await sendEmailReceiptTest(brand.id, {
+      ...elements,
+      to,
+      emailReceiptLayout,
+      emailReceiptSubject,
+      emailReceiptBody,
+    });
   } catch (error) {
     return { error: describeActionError(error, 'Could not send the test email.') };
   }
@@ -265,6 +268,9 @@ export async function sendTestEmailAction(
 export interface InvoicePdfState {
   readonly error?: string;
   readonly success?: boolean;
+  /** The save committed, but something alongside it did not — today only a
+   * failed logo upload. Shown as a caution, not as a failure. */
+  readonly warning?: string;
 }
 
 const INVOICE_PDF_LAYOUTS: readonly InvoicePdfLayout[] = ['CLASSIC', 'MODERN', 'MINIMAL'];
@@ -286,42 +292,17 @@ export async function saveInvoicePdfSettingsAction(
   _prevState: InvoicePdfState,
   formData: FormData,
 ): Promise<InvoicePdfState> {
-  const themeColor = emptyToNull(formData.get('themeColor')) ?? brand.themeColor;
-  const accentColor = emptyToNull(formData.get('accentColor')) ?? '#171717';
-  const layoutRaw = emptyToNull(formData.get('invoicePdfLayout'));
-  const invoicePdfLayout = INVOICE_PDF_LAYOUTS.find((l) => l === layoutRaw) ?? 'CLASSIC';
-  const paymentTermsRaw = emptyToNull(formData.get('paymentTerms'));
-  const paymentTerms =
-    INVOICE_PDF_PAYMENT_TERMS.find((t) => t === paymentTermsRaw) ?? 'DUE_ON_RECEIPT';
-  const notes = emptyToNull(formData.get('notes')) ?? '';
+  const elements = readBrandElements(formData);
+  const invoicePdfLayout = readChoice(formData, 'invoicePdfLayout', INVOICE_PDF_LAYOUTS);
+  const paymentTerms = readChoice(formData, 'paymentTerms', INVOICE_PDF_PAYMENT_TERMS);
+  if (!elements || !invoicePdfLayout || !paymentTerms) return { error: BRANDING_FORM_ERROR };
 
+  const notes = emptyToNull(formData.get('notes'));
   if (!notes) return { error: 'Notes are required.' };
 
   try {
-    if (themeColor !== brand.themeColor) {
-      const input: BrandFormInput = {
-        legalName: brand.legalName,
-        displayName: brand.displayName,
-        businessType: brand.businessType ?? DEFAULT_BRAND_BUSINESS_TYPE,
-        salesPersonName: brand.salesPerson,
-        phone: brand.phone,
-        email: brand.email,
-        mailingAddress: brand.mailingAddress,
-        billingAddress: brand.billingAddress,
-        taxId: brand.taxId,
-        currency: brand.currency,
-        timezone: brand.timezone,
-        themeColor,
-      };
-      await updateBrand(brand.id, input);
-    }
-
-    const currentDisplay = await getPaymentPageDisplaySettings(brand.id);
-    if (accentColor !== currentDisplay.accentColor) {
-      await updatePaymentPageDisplaySettings(brand.id, { ...currentDisplay, accentColor });
-    }
-
     await updateInvoicePdfSettings(brand.id, {
+      ...elements,
       invoicePdfLayout,
       showCompanyAddress: formData.get('showCompanyAddress') === 'on',
       showPaymentTerms: formData.get('showPaymentTerms') === 'on',
@@ -336,17 +317,8 @@ export async function saveInvoicePdfSettingsAction(
     return { error: describeActionError(error, 'Could not save the invoice PDF settings.') };
   }
 
-  // Same convention as Brand Details: a failed logo upload does not fail the
-  // save that already succeeded.
-  const logo = formData.get('logo');
-  if (logo instanceof File && logo.size > 0) {
-    try {
-      await uploadBrandLogo(brand.id, logo);
-    } catch {
-      // Intentionally ignored — see comment above.
-    }
-  }
+  const logoError = await saveLogo(brand.id, formData);
 
   revalidatePath('/brand-settings');
-  return { success: true };
+  return logoError ? { success: true, warning: logoError } : { success: true };
 }

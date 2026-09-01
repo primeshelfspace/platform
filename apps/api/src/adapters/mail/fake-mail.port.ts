@@ -13,14 +13,26 @@ import type {
  * environment happens to have configured, which is not something an
  * unrelated fixture setup should ever risk doing.
  */
-export function createFakeMailPort(): MailPort {
+/** The fake plus the outbox it captured — tests that only need a MailPort
+ * can keep ignoring the second half. */
+export interface FakeMailPort extends MailPort {
+  /** Everything send() was called with, in order. */
+  readonly outbox: SendMailInput[];
+}
+
+export function createFakeMailPort(): FakeMailPort {
+  const outbox: SendMailInput[] = [];
   return {
     providerName: 'fake',
-    send: async (_input: SendMailInput) => ({
-      providerMessageId: 'fake-message-id',
-      acceptedAt: new Date(),
-      recipients: [],
-    }),
+    outbox,
+    send: async (input: SendMailInput) => {
+      outbox.push(input);
+      return {
+        providerMessageId: 'fake-message-id',
+        acceptedAt: new Date(),
+        recipients: [],
+      };
+    },
     renderPreview: async (input: RenderPreviewInput) => ({ html: input.html }),
     verifySignature: () => false,
     parseDeliveryEvent: (): MailDeliveryEvent => ({

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ROLES } from '../domain/roles.js';
 import { BUSINESS_TYPES } from '../domain/business-type.js';
 import { INVOICE_STATUSES } from '../domain/invoice-status.js';
+import { EMAIL_RECEIPT_LAYOUTS } from '../domain/email-receipt-layout.js';
 import { PAYMENT_METHODS } from '../money/calculation.js';
 import { normalizeWebsiteDomain, checkBusinessEmail } from '../domain/company-domain.js';
 import {
@@ -216,12 +217,25 @@ export const paymentMethodSettingsSchema = z.object({
 });
 export type PaymentMethodSettingsInput = z.infer<typeof paymentMethodSettingsSchema>;
 
+/**
+ * The two colours every Branding editor shows in its "Brand Elements" panel.
+ * They live on different tables — themeColor on Brand, accentColor on
+ * BrandSettings — but a merchant edits them as one thing, so every branding
+ * write schema below carries both. That is what lets a single Save land as a
+ * single transaction instead of the brand write, the accent write and the
+ * section write racing each other as three separate requests.
+ */
+export const brandElementsSchema = z.object({
+  themeColor: hexColourSchema,
+  accentColor: hexColourSchema,
+});
+export type BrandElementsInput = z.infer<typeof brandElementsSchema>;
+
 /** Brand Settings > Branding > Payment Page: how the hosted payment page
  * displays for this brand's customers. Separate from
  * paymentMethodSettingsSchema above (that's which methods are offered; this
  * is how the page around them looks). */
-export const paymentPageDisplaySchema = z.object({
-  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'must be a hex colour like #171717'),
+export const paymentPageDisplaySchema = brandElementsSchema.extend({
   paymentPageLayout: z.enum(['BANNER', 'CENTERED', 'SPLIT']),
 });
 export type PaymentPageDisplayInput = z.infer<typeof paymentPageDisplaySchema>;
@@ -231,18 +245,21 @@ export type PaymentPageDisplayInput = z.infer<typeof paymentPageDisplaySchema>;
  * (`{{brand_name}}` etc.) are free text here — substituted at send/preview
  * time, not validated against a fixed list, so a merchant can't be blocked
  * from saving over a typo'd placeholder. */
-export const emailReceiptSettingsSchema = z.object({
-  emailReceiptLayout: z.enum(['CLASSIC', 'HERO', 'MINIMAL']),
+export const emailReceiptSettingsSchema = brandElementsSchema.extend({
+  emailReceiptLayout: z.enum(EMAIL_RECEIPT_LAYOUTS),
   emailReceiptSubject: z.string().trim().min(1, 'subject is required').max(200),
   emailReceiptBody: z.string().trim().min(1, 'body is required').max(5000),
 });
 export type EmailReceiptSettingsInput = z.infer<typeof emailReceiptSettingsSchema>;
 
 /** Brand Settings > Branding > Email Receipt's "Send a test email". Carries
- * the subject/body straight from the editor rather than reading the brand's
- * saved settings, so testing a draft never requires saving it first. */
-export const emailReceiptTestSendSchema = z.object({
+ * the whole draft — layout and colours as well as subject/body — straight
+ * from the editor rather than reading the brand's saved settings, so testing
+ * a draft never requires saving it first, and the test email looks like what
+ * the preview is showing rather than like the last saved version. */
+export const emailReceiptTestSendSchema = brandElementsSchema.extend({
   to: emailSchema,
+  emailReceiptLayout: z.enum(EMAIL_RECEIPT_LAYOUTS),
   emailReceiptSubject: z.string().trim().min(1, 'subject is required').max(200),
   emailReceiptBody: z.string().trim().min(1, 'body is required').max(5000),
 });
@@ -270,7 +287,7 @@ export type SendInvoiceEmailInput = z.infer<typeof sendInvoiceEmailSchema>;
  * companyName/companyAddress are nullable — null means "use the brand's own
  * displayName/mailingAddress", not "blank"; the editor always submits the
  * value currently on screen, whether that's the fallback or an override. */
-export const invoicePdfSettingsSchema = z.object({
+export const invoicePdfSettingsSchema = brandElementsSchema.extend({
   invoicePdfLayout: z.enum(['CLASSIC', 'MODERN', 'MINIMAL']),
   showCompanyAddress: z.boolean(),
   showPaymentTerms: z.boolean(),

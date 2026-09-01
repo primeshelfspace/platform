@@ -73,6 +73,10 @@ export class SmtpMailAdapter implements MailPort {
           filename: a.filename,
           contentType: a.contentType,
           content: a.content,
+          // An attachment with a cid is part of the body, not a download —
+          // without the inline disposition a client may list the brand logo
+          // as a paperclip alongside showing it.
+          ...(a.cid ? { cid: a.cid, contentDisposition: 'inline' as const } : {}),
         })),
         headers: {
           'X-Fenwick-Template': input.messageTag.templateKey,

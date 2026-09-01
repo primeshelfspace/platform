@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import type { StoragePort } from '@fenwick/shared';
+import type { MailAttachment, StoragePort } from '@fenwick/shared';
 
 /**
  * The one definition of what a logo may be, and the one path that stores it.
@@ -49,6 +49,42 @@ export function logoExtensionFor(file: LogoUpload): string {
  * incidental. Runs outside any database transaction — `put` is a network call,
  * and withScope holds a real transaction open for the whole of its callback.
  */
+/** The Content-ID an email's HTML uses to reference the inline logo part. */
+export const LOGO_CID = 'brand-logo';
+
+const LOGO_MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  svg: 'image/svg+xml',
+};
+
+/**
+ * Reads a brand's logo back out of storage as an inline mail attachment.
+ *
+ * Emails embed the bytes rather than link to them: a signed URL expires (an
+ * hour here, seven days at the outside on S3), and an invoice email is read
+ * whenever the recipient gets to it. Returns null when the brand has no logo
+ * or the object cannot be read — a missing logo falls back to the brand's
+ * initial in the template, which is never worth failing a send over.
+ */
+export async function brandLogoAttachment(
+  storage: StoragePort,
+  logoKey: string | null,
+): Promise<MailAttachment | null> {
+  if (!logoKey) return null;
+
+  const extension = logoKey.split('.').pop()?.toLowerCase() ?? '';
+  const contentType = LOGO_MIME_BY_EXTENSION[extension];
+  if (!contentType) return null;
+
+  try {
+    const content = await storage.get(logoKey);
+    return { filename: `logo.${extension}`, contentType, content, cid: LOGO_CID };
+  } catch {
+    return null;
+  }
+}
+
 export async function storeLogo(
   storage: StoragePort,
   key: string,

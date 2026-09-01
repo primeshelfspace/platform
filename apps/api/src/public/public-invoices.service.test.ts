@@ -29,7 +29,13 @@ describeWithDb('PublicInvoicesService', () => {
   const prisma = new PrismaService(env!);
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
-  const invoices = new InvoicesService(prisma, queue, createFakeMailPort(), env!);
+  const invoices = new InvoicesService(
+    prisma,
+    queue,
+    createFakeMailPort(),
+    env!,
+    new LocalDiskAdapter(env!),
+  );
   // Local disk is the right storage here: these tests assert invoice data, and
   // a real bucket would make them depend on credentials and the network.
   const publicInvoices = new PublicInvoicesService(

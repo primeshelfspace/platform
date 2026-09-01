@@ -9,6 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@fenwick/shared';
 import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
+import { LocalDiskAdapter } from '../adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -28,7 +29,13 @@ describeWithDb('PaymentsService', () => {
   const gateway = new FakeGatewayAdapter();
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
-  const invoices = new InvoicesService(prisma, queue, createFakeMailPort(), env!);
+  const invoices = new InvoicesService(
+    prisma,
+    queue,
+    createFakeMailPort(),
+    env!,
+    new LocalDiskAdapter(env!),
+  );
   const payments = new PaymentsService(prisma, env!, gateway, queue);
   const owner = new PrismaClient({
     datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
