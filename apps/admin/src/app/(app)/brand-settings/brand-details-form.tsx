@@ -11,6 +11,7 @@ import {
   STATIC_FIELD_LABEL_CLASS as labelClass,
 } from '@/components/ui/form-styles';
 import { saveBrandDetailsAction, type BrandDetailsState } from './actions';
+import { SaveBar } from './save-bar';
 
 const initialState: BrandDetailsState = {};
 
@@ -332,17 +333,15 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
     // a separate, deliberately different treatment, not a shared convention
     // to mirror here).
     //
-    // The sticky Save/Discard bar has to be a real descendant of the <form>
-    // (not linked in via a `form="id"` attribute from outside it) — that
-    // cross-boundary association fires a native `submit` event just fine,
-    // but doesn't reliably drive this app's React 19 server-action wiring on
-    // <form action={formAction}>, so nothing was ever actually submitted.
+    // The Save/Discard bar is a real descendant of the <form>, never a
+    // button linked in from outside via `form="id"` — see save-bar.tsx.
     // `<form>` itself is intentionally unconstrained (full main width) —
     // max-w-2xl lives on each *section* instead, so a section's own <hr>
-    // sibling (and the sticky bar below) resolve their `auto` width against
-    // the page's true width rather than being boxed in by a 672px
-    // containing block that no negative margin can escape.
+    // sibling resolves its `auto` width against the page's true width
+    // rather than being boxed in by a 672px containing block that no
+    // negative margin can escape.
     <form action={formAction}>
+      <SaveBar dirty={isDirty} pending={pending} onDiscard={handleDiscard} />
       <input type="hidden" name="sameAsMailing" value={values.sameAsMailing ? '1' : ''} />
 
       {/* Locks every field while a save is in flight — belt-and-braces
@@ -522,45 +521,6 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
           </p>
         )}
       </fieldset>
-
-      {/* Bottom-right action bar — only appears once there's something to
-          save or discard, and stays out of the layout entirely otherwise
-          (no reserved space, no empty bar). Sticky, not fixed: it should
-          track the scrollable content column (see admin-shell's own
-          overflow-y-auto wrapper), not float over the sidebar/header. The
-          negative margins undo PageContainer's own px-6/px-10 so the bar
-          spans the full content width edge-to-edge, matching the design
-          rather than stopping at the (narrower) max-w-2xl column above it.
-          A plain descendant submit button — see the comment above the
-          <form> for why this can't be linked in via `form="id"` from
-          outside it. */}
-      {isDirty && (
-        <div
-          className="sticky bottom-0 z-10 -mx-6 mt-8 flex justify-end gap-3 border-t
-                     border-[#E5E7EB] bg-surface px-6 py-4 sm:-mx-10 sm:px-10"
-        >
-          <button
-            type="button"
-            onClick={handleDiscard}
-            disabled={pending}
-            className="rounded-[10px] border border-[#D4D4D4] bg-white px-6 py-3 text-sm font-bold
-                     text-[#0F172A] transition-colors hover:bg-neutral-50
-                     disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none
-                     focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
-            Discard
-          </button>
-          <button
-            type="submit"
-            disabled={pending}
-            className="rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
-                     hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
-                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
-            {pending ? 'Saving…' : 'Save Changes'}
-          </button>
-        </div>
-      )}
     </form>
   );
 }

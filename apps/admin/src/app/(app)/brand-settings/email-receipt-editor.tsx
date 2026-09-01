@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useId, useRef, useState } from 'react';
+import { startTransition, useActionState, useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Send } from 'lucide-react';
 import type { Brand, EmailReceiptLayout, EmailReceiptSettings } from '@/lib/api';
 import {
@@ -11,6 +11,7 @@ import {
 } from './actions';
 import type { PaymentPagePreviewInvoice } from './payment-page-editor';
 import { BrandingSubTabs, type BrandingSubTab } from './tabs';
+import { SaveBar } from './save-bar';
 
 const initialSaveState: EmailReceiptState = {};
 const initialSendState: SendTestEmailState = {};
@@ -47,10 +48,8 @@ function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
 }
 
-/** A cosmetic-only sender address shown under the brand name in the preview
- * (matching how the email will actually appear in a customer's inbox) — no
- * such field exists on Brand yet, so this derives one from the display name
- * rather than sending real mail from it. */
+/** The values every `{{token}}` in a subject or body resolves to, for both
+ * the preview and the test send. */
 type TemplateVariables = {
   brandName: string;
   customerName: string;
@@ -433,14 +432,30 @@ export function EmailReceiptEditor({
   const [contentOpen, setContentOpen] = useState(false);
 
   const layoutGroupId = useId();
-  const testFormId = useId();
-  const saveFormId = useId();
 
   function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     if (!file) return;
     setLogoPreview(URL.createObjectURL(file));
     setLogoDirty(true);
+  }
+
+  /** Builds the test-send payload by hand and dispatches the action. The
+   * fields are the same ones the Save form carries, read from the same live
+   * state, so a test always reflects what is on screen rather than what was
+   * last saved. */
+  function sendTest() {
+    const data = new FormData();
+    data.set('to', userEmail ?? '');
+    data.set('emailReceiptSubject', renderedSubject);
+    data.set('emailReceiptBody', renderedBody);
+    // The look travels with the test too, not just the words — a test send
+    // is meant to prove the preview, and the preview is these three as much
+    // as it is the subject and body.
+    data.set('themeColor', themeColor);
+    data.set('accentColor', accentColor);
+    data.set('emailReceiptLayout', layout);
+    startTransition(() => sendFormAction(data));
   }
 
   function handleDiscard() {
@@ -505,13 +520,19 @@ export function EmailReceiptEditor({
   const renderedBody = substitute(body, variables);
 
   return (
-    <>
+    // The <form> wraps the bar as well as the fields, so Save is a plain
+    // descendant submit rather than a button associated across the DOM by a
+    // `form="id"` attribute. See save-bar.tsx. The test send below is no
+    // longer a nested <form> for the same reason — it dispatches its action
+    // directly, which is also what lets it live inside this one at all.
+    <form action={saveFormAction}>
+      <SaveBar dirty={isDirty} pending={savePending} onDiscard={handleDiscard} />
       <div
         className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
                  border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
       >
         <section className="w-[350px] shrink-0 p-6">
-          <form id={saveFormId} action={saveFormAction}>
+          <div>
             <input type="hidden" name="themeColor" value={themeColor} />
             <input type="hidden" name="accentColor" value={accentColor} />
             <input type="hidden" name="emailReceiptLayout" value={layout} />
@@ -716,35 +737,21 @@ export function EmailReceiptEditor({
 
             {/* Save/Discard live in the sticky bar below, outside this card —
               see the comment there for why. */}
-          </form>
+          </div>
 
-          {/* A separate <form> — HTML forbids nesting one inside Save Changes'
-            form above, and "send a test" is a genuinely different submit
-            (it never touches saved settings; see sendTestEmailAction). The
-            compact button in the preview panel submits this same form via
-            its `form` attribute rather than duplicating the fields. No email
-            field to fill in — it always goes to the signed-in user's own
-            address, via the hidden "to" field below. */}
-          <form
-            id={testFormId}
-            action={sendFormAction}
-            className="mt-6 border-t border-[#E5E7EB] pt-6"
-          >
-            <input type="hidden" name="to" value={userEmail ?? ''} />
-            <input type="hidden" name="emailReceiptSubject" value={renderedSubject} />
-            <input type="hidden" name="emailReceiptBody" value={renderedBody} />
-            {/* The look travels with the test too, not just the words — a
-              test send is meant to prove the preview, and the preview is
-              these three fields as much as the subject and body. */}
-            <input type="hidden" name="themeColor" value={themeColor} />
-            <input type="hidden" name="accentColor" value={accentColor} />
-            <input type="hidden" name="emailReceiptLayout" value={layout} />
+          {/* Not a <form>: it sits inside the Save form above, and HTML
+            forbids nesting. It builds its own FormData and dispatches the
+            action directly instead — which also means the compact button in
+            the preview panel can trigger the identical send by calling the
+            same function, rather than reaching across the DOM by id. */}
+          <div className="mt-6 border-t border-[#E5E7EB] pt-6">
             <p className="text-sm font-bold text-ink-strong">Send a test email</p>
             <p className="mt-1 text-sm text-ink-muted">
               Preview exactly what your customers will receive.
             </p>
             <button
-              type="submit"
+              type="button"
+              onClick={sendTest}
               disabled={sendPending || !userEmail}
               title={userEmail ? undefined : 'Could not find your account email'}
               className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-bold
@@ -761,7 +768,7 @@ export function EmailReceiptEditor({
             {sendState.success && (
               <p className="mt-2 text-sm text-emerald-700">Test email sent to {userEmail}.</p>
             )}
-          </form>
+          </div>
         </section>
 
         <section className="min-w-0 w-[744px] max-w-full p-6">
@@ -775,8 +782,8 @@ export function EmailReceiptEditor({
           <div className="mt-6 flex items-center justify-between">
             <h3 className="text-base font-bold text-ink-strong">Preview</h3>
             <button
-              type="submit"
-              form={testFormId}
+              type="button"
+              onClick={sendTest}
               disabled={sendPending || !userEmail}
               title={userEmail ? undefined : 'Could not find your account email'}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#D1D5DB] bg-white px-3 py-1.5
@@ -809,42 +816,6 @@ export function EmailReceiptEditor({
           </div>
         </section>
       </div>
-
-      {/* Bottom-right action bar — only appears once there's something to
-        save or discard, and stays out of the layout entirely otherwise. See
-        BrandDetailsForm's own identical bar for the full rationale (sticky
-        vs fixed, the -mx-6/-mx-10 bleed matching PageContainer's own
-        padding). The Save button reaches the actual <form> above purely via
-        its `form` attribute — proven to work correctly in this app already
-        (the compact "Send Test Email" button above does the same). */}
-      {isDirty && (
-        <div
-          className="sticky bottom-0 z-10 -mx-6 mt-8 flex justify-end gap-3 border-t
-                   border-[#E5E7EB] bg-surface px-6 py-4 sm:-mx-10 sm:px-10"
-        >
-          <button
-            type="button"
-            onClick={handleDiscard}
-            disabled={savePending}
-            className="rounded-[10px] border border-[#D4D4D4] bg-white px-6 py-3 text-sm font-bold
-                   text-[#0F172A] transition-colors hover:bg-neutral-50
-                   disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none
-                   focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
-            Discard
-          </button>
-          <button
-            type="submit"
-            form={saveFormId}
-            disabled={savePending}
-            className="rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
-                   hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
-                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
-            {savePending ? 'Saving…' : 'Save changes'}
-          </button>
-        </div>
-      )}
-    </>
+    </form>
   );
 }

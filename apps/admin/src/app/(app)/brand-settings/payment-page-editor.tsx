@@ -16,6 +16,7 @@ import {
 import type { Brand, PaymentPageDisplaySettings, PaymentPageLayout } from '@/lib/api';
 import { savePaymentPageDisplayAction, type PaymentPageDisplayState } from './actions';
 import { BrandingSubTabs, type BrandingSubTab } from './tabs';
+import { SaveBar } from './save-bar';
 
 const initialState: PaymentPageDisplayState = {};
 
@@ -529,7 +530,6 @@ export function PaymentPageEditor({
   const [pageLayoutOpen, setPageLayoutOpen] = useState(true);
 
   const layoutGroupId = useId();
-  const saveFormId = useId();
 
   function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -560,10 +560,13 @@ export function PaymentPageEditor({
   }, [state]);
 
   return (
-    <>
-      <form
-        id={saveFormId}
-        action={formAction}
+    // The <form> wraps the bar as well as the fields, so Save is a plain
+    // descendant submit rather than a button associated across the DOM by a
+    // `form="id"` attribute. See save-bar.tsx for why that distinction is
+    // worth the extra wrapper here.
+    <form action={formAction}>
+      <SaveBar dirty={isDirty} pending={pending} onDiscard={handleDiscard} />
+      <div
         className="mt-4 flex w-fit flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
                  border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
       >
@@ -751,46 +754,7 @@ export function PaymentPageEditor({
             />
           </div>
         </section>
-      </form>
-
-      {/* Bottom-right action bar — only appears once there's something to
-          save or discard, and rendered OUTSIDE the form above: that form
-          uses flex/lg:flex-row for its two columns, and a third flex child
-          here would've joined that row instead of sitting full-width below
-          it. See BrandDetailsForm's own identical bar for the rest of the
-          rationale (sticky vs fixed, the -mx-6/-mx-10 bleed matching
-          PageContainer's own padding). The Save button reaches the form
-          above purely via its `form` attribute — proven to work correctly
-          in this app already (EmailReceiptEditor's compact "Send Test
-          Email" button does the same). */}
-      {isDirty && (
-        <div
-          className="sticky bottom-0 z-10 -mx-6 mt-8 flex justify-end gap-3 border-t
-                     border-[#E5E7EB] bg-surface px-6 py-4 sm:-mx-10 sm:px-10"
-        >
-          <button
-            type="button"
-            onClick={handleDiscard}
-            disabled={pending}
-            className="rounded-[10px] border border-[#D4D4D4] bg-white px-6 py-3 text-sm font-bold
-                     text-[#0F172A] transition-colors hover:bg-neutral-50
-                     disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none
-                     focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
-            Discard
-          </button>
-          <button
-            type="submit"
-            form={saveFormId}
-            disabled={pending}
-            className="rounded-[10px] bg-black px-6 py-3 text-sm font-bold text-white transition-colors
-                     hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]
-                     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
-            {pending ? 'Saving…' : 'Save changes'}
-          </button>
-        </div>
-      )}
-    </>
+      </div>
+    </form>
   );
 }
