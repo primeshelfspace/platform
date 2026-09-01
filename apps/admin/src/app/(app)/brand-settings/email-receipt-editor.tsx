@@ -409,16 +409,17 @@ export function EmailReceiptEditor({
     body: settings.emailReceiptBody,
   });
   const [logoDirty, setLogoDirty] = useState(false);
-  // Layout is deliberately excluded here: picking Hero or Minimal previews
-  // it immediately without asking for an explicit save, the same way
-  // Classic (the already-saved default) never shows the button either. It's
-  // still submitted as part of the form whenever something else does
-  // trigger a save, so a layout pick is never silently lost — it just rides
-  // along with the next real change instead of demanding its own.
+  // Layout counts as a change like everything else. It used to be excluded
+  // on the reasoning that a pick "rides along with the next real change" —
+  // but a merchant who picks Hero and then navigates away makes no next
+  // change, so the pick was silently discarded with no Save button ever
+  // offered to explain why. Payment Page and Invoice PDF both already
+  // counted their own layout; this is the odd one out, not the rule.
   const isDirty =
     logoDirty ||
     themeColor !== savedValues.themeColor ||
     accentColor !== savedValues.accentColor ||
+    layout !== savedValues.layout ||
     subject !== savedValues.subject ||
     body !== savedValues.body;
 
