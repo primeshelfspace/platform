@@ -19,16 +19,16 @@ export function CollectionRateTrendChart({ trend }: { trend: DashboardTrendPoint
   const data = trend.map((point) => ({ label: point.label, rate: point.collectionRate * 100 }));
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-      <h2 className="font-medium text-ink-strong">Collection Rate Trend</h2>
-      <p className="mb-4 text-xs text-ink-subtle">6-months lookback</p>
+    <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-ink-strong">Collection Rate Trend</h2>
+      <p className="mb-6 text-sm text-ink-subtle">6-months lookback</p>
       {!hasData ? (
-        <div className="flex h-[220px] flex-col items-center justify-center gap-2 text-center">
+        <div className="flex h-[300px] flex-col items-center justify-center gap-2 text-center">
           <LineChartIcon className="h-8 w-8 text-ink-subtle" aria-hidden />
           <p className="text-sm text-ink-subtle">No invoices in this period yet</p>
         </div>
       ) : (
-        <ResponsiveContainer width="100%" height={220}>
+        <ResponsiveContainer width="100%" height={300}>
           <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
             <CartesianGrid vertical={false} stroke={palette.border} />
             <XAxis
@@ -57,9 +57,9 @@ export function CollectionRateTrendChart({ trend }: { trend: DashboardTrendPoint
               type="monotone"
               dataKey="rate"
               stroke={palette.inkStrong}
-              strokeWidth={2}
-              dot={{ r: 3, fill: palette.inkStrong, strokeWidth: 0 }}
-              activeDot={{ r: 5 }}
+              strokeWidth={2.5}
+              dot={{ r: 5, fill: palette.inkStrong, strokeWidth: 0 }}
+              activeDot={{ r: 7 }}
             />
           </LineChart>
         </ResponsiveContainer>
