@@ -13,7 +13,7 @@ import { assessBrandColour } from './contrast.js';
 /** Product palette — fixed, not brand-controlled. */
 export const palette = {
   // Surfaces, neutral gray — clean white cards on a barely-off-white page.
-  canvas: '#FAFAFA',
+  canvas: '#F8FAFC',
   surface: '#FFFFFF',
   surfaceMuted: '#F5F5F6',
   surfaceSunken: '#EEEEF0',
