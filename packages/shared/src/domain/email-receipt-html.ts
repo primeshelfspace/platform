@@ -65,6 +65,7 @@ const TEXT = '#334155';
 const MUTED = '#475569';
 const STRONG = '#0F172A';
 const SURFACE_MUTED = '#F8FAFC';
+const SUMMARY_HEADER_BG = '#F1F5F9';
 
 export function renderEmailReceiptHtml(input: EmailReceiptHtmlInput): string {
   const brandName = escapeHtml(input.badgeLabel ?? input.brandName);
@@ -121,7 +122,7 @@ function header(input: EmailReceiptHtmlInput, brandName: string, theme: string):
   if (input.layout === 'HERO') {
     return `${band}
       <tr><td style="background:${theme};padding:32px 24px;text-align:center;">
-        ${logoMark(input, 56, 'rgba(255,255,255,0.2)')}
+        ${logoMark(input, 60, 'rgba(255,255,255,0.2)', 'border:3px solid #FFFFFF;')}
         <div style="margin-top:8px;font-size:18px;font-weight:700;color:#FFFFFF;">${brandName}</div>
         <div style="margin-top:2px;font-size:12px;color:rgba(255,255,255,0.8);">${escapeHtml(input.senderAddress)}</div>
       </td></tr>`;
@@ -130,7 +131,7 @@ function header(input: EmailReceiptHtmlInput, brandName: string, theme: string):
   return `${band}
       <tr><td style="padding:20px 24px;border-bottom:1px solid ${BORDER};">
         <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-          <td style="padding-right:12px;">${logoMark(input, 40)}</td>
+          <td style="padding-right:12px;">${logoMark(input, 48, undefined, `border:1px solid ${BORDER};`)}</td>
           <td>
             <div style="font-size:16px;font-weight:700;color:${STRONG};">${brandName}</div>
             <div style="margin-top:2px;font-size:14px;color:${MUTED};">${escapeHtml(input.senderAddress)}</div>
@@ -149,7 +150,7 @@ function summary(input: EmailReceiptHtmlInput): string {
           </tr>`;
 
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin-top:24px;border:1px solid ${BORDER};border-radius:8px;border-collapse:separate;overflow:hidden;">
-          <tr><td colspan="2" style="background:${SURFACE_MUTED};padding:10px 16px;font-size:14px;font-weight:700;color:${STRONG};">Invoice summary</td></tr>
+          <tr><td colspan="2" style="background:${SUMMARY_HEADER_BG};padding:10px 16px;font-size:14px;font-weight:700;color:${STRONG};">Invoice summary</td></tr>
           ${row('Invoice number', input.variables.invoiceNumber)}
           ${row('Amount due', input.variables.amountDue)}
           ${row('Due date', input.variables.dueDate)}
@@ -158,15 +159,20 @@ function summary(input: EmailReceiptHtmlInput): string {
 
 /** The logo, or the brand's first initial on a coloured disc when there is
  * none — the same fallback the editor's preview draws. */
-function logoMark(input: EmailReceiptHtmlInput, size: number, fallbackBg?: string): string {
+function logoMark(
+  input: EmailReceiptHtmlInput,
+  size: number,
+  fallbackBg?: string,
+  border = '',
+): string {
   if (input.logoSrc) {
-    return `<img src="${escapeHtml(input.logoSrc)}" alt="" width="${size}" height="${size}" style="display:inline-block;width:${size}px;height:${size}px;border-radius:${size}px;object-fit:cover;" />`;
+    return `<img src="${escapeHtml(input.logoSrc)}" alt="" width="${size}" height="${size}" style="display:inline-block;width:${size}px;height:${size}px;border-radius:${size}px;object-fit:cover;${border}" />`;
   }
 
   const background = fallbackBg ?? escapeHtml(input.themeColor);
   const initial = escapeHtml(initialOf(input.badgeLabel ?? input.brandName));
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="display:inline-table;"><tr>
-            <td width="${size}" height="${size}" align="center" valign="middle" style="width:${size}px;height:${size}px;background:${background};border-radius:${size}px;color:#FFFFFF;font-size:${Math.round(size / 2.5)}px;font-weight:700;font-family:${FONT_STACK};">${initial}</td>
+            <td width="${size}" height="${size}" align="center" valign="middle" style="width:${size}px;height:${size}px;background:${background};border-radius:${size}px;color:#FFFFFF;font-size:${Math.round(size / 2.5)}px;font-weight:700;font-family:${FONT_STACK};${border}">${initial}</td>
           </tr></table>`;
 }
 
