@@ -30,7 +30,7 @@ const LAYOUTS: readonly { key: EmailReceiptLayout; title: string; description: s
   {
     key: 'CLASSIC',
     title: 'Classic',
-    description: 'Logo and brand name in a row, plain background',
+    description: 'Logo left, colour strip header, stacked body',
   },
   { key: 'HERO', title: 'Hero', description: 'Full-width colour header, centred logo and name' },
   { key: 'MINIMAL', title: 'Minimal', description: 'Clean, no header colour — logo mark only' },
@@ -128,14 +128,14 @@ function CollapseToggle({
       onClick={onToggle}
       aria-expanded={open}
       aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted
+      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[#E2E8F0]
                  text-ink-muted transition-colors hover:bg-[#E5E7EB] hover:text-ink-strong
                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
     >
       {open ? (
-        <ChevronUp className="h-4 w-4" aria-hidden />
+        <ChevronUp className="h-3 w-3" aria-hidden />
       ) : (
-        <ChevronDown className="h-4 w-4" aria-hidden />
+        <ChevronDown className="h-3 w-3" aria-hidden />
       )}
     </button>
   );
@@ -219,9 +219,10 @@ function PreviewBody({
   invoiceLabel: { number: string; amountDue: string; dueDate: string };
   viewUrl: string | null;
 }) {
-  const avatar = (size: string, fallbackBg?: string) => (
+  const avatar = (size: string, fallbackBg?: string, borderClassName = '') => (
     <span
-      className={`flex ${size} shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white`}
+      className={`flex ${size} shrink-0 items-center justify-center overflow-hidden rounded-full text-sm
+                  font-bold text-white ${borderClassName}`}
       style={{ backgroundColor: logoSrc ? undefined : (fallbackBg ?? themeColor) }}
     >
       {logoSrc ? (
@@ -250,13 +251,13 @@ function PreviewBody({
           style={{ backgroundColor: themeColor }}
           className="flex flex-col items-center gap-2 px-6 py-8"
         >
-          {avatar('h-14 w-14', 'rgba(255,255,255,0.2)')}
+          {avatar('h-[60px] w-[60px]', 'rgba(255,255,255,0.2)', 'border-[3px] border-white')}
           <span className="text-lg font-bold text-white">{brand.displayName}</span>
           <span className="text-xs text-white/80">{senderAddress}</span>
         </div>
       ) : (
         <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-6 py-5">
-          {avatar('h-10 w-10')}
+          {avatar('h-12 w-12', undefined, 'border border-[#E2E8F0]')}
           <span>
             <span className="block text-base font-bold text-ink-strong">{brand.displayName}</span>
             <span className="block text-sm text-ink-subtle">{senderAddress}</span>
@@ -318,7 +319,7 @@ function PreviewBody({
         </a>
 
         <div className="mt-6 overflow-hidden rounded-lg border border-[#E5E7EB]">
-          <p className="bg-surface-muted px-4 py-2.5 text-sm font-bold text-ink-strong">
+          <p className="bg-[#F1F5F9] px-4 py-2.5 text-sm font-bold text-ink-strong">
             Invoice summary
           </p>
           <dl className="divide-y divide-[#E5E7EB] text-sm">
@@ -506,14 +507,11 @@ export function EmailReceiptEditor({
     // longer a nested <form> for the same reason — it dispatches its action
     // directly, which is also what lets it live inside this one at all.
     <form action={saveFormAction}>
-      <div className="mt-4">
-        <BrandingSubTabs active={activeSub} brandId={brand.id} />
-      </div>
       <div
-        className="mt-4 flex w-full flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
-                 border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
+        className="mt-3 flex w-full flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
+                 border border-[#E5E7EB] bg-[#F9FAFB99] shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
       >
-        <section className="w-[350px] shrink-0 p-6">
+        <section className="w-[350px] shrink-0 p-5">
           <div>
             <input type="hidden" name="themeColor" value={themeColor} />
             <input type="hidden" name="accentColor" value={accentColor} />
@@ -526,8 +524,8 @@ export function EmailReceiptEditor({
               email" below got a border, from its own separate <form>. This
               divide-y draws the same light line under each of the three
               here too, matching the reference design. */}
-            <div className="divide-y divide-[#E5E7EB]">
-              <div className="pb-6">
+            <div className="-mx-5 divide-y-2 divide-[#E5E7EB] px-5">
+              <div className="pb-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
@@ -543,14 +541,15 @@ export function EmailReceiptEditor({
                 </div>
 
                 {brandElementsOpen && (
-                  <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
+                  <div className="mt-3 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
                     <div className="flex items-center justify-between py-3">
                       <span className="text-sm font-medium text-ink-strong">Logo</span>
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         aria-label="Upload brand logo"
-                        className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
+                        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full
+                             border border-[#E2E8F0] text-sm font-bold text-white
                              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
                         style={{ backgroundColor: logoSrc ? undefined : themeColor }}
                       >
@@ -581,7 +580,7 @@ export function EmailReceiptEditor({
                 )}
               </div>
 
-              <div className="py-6">
+              <div className="py-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-ink-strong">Email Layout</p>
@@ -607,7 +606,7 @@ export function EmailReceiptEditor({
                           role="radio"
                           aria-checked={selected}
                           onClick={() => setLayout(key)}
-                          className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                          className={`flex w-full min-h-[51px] items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
                             selected
                               ? 'border-ink-strong bg-surface-muted'
                               : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
@@ -629,7 +628,7 @@ export function EmailReceiptEditor({
                 )}
               </div>
 
-              <div className="pt-6">
+              <div className="pt-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-ink-strong">Email Content</p>
@@ -645,7 +644,7 @@ export function EmailReceiptEditor({
                 </div>
 
                 {contentOpen && (
-                  <div className="mt-4 space-y-4">
+                  <div className="mt-3 space-y-3">
                     <label className="block">
                       <span className="mb-1 block text-sm font-medium text-ink-strong">
                         Subject
@@ -653,7 +652,7 @@ export function EmailReceiptEditor({
                       <input
                         value={subject}
                         onChange={(event) => setSubject(event.target.value)}
-                        className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
+                        className="h-9 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
                                shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
                                focus-visible:ring-slate-900 focus-visible:ring-offset-1"
                       />
@@ -726,35 +725,38 @@ export function EmailReceiptEditor({
             action directly instead — which also means the compact button in
             the preview panel can trigger the identical send by calling the
             same function, rather than reaching across the DOM by id. */}
-          <div className="mt-6 border-t border-[#E5E7EB] pt-6">
-            <p className="text-sm font-bold text-ink-strong">Send a test email</p>
-            <p className="mt-1 text-sm text-ink-muted">
-              Preview exactly what your customers will receive.
-            </p>
-            <button
-              type="button"
-              onClick={sendTest}
-              disabled={sendPending || !userEmail}
-              title={userEmail ? undefined : 'Could not find your account email'}
-              className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-bold
-                       text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
-            >
-              <Send className="h-3.5 w-3.5" aria-hidden />
-              {sendPending ? 'Sending…' : 'Send Test Email'}
-            </button>
-            {sendState.error && (
-              <p role="alert" className="mt-2 text-sm text-red-700">
-                {sendState.error}
+          <div className="-mx-5 mt-4 border-t-2 border-[#E5E7EB] px-5 pt-4">
+            <div className="border-b-2 border-[#E5E7EB] pb-4">
+              <p className="text-sm font-bold text-ink-strong">Send a test email</p>
+              <p className="mt-1 text-sm text-ink-muted">
+                Preview exactly what your customers will receive.
               </p>
-            )}
-            {sendState.success && (
-              <p className="mt-2 text-sm text-emerald-700">Test email sent to {userEmail}.</p>
-            )}
+              <button
+                type="button"
+                onClick={sendTest}
+                disabled={sendPending || !userEmail}
+                title={userEmail ? undefined : 'Could not find your account email'}
+                className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-lg bg-black px-4 text-sm font-bold
+                       text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB] disabled:text-[#94A3B8]"
+              >
+                <Send className="h-3.5 w-3.5" aria-hidden />
+                {sendPending ? 'Sending…' : 'Send Test Email'}
+              </button>
+              {sendState.error && (
+                <p role="alert" className="mt-2 text-sm text-red-700">
+                  {sendState.error}
+                </p>
+              )}
+              {sendState.success && (
+                <p className="mt-2 text-sm text-emerald-700">Test email sent to {userEmail}.</p>
+              )}
+            </div>
           </div>
         </section>
 
-        <section className="min-w-0 max-w-[640px] flex-1 p-6">
-          <div className="flex items-center justify-between">
+        <section className="min-w-0 flex-1 p-5">
+          <BrandingSubTabs active={activeSub} brandId={brand.id} className="mx-auto max-w-[640px]" />
+          <div className="mx-auto mt-4 flex max-w-[640px] items-center justify-between">
             <h3 className="text-base font-bold text-ink-strong">Preview</h3>
             <button
               type="button"
@@ -770,7 +772,7 @@ export function EmailReceiptEditor({
             </button>
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+          <div className="mx-auto mt-3 max-w-[640px] overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-lg">
             <PreviewBody
               brand={brand}
               themeColor={themeColor}

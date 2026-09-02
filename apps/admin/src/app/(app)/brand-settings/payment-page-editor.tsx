@@ -102,14 +102,14 @@ function CollapseToggle({
       onClick={onToggle}
       aria-expanded={open}
       aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted
+      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[#E2E8F0]
                  text-ink-muted transition-colors hover:bg-[#E5E7EB] hover:text-ink-strong
                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
     >
       {open ? (
-        <ChevronUp className="h-4 w-4" aria-hidden />
+        <ChevronUp className="h-3 w-3" aria-hidden />
       ) : (
-        <ChevronDown className="h-4 w-4" aria-hidden />
+        <ChevronDown className="h-3 w-3" aria-hidden />
       )}
     </button>
   );
@@ -362,7 +362,7 @@ function BrandBanner({
       style={{ backgroundColor: themeColor }}
       className="flex items-center gap-4 rounded-t-2xl px-6 py-8"
     >
-      <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/20 text-lg font-bold text-white">
+      <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/20 text-lg font-bold text-white">
         {logoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={logoSrc} alt="" className="h-full w-full object-cover" />
@@ -393,8 +393,8 @@ function CenteredHeader({
       <div style={{ backgroundColor: themeColor }} className="h-16 w-full rounded-t-2xl" />
       <span
         style={{ backgroundColor: logoSrc ? undefined : themeColor }}
-        className="-mt-8 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full
-                   border-4 border-white text-lg font-bold text-white shadow-sm"
+        className="-mt-10 flex h-[80px] w-[80px] items-center justify-center overflow-hidden rounded-full
+                   border-[3px] border-white text-lg font-bold text-white shadow-sm"
       >
         {logoSrc ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -459,7 +459,7 @@ function PreviewBody({
       <div className={`grid ${device === 'web' ? 'sm:grid-cols-2' : ''}`}>
         <div style={{ backgroundColor: themeColor }} className="flex flex-col gap-6 p-6">
           <div className="flex items-center gap-3 border-b border-white/20 pb-5">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/20 text-sm font-bold text-white">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/20 text-sm font-bold text-white">
               {logoSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoSrc} alt="" className="h-full w-full object-cover" />
@@ -575,110 +575,124 @@ export function PaymentPageEditor({
     // `form="id"` attribute. See save-bar.tsx for why that distinction is
     // worth the extra wrapper here.
     <form action={formAction}>
-      <div className="mt-4">
-        <BrandingSubTabs active={activeSub} brandId={brand.id} />
-      </div>
       <div
         className="mt-4 flex w-full flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
-                 border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
+                 border border-[#E5E7EB] bg-[#F9FAFB99] shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
       >
         <input type="hidden" name="themeColor" value={themeColor} />
         <input type="hidden" name="accentColor" value={accentColor} />
         <input type="hidden" name="paymentPageLayout" value={layout} />
 
         <section className="w-[350px] shrink-0 p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
-              <p className="mt-1 text-sm text-ink-muted">
-                Set default elements that appear across all customer communications.
-              </p>
-            </div>
-            <CollapseToggle
-              open={brandElementsOpen}
-              onToggle={() => setBrandElementsOpen((open) => !open)}
-              label="Brand Elements"
-            />
-          </div>
-
-          {brandElementsOpen && (
-            <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
-              <div className="flex items-center justify-between py-3">
-                <span className="text-sm font-medium text-ink-strong">Logo</span>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Upload brand logo"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                  style={{ backgroundColor: logoSrc ? undefined : themeColor }}
-                >
-                  {logoSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logoSrc} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    initialOf(brand.displayName)
-                  )}
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  name="logo"
-                  accept="image/jpeg,image/png,image/svg+xml"
-                  onChange={handleLogoChange}
-                  className="hidden"
+          {/* Brand Elements / Page layout used to just be mt-6-spaced with no
+            line between them — this divide-y draws the same border-to-border
+            line under each here, matching EmailReceiptEditor/InvoicePdfEditor's
+            own identical treatment of their sections. */}
+          <div className="-mx-6 divide-y-2 divide-[#E5E7EB] px-6">
+            <div className="pb-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
+                  <p className="mt-1 text-sm text-ink-muted">
+                    Set default elements that appear across all customer communications.
+                  </p>
+                </div>
+                <CollapseToggle
+                  open={brandElementsOpen}
+                  onToggle={() => setBrandElementsOpen((open) => !open)}
+                  label="Brand Elements"
                 />
               </div>
 
-              <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
-              <ColourField label="Accent colour" value={accentColor} onChange={setAccentColor} />
-            </div>
-          )}
-
-          <div className="mt-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-bold text-ink-strong">Page layout</p>
-                <p className="mt-1 text-sm text-ink-muted">
-                  Choose how your payment page is presented to customers.
-                </p>
-              </div>
-              <CollapseToggle
-                open={pageLayoutOpen}
-                onToggle={() => setPageLayoutOpen((open) => !open)}
-                label="Page layout"
-              />
-            </div>
-
-            {pageLayoutOpen && (
-              <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
-                {LAYOUTS.map(({ key, title, description }) => {
-                  const selected = key === layout;
-                  return (
+              {brandElementsOpen && (
+                <div className="mt-4 divide-y divide-[#E5E7EB] border-y border-[#E5E7EB]">
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-sm font-medium text-ink-strong">Logo</span>
                     <button
-                      key={key}
                       type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => setLayout(key)}
-                      className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
-                        selected
-                          ? 'border-ink-strong bg-surface-muted'
-                          : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
-                      }`}
+                      onClick={() => fileInputRef.current?.click()}
+                      aria-label="Upload brand logo"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full
+                           border border-[#E2E8F0] text-sm font-bold text-white
+                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                      style={{ backgroundColor: logoSrc ? undefined : themeColor }}
                     >
-                      <span>
-                        <span className="block text-sm font-semibold text-ink-strong">{title}</span>
-                        <span className="block text-xs text-ink-muted">{description}</span>
-                      </span>
-                      {selected && (
-                        <Check className="h-4 w-4 shrink-0 text-ink-strong" aria-hidden />
+                      {logoSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logoSrc} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        initialOf(brand.displayName)
                       )}
                     </button>
-                  );
-                })}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      name="logo"
+                      accept="image/jpeg,image/png,image/svg+xml"
+                      onChange={handleLogoChange}
+                      className="hidden"
+                    />
+                  </div>
+
+                  <ColourField label="Brand colour" value={themeColor} onChange={setThemeColor} />
+                  <ColourField
+                    label="Accent colour"
+                    value={accentColor}
+                    onChange={setAccentColor}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="pt-6">
+              <div className="border-b-2 border-[#E5E7EB] pb-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-ink-strong">Page layout</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                      Choose how your payment page is presented to customers.
+                    </p>
+                  </div>
+                  <CollapseToggle
+                    open={pageLayoutOpen}
+                    onToggle={() => setPageLayoutOpen((open) => !open)}
+                    label="Page layout"
+                  />
+                </div>
+
+                {pageLayoutOpen && (
+                  <div className="mt-3 space-y-2" role="radiogroup" aria-labelledby={layoutGroupId}>
+                    {LAYOUTS.map(({ key, title, description }) => {
+                      const selected = key === layout;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => setLayout(key)}
+                          className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
+                            selected
+                              ? 'border-ink-strong bg-surface-muted'
+                              : 'border-[#E5E7EB] hover:border-[#D1D5DB]'
+                          }`}
+                        >
+                          <span>
+                            <span className="block text-sm font-semibold text-ink-strong">
+                              {title}
+                            </span>
+                            <span className="block text-xs text-ink-muted">{description}</span>
+                          </span>
+                          {selected && (
+                            <Check className="h-4 w-4 shrink-0 text-ink-strong" aria-hidden />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
 
           {state.error && (
@@ -707,8 +721,9 @@ export function PaymentPageEditor({
             see EmailReceiptEditor's identical bar for the full rationale. */}
         </section>
 
-        <section className="min-w-0 max-w-[640px] flex-1 p-6">
-          <div className="flex items-center justify-between">
+        <section className="min-w-0 flex-1 p-6">
+          <BrandingSubTabs active={activeSub} brandId={brand.id} className="mx-auto max-w-[640px]" />
+          <div className="mx-auto mt-4 flex max-w-[640px] items-center justify-between">
             <h3 className="text-base font-bold text-ink-strong">Preview</h3>
             <div
               role="radiogroup"
@@ -742,9 +757,9 @@ export function PaymentPageEditor({
           </div>
 
           <div
-            className={`mt-4 overflow-hidden border border-[#E5E7EB] bg-white shadow-sm transition-[max-width] ${
+            className={`mt-3 overflow-hidden border border-[#E5E7EB] bg-white shadow-lg transition-[max-width] ${
               layout === 'SPLIT' && device === 'web' ? 'rounded-l-2xl' : 'rounded-2xl'
-            } ${device === 'mobile' ? 'mx-auto w-full max-w-[340px]' : 'max-w-none'}`}
+            } ${device === 'mobile' ? 'mx-auto w-full max-w-[340px]' : 'mx-auto max-w-[640px]'}`}
           >
             <PreviewBody
               brand={brand}

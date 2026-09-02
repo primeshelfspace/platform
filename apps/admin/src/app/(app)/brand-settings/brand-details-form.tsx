@@ -7,7 +7,7 @@ import type { Brand, CustomerAddress } from '@/lib/api';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import {
-  STATIC_FIELD_INPUT_CLASS as inputClass,
+  COMPACT_FIELD_INPUT_CLASS as inputClass,
   STATIC_FIELD_LABEL_CLASS as labelClass,
 } from '@/components/ui/form-styles';
 import { saveBrandDetailsAction, type BrandDetailsState } from './actions';
@@ -164,8 +164,8 @@ function AddressFields({
   const regions = regionsFor(value.country);
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <input
           name={`${prefix}Line1`}
           placeholder="Address line 1"
@@ -185,7 +185,7 @@ function AddressFields({
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         <input
           name={`${prefix}City`}
           placeholder="City"
@@ -197,6 +197,7 @@ function AddressFields({
         />
         {regions ? (
           <Select
+            compact
             name={`${prefix}Region`}
             value={value.region}
             onChange={(region) => onChange({ region })}
@@ -230,6 +231,7 @@ function AddressFields({
       </div>
 
       <Select
+        compact
         name={`${prefix}Country`}
         value={value.country}
         onChange={(country) => onChange({ country })}
@@ -346,18 +348,18 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
       {/* Locks every field while a save is in flight — belt-and-braces
           alongside the disabled Save button, since disabled form controls
           also can't be edited or re-submitted mid-request. */}
-      <fieldset disabled={pending} className="space-y-8">
+      <fieldset disabled={pending} className="space-y-5">
         <section className="max-w-2xl">
-          <h2 className="mb-4 text-base font-bold text-[#0F172A]">General Information</h2>
+          <h2 className="mb-3 text-base font-bold text-[#0F172A]">General Information</h2>
 
           <div className="relative inline-block">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               aria-label="Upload business logo"
-              className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full text-2xl
-                       font-bold text-white focus-visible:outline-none focus-visible:ring-2
-                       focus-visible:ring-slate-900 focus-visible:ring-offset-2"
+              className="flex h-[62px] w-[62px] items-center justify-center overflow-hidden rounded-full
+                       border border-white text-lg font-bold text-white focus-visible:outline-none
+                       focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
               style={{ backgroundColor: logoSrc ? undefined : brand.themeColor }}
             >
               {logoSrc ? (
@@ -373,10 +375,10 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
               onClick={() => fileInputRef.current?.click()}
               aria-hidden
               tabIndex={-1}
-              className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full
+              className="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full
                        border-2 border-white bg-blue-600 text-white shadow-sm"
             >
-              <Pencil className="h-3.5 w-3.5" aria-hidden />
+              <Pencil className="h-2.5 w-2.5" aria-hidden />
             </button>
             <input
               ref={fileInputRef}
@@ -393,7 +395,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             </p>
           )}
 
-          <div className="mt-6 grid gap-x-6 gap-y-5 sm:grid-cols-2">
+          <div className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
             <Field
               label="Legal Business Name"
               name="legalName"
@@ -415,6 +417,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             <label className="block" htmlFor={businessTypeId}>
               <span className={labelClass}>Business Type</span>
               <Select
+                compact
                 id={businessTypeId}
                 name="businessType"
                 required
@@ -461,7 +464,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
         <hr className="-mx-6 border-t border-[#E5E7EB] sm:-mx-10" />
 
         <section className="max-w-2xl">
-          <h2 className="mb-4 text-base font-bold text-[#0F172A]">Mailing Address</h2>
+          <h2 className="mb-3 text-base font-bold text-[#0F172A]">Mailing Address</h2>
           <AddressFields prefix="mailing" value={values.mailing} onChange={updateMailing} />
         </section>
 
@@ -471,7 +474,7 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
         <hr className="-mx-6 border-t border-[#E5E7EB] sm:-mx-10" />
 
         <section className="max-w-2xl">
-          <h2 className="mb-4 text-base font-bold text-[#0F172A]">Billing Address</h2>
+          <h2 className="mb-3 text-base font-bold text-[#0F172A]">Billing Address</h2>
           <Toggle
             id="same-as-mailing"
             checked={values.sameAsMailing}

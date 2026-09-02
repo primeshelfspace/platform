@@ -45,7 +45,16 @@ export const STATIC_FIELD_INPUT_CLASS =
   'w-full h-10 rounded-lg border border-[#D4D4D4] bg-white px-4 text-base text-slate-900 ' +
   'shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-slate-400 focus-visible:outline-none ' +
   'focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 transition-colors';
-export const STATIC_FIELD_LABEL_CLASS = 'mb-2 block text-sm font-bold text-[#0F172A]';
+export const STATIC_FIELD_LABEL_CLASS = 'mb-1.5 block text-sm font-bold text-[#0F172A]';
+
+/** Opt-in smaller sizing for the same raw-hex inputs above — mirrors
+ * Select's own `compact` variant (see select.tsx), for forms with enough
+ * fields that the default h-10 / text-base pushes the page past one
+ * screen's height (brand-details-form). */
+export const COMPACT_FIELD_INPUT_CLASS =
+  'w-full h-9 rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900 ' +
+  'shadow-[0_1px_1px_rgba(0,0,0,0.05)] placeholder:text-slate-400 focus-visible:outline-none ' +
+  'focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1 transition-colors';
 
 /** customer-form.tsx and invoice-form.tsx (the design-token family, not the
  * raw-hex one above) were carrying byte-identical copies of both of these. */

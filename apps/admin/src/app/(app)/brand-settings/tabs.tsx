@@ -77,17 +77,28 @@ export function BrandSettingsTabs({
   );
 }
 
-/** Second-level tabs shown only within the Branding section. */
+/**
+ * Second-level tabs shown only within the Branding section. Rendered at the
+ * top of the two-column editor's Preview (right-hand) section, on the same
+ * row as "Brand Elements" in the left column.
+ *
+ * Width-matched to the Preview heading and card beneath it, not the full
+ * section — all three editors pass `mx-auto max-w-[640px]` so the tab row
+ * lines up with the 640px preview it controls, instead of spanning the
+ * wider column around it.
+ */
 export function BrandingSubTabs({
   active,
   brandId,
+  className = '',
 }: {
   active: BrandingSubTab;
   brandId: string | undefined;
+  className?: string;
 }) {
   return (
-    <nav className="mt-3 border-b border-border" aria-label="Branding sections">
-      <ul className="-mb-px flex gap-6 overflow-x-auto">
+    <nav className={`border-b border-[#E5E5E5] ${className}`} aria-label="Branding sections">
+      <ul className="-mb-px flex gap-[22px] overflow-x-auto">
         {BRANDING_SUB_TABS.map((tab) => {
           const selected = tab.key === active;
           return (

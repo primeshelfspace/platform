@@ -59,14 +59,14 @@ function CollapseToggle({
       onClick={onToggle}
       aria-expanded={open}
       aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-muted
+      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[#E2E8F0]
                  text-ink-muted transition-colors hover:bg-[#E5E7EB] hover:text-ink-strong
                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
     >
       {open ? (
-        <ChevronUp className="h-4 w-4" aria-hidden />
+        <ChevronUp className="h-3 w-3" aria-hidden />
       ) : (
-        <ChevronDown className="h-4 w-4" aria-hidden />
+        <ChevronDown className="h-3 w-3" aria-hidden />
       )}
     </button>
   );
@@ -201,12 +201,12 @@ function InvoicePreviewBody({
   invoice: InvoicePdfPreviewInvoice;
   isSample: boolean;
 }) {
-  // 52px with a white ring, not the plain 44px this used to be — confirmed
-  // against Modern's own Figma export (a 52px circle with a 2px white
+  // 50px with a white ring, not the plain 44px this used to be — confirmed
+  // against Modern's own Figma export (a 50px circle with a 2px white
   // stroke), same way Classic's avatar size/ring were confirmed earlier.
   const logo = (
     <span
-      className="flex h-[52px] w-[52px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white text-sm font-bold"
+      className="flex h-[50px] w-[50px] shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white text-sm font-bold"
       style={{ backgroundColor: logoSrc ? undefined : 'rgba(255,255,255,0.2)' }}
       aria-hidden
     >
@@ -392,11 +392,11 @@ function InvoicePreviewBody({
         {sampleBadge}
         <div className="flex items-start justify-between gap-4 border-b border-[#E5E7EB] pb-6">
           <div className="flex items-start gap-3">
-            {/* Same avatar recipe as Classic (59px, light #E5E5E5 ring,
-                theme-colour fallback) — Minimal isn't logo-less, just
+            {/* Its own 50px size (not Classic's 60px) — light #E5E5E5 ring,
+                theme-colour fallback. Minimal isn't logo-less, just
                 colour-block-free, per the reference. */}
             <span
-              className="flex h-[59px] w-[59px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#E5E5E5] text-lg font-bold text-white"
+              className="flex h-[50px] w-[50px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#E5E5E5] text-lg font-bold text-white"
               style={{ backgroundColor: logoSrc ? undefined : themeColor }}
               aria-hidden
             >
@@ -456,11 +456,11 @@ function InvoicePreviewBody({
         {sampleBadge}
         {/* border/divider colour and avatar size confirmed against the Figma
           export for this screen: #F3F4F6 (not the #E5E7EB used elsewhere in
-          this file) and a 59px circle with a light #E5E5E5 ring. */}
+          this file) and a 60px circle with a light #E5E5E5 ring. */}
         <div className="flex items-start justify-between gap-4 border-b border-[#F3F4F6] pb-6">
           <div>
             <span
-              className="flex h-[59px] w-[59px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#E5E5E5] text-lg font-bold text-white"
+              className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#E5E5E5] text-lg font-bold text-white"
               style={{ backgroundColor: logoSrc ? undefined : themeColor }}
               aria-hidden
             >
@@ -665,12 +665,9 @@ export function InvoicePdfEditor({
     // descendant submit rather than a button associated across the DOM by a
     // `form="id"` attribute. See save-bar.tsx.
     <form action={formAction}>
-      <div className="mt-4">
-        <BrandingSubTabs active={activeSub} brandId={brand.id} />
-      </div>
       <div
         className="mt-4 flex w-full flex-col divide-y divide-[#E5E7EB] overflow-hidden rounded-2xl
-                 border border-[#E5E7EB] bg-white shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
+                 border border-[#E5E7EB] bg-[#F9FAFB99] shadow-sm lg:flex-row lg:divide-x lg:divide-y-0"
       >
         <section className="w-[350px] shrink-0 p-6">
           <div>
@@ -701,7 +698,7 @@ export function InvoicePdfEditor({
               divide-y draws the same light line under each of the four here,
               matching the reference design (and EmailReceiptEditor's own
               identical treatment of its three sections). */}
-            <div className="divide-y divide-[#E5E7EB]">
+            <div className="-mx-6 divide-y-2 divide-[#E5E7EB] px-6">
               <div className="pb-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -725,7 +722,8 @@ export function InvoicePdfEditor({
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         aria-label="Upload brand logo"
-                        className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white
+                        className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full
+                                 border border-[#E2E8F0] text-sm font-bold text-white
                                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-1"
                         style={{ backgroundColor: logoSrc ? undefined : themeColor }}
                       >
@@ -854,81 +852,85 @@ export function InvoicePdfEditor({
               </div>
 
               <div className="pt-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-bold text-ink-strong">Company info</p>
+                <div className="border-b-2 border-[#E5E7EB] pb-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-bold text-ink-strong">Company info</p>
+                    </div>
+                    <CollapseToggle
+                      open={companyInfoOpen}
+                      onToggle={() => setCompanyInfoOpen((open) => !open)}
+                      label="Company info"
+                    />
                   </div>
-                  <CollapseToggle
-                    open={companyInfoOpen}
-                    onToggle={() => setCompanyInfoOpen((open) => !open)}
-                    label="Company info"
-                  />
+
+                  {companyInfoOpen && (
+                    <div className="mt-4 space-y-4">
+                      <label className="block">
+                        <span className="mb-1 block text-sm font-medium text-ink-strong">
+                          Company name
+                        </span>
+                        <input
+                          value={companyName}
+                          onChange={(event) => setCompanyName(event.target.value)}
+                          className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1 block text-sm font-medium text-ink-strong">
+                          Address
+                        </span>
+                        <textarea
+                          value={companyAddress}
+                          onChange={(event) => setCompanyAddress(event.target.value)}
+                          rows={3}
+                          className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                        />
+                      </label>
+
+                      <label className="block" htmlFor={paymentTermsId}>
+                        <span className="mb-1 block text-sm font-medium text-ink-strong">
+                          Payment terms
+                        </span>
+                        <select
+                          id={paymentTermsId}
+                          value={paymentTerms}
+                          onChange={(event) =>
+                            setPaymentTerms(event.target.value as InvoicePdfPaymentTerms)
+                          }
+                          className="h-10 w-full appearance-none rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                        >
+                          {PAYMENT_TERMS_OPTIONS.map((option) => (
+                            <option key={option.key} value={option.key}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="block">
+                        <span className="mb-1 block text-sm font-medium text-ink-strong">
+                          Notes
+                        </span>
+                        <textarea
+                          value={notes}
+                          onChange={(event) => setNotes(event.target.value)}
+                          rows={4}
+                          className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
+                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
-
-                {companyInfoOpen && (
-                  <div className="mt-4 space-y-4">
-                    <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-ink-strong">
-                        Company name
-                      </span>
-                      <input
-                        value={companyName}
-                        onChange={(event) => setCompanyName(event.target.value)}
-                        className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                      />
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-ink-strong">
-                        Address
-                      </span>
-                      <textarea
-                        value={companyAddress}
-                        onChange={(event) => setCompanyAddress(event.target.value)}
-                        rows={3}
-                        className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                      />
-                    </label>
-
-                    <label className="block" htmlFor={paymentTermsId}>
-                      <span className="mb-1 block text-sm font-medium text-ink-strong">
-                        Payment terms
-                      </span>
-                      <select
-                        id={paymentTermsId}
-                        value={paymentTerms}
-                        onChange={(event) =>
-                          setPaymentTerms(event.target.value as InvoicePdfPaymentTerms)
-                        }
-                        className="h-10 w-full appearance-none rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                      >
-                        {PAYMENT_TERMS_OPTIONS.map((option) => (
-                          <option key={option.key} value={option.key}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="block">
-                      <span className="mb-1 block text-sm font-medium text-ink-strong">Notes</span>
-                      <textarea
-                        value={notes}
-                        onChange={(event) => setNotes(event.target.value)}
-                        rows={4}
-                        className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
-                               shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
-                               focus-visible:ring-slate-900 focus-visible:ring-offset-1"
-                      />
-                    </label>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -959,8 +961,9 @@ export function InvoicePdfEditor({
           </div>
         </section>
 
-        <section className="min-w-0 max-w-[640px] flex-1 p-6">
-          <div className="flex items-center justify-between">
+        <section className="min-w-0 flex-1 p-6">
+          <BrandingSubTabs active={activeSub} brandId={brand.id} className="mx-auto max-w-[640px]" />
+          <div className="mx-auto mt-4 flex max-w-[640px] items-center justify-between">
             <h3 className="text-base font-bold text-ink-strong">Preview</h3>
             {/* text-black, not the faded look opacity-50 used to give it —
               the border/bg alone (plus cursor-not-allowed and the title
@@ -978,7 +981,7 @@ export function InvoicePdfEditor({
             </button>
           </div>
 
-          <div className="mt-4 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+          <div className="mx-auto mt-3 max-w-[640px] overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-lg">
             <InvoicePreviewBody
               brand={brand}
               layout={layout}
