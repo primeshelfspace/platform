@@ -962,6 +962,93 @@ export function getZohoActivity(brandId: string): Promise<ZohoActivityEntry[]> {
   return apiFetch<ZohoActivityEntry[]>(`/brands/${brandId}/integrations/zoho/activity`);
 }
 
+// --- Zoho Books Sandbox (config testing on the connected org) ----------------
+//
+// Not a separate test environment with its own credentials — see
+// ZohoSandboxService's doc comment on the API side. These calls ride the same
+// brand's existing Zoho connection.
+
+export interface ZohoSandbox {
+  sandboxId: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+}
+
+export interface ZohoSandboxChange {
+  changeId: string;
+  componentId: string;
+  componentName: string;
+  action: string;
+  deploymentStatus: string;
+  module: string;
+  createdAt: string | null;
+  lastModifiedAt: string | null;
+}
+
+export function listZohoSandboxes(brandId: string): Promise<ZohoSandbox[]> {
+  return apiFetch<ZohoSandbox[]>(`/brands/${brandId}/integrations/zoho/sandboxes`);
+}
+
+export function createZohoSandbox(brandId: string, name?: string): Promise<ZohoSandbox> {
+  return apiFetch<ZohoSandbox>(`/brands/${brandId}/integrations/zoho/sandboxes`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteZohoSandbox(brandId: string, sandboxId: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/integrations/zoho/sandboxes/${sandboxId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function setZohoSandboxActive(
+  brandId: string,
+  sandboxId: string,
+  active: boolean,
+): Promise<ZohoSandbox> {
+  return apiFetch<ZohoSandbox>(
+    `/brands/${brandId}/integrations/zoho/sandboxes/${sandboxId}/activation`,
+    { method: 'PATCH', body: JSON.stringify({ active }) },
+  );
+}
+
+export function rebuildZohoSandbox(brandId: string, sandboxId: string): Promise<ZohoSandbox> {
+  return apiFetch<ZohoSandbox>(
+    `/brands/${brandId}/integrations/zoho/sandboxes/${sandboxId}/rebuild`,
+    { method: 'POST' },
+  );
+}
+
+export function getZohoSandboxChanges(
+  brandId: string,
+  sandboxId: string,
+  target: 'sandbox' | 'production',
+): Promise<ZohoSandboxChange[]> {
+  return apiFetch<ZohoSandboxChange[]>(
+    `/brands/${brandId}/integrations/zoho/sandboxes/${sandboxId}/changes?target=${target}`,
+  );
+}
+
+/** Read-only — reports what a real push would do, without doing it. */
+export function validateZohoSandboxPush(brandId: string, sandboxId: string): Promise<unknown> {
+  return apiFetch<unknown>(
+    `/brands/${brandId}/integrations/zoho/sandboxes/${sandboxId}/push/validate`,
+    { method: 'POST' },
+  );
+}
+
+/** The one call in this file that can change the brand's real production
+ * Zoho org — the API refuses this without `confirm: true`, and the panel
+ * only ever calls it from behind its own explicit confirmation dialog. */
+export function pushZohoSandboxToProduction(brandId: string, sandboxId: string): Promise<unknown> {
+  return apiFetch<unknown>(`/brands/${brandId}/integrations/zoho/sandboxes/${sandboxId}/push`, {
+    method: 'POST',
+    body: JSON.stringify({ confirm: true }),
+  });
+}
+
 // --- Dashboard --------------------------------------------------------------
 
 /** A resolved date-range preset (see lib/date-range.ts), as concrete bounds

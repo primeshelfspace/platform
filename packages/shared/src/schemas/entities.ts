@@ -330,6 +330,52 @@ export const zohoSyncSettingsSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: 'nothing to update' });
 export type ZohoSyncSettingsInput = z.infer<typeof zohoSyncSettingsSchema>;
 
+// --- Zoho Books Sandbox (settings/config testing, not a separate test org) --
+//
+// Confirmed against https://www.zoho.com/books/api/v3/sandbox/: this manages
+// a sandbox copy of the brand's *already-connected* production org (custom
+// functions/workflows/fields), gated by ZohoBooks.settings.* scopes — not a
+// parallel environment with its own credentials. See ZohoSandboxService.
+
+/** Optional label only — Zoho itself names/numbers the sandbox. */
+export const zohoSandboxCreateSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+});
+export type ZohoSandboxCreateInput = z.infer<typeof zohoSandboxCreateSchema>;
+
+export const zohoSandboxUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(100).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'nothing to update' });
+export type ZohoSandboxUpdateInput = z.infer<typeof zohoSandboxUpdateSchema>;
+
+export const zohoSandboxActivationSchema = z.object({
+  active: z.boolean(),
+});
+export type ZohoSandboxActivationInput = z.infer<typeof zohoSandboxActivationSchema>;
+
+export const zohoSandboxChangeReviewSchema = z.object({
+  reviewed: z.boolean(),
+});
+export type ZohoSandboxChangeReviewInput = z.infer<typeof zohoSandboxChangeReviewSchema>;
+
+export const zohoSandboxChangesScopeSchema = z.object({
+  target: z.enum(['sandbox', 'production']).default('sandbox'),
+});
+export type ZohoSandboxChangesScopeInput = z.infer<typeof zohoSandboxChangesScopeSchema>;
+
+/**
+ * The one schema standing between an admin click and a real production
+ * deployment. `confirm` must be the literal `true` — there is no default and
+ * no way to satisfy this by accident, matching the requirement that pushing
+ * sandbox changes to production is always an explicit administrative action.
+ */
+export const zohoSandboxPushConfirmSchema = z.object({
+  confirm: z.literal(true),
+});
+export type ZohoSandboxPushConfirmInput = z.infer<typeof zohoSandboxPushConfirmSchema>;
+
 // --- Payment gateways (Brand Settings → Payment Gateways) -------------------
 
 /** The four gateways the Payment Gateways tab can connect. STRIPE alone
