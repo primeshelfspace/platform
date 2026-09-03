@@ -790,7 +790,13 @@ export class ZohoBooksAdapter implements AccountingPort {
     sinceIso: string | null,
   ): Promise<{ invoices: ZohoInvoiceListItem[]; hasMorePage: boolean }> {
     const query: Record<string, string> = { page: String(page), per_page: '200' };
-    if (sinceIso) query.last_modified_time = sinceIso;
+    // Zoho rejects this filter outright ("Invalid value passed for
+    // last_modified_time", a 400 that fails the whole list call, not just one
+    // record) given plain ISO 8601 — no milliseconds, and a literal 'Z' or a
+    // colon-separated offset ('+00:00') both get rejected too. Their parser
+    // wants the numeric-offset form with no colon ('+0000'), confirmed
+    // against the live API rather than assumed from docs.
+    if (sinceIso) query.last_modified_time = sinceIso.replace(/\.\d{3}Z$/, '+0000');
 
     const body = await this.request<{
       invoices?: ZohoInvoiceListItem[];
