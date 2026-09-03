@@ -1,0 +1,8 @@
+# Normalise every tracked text file to LF in the repository, regardless of
+# a contributor's local core.autocrlf setting. Without this, a Windows
+# checkout with core.autocrlf=true (the default many editors leave in
+# place) re-commits CRLF line endings, which Prettier's default
+# endOfLine: "lf" then flags — CI's Format check was failing on files no
+# one had touched (README.md, packages/shared's whole tree) for exactly
+# this reason, independent of any one contributor's actual changes.
+* text=auto eol=lf

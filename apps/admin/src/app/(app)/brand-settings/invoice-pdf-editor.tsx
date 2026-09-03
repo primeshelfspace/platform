@@ -962,7 +962,11 @@ export function InvoicePdfEditor({
         </section>
 
         <section className="min-w-0 flex-1 p-6">
-          <BrandingSubTabs active={activeSub} brandId={brand.id} className="mx-auto max-w-[640px]" />
+          <BrandingSubTabs
+            active={activeSub}
+            brandId={brand.id}
+            className="mx-auto max-w-[640px]"
+          />
           <div className="mx-auto mt-4 flex max-w-[640px] items-center justify-between">
             <h3 className="text-base font-bold text-ink-strong">Preview</h3>
             {/* text-black, not the faded look opacity-50 used to give it —
