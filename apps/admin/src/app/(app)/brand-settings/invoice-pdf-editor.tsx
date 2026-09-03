@@ -698,8 +698,8 @@ export function InvoicePdfEditor({
               divide-y draws the same light line under each of the four here,
               matching the reference design (and EmailReceiptEditor's own
               identical treatment of its three sections). */}
-            <div className="-mx-6 divide-y-2 divide-[#E5E7EB] px-6">
-              <div className="pb-6">
+            <div className="-mx-6 divide-y-2 divide-[#E5E7EB]">
+              <div className="px-6 pb-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
@@ -749,7 +749,7 @@ export function InvoicePdfEditor({
                 )}
               </div>
 
-              <div className="py-6">
+              <div className="px-6 py-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-ink-strong">Invoice Layout</p>
@@ -797,7 +797,7 @@ export function InvoicePdfEditor({
                 )}
               </div>
 
-              <div className="py-6">
+              <div className="px-6 py-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-ink-strong">Invoice Fields</p>
@@ -852,7 +852,7 @@ export function InvoicePdfEditor({
               </div>
 
               <div className="pt-6">
-                <div className="border-b-2 border-[#E5E7EB] pb-6">
+                <div className="border-b-2 border-[#E5E7EB] px-6 pb-6">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-sm font-bold text-ink-strong">Company info</p>

@@ -588,8 +588,8 @@ export function PaymentPageEditor({
             line between them — this divide-y draws the same border-to-border
             line under each here, matching EmailReceiptEditor/InvoicePdfEditor's
             own identical treatment of their sections. */}
-          <div className="-mx-6 divide-y-2 divide-[#E5E7EB] px-6">
-            <div className="pb-6">
+          <div className="-mx-6 divide-y-2 divide-[#E5E7EB]">
+            <div className="px-6 pb-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
@@ -645,7 +645,7 @@ export function PaymentPageEditor({
             </div>
 
             <div className="pt-6">
-              <div className="border-b-2 border-[#E5E7EB] pb-6">
+              <div className="border-b-2 border-[#E5E7EB] px-6 pb-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-ink-strong">Page layout</p>

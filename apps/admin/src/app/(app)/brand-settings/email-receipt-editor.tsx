@@ -524,8 +524,8 @@ export function EmailReceiptEditor({
               email" below got a border, from its own separate <form>. This
               divide-y draws the same light line under each of the three
               here too, matching the reference design. */}
-            <div className="-mx-5 divide-y-2 divide-[#E5E7EB] px-5">
-              <div className="pb-4">
+            <div className="-mx-5 divide-y-2 divide-[#E5E7EB]">
+              <div className="px-5 pb-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h2 className="text-base font-bold text-ink-strong">Brand Elements</h2>
@@ -580,7 +580,7 @@ export function EmailReceiptEditor({
                 )}
               </div>
 
-              <div className="py-4">
+              <div className="px-5 py-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-ink-strong">Email Layout</p>
@@ -628,7 +628,7 @@ export function EmailReceiptEditor({
                 )}
               </div>
 
-              <div className="pt-4">
+              <div className="px-5 pt-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-ink-strong">Email Content</p>
@@ -725,8 +725,8 @@ export function EmailReceiptEditor({
             action directly instead — which also means the compact button in
             the preview panel can trigger the identical send by calling the
             same function, rather than reaching across the DOM by id. */}
-          <div className="-mx-5 mt-4 border-t-2 border-[#E5E7EB] px-5 pt-4">
-            <div className="border-b-2 border-[#E5E7EB] pb-4">
+          <div className="-mx-5 mt-4 border-t-2 border-[#E5E7EB] pt-4">
+            <div className="border-b-2 border-[#E5E7EB] px-5 pb-4">
               <p className="text-sm font-bold text-ink-strong">Send a test email</p>
               <p className="mt-1 text-sm text-ink-muted">
                 Preview exactly what your customers will receive.
