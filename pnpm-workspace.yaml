@@ -17,3 +17,4 @@ allowBuilds:
   # Optional native accelerator for msgpackr (BullMQ). The pure-JS path is fast
   # enough at this load and avoids a native build in every environment.
   msgpackr-extract: false
+  puppeteer: true # downloads bundled Chromium at install time — needed to render invoice PDFs server-side

@@ -10,4 +10,5 @@ export * from './company-domain.js';
 export * from './email-receipt-layout.js';
 export * from './email-receipt-html.js';
 export * from './email-receipt-template.js';
+export * from './invoice-pdf-html.js';
 export * from './date-display.js';

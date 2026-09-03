@@ -142,16 +142,31 @@ export function InvoiceDetailDrawer({
                 Resend
               </button>
             )}
-            <button
-              type="button"
-              disabled
-              title="PDF generation isn't built yet"
-              className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-[#D4D4D4]
-                         bg-white px-4 text-sm font-bold text-ink-muted opacity-60"
-            >
-              <Download className="h-4 w-4" aria-hidden />
-              Download PDF
-            </button>
+            {/* Same public, token-only route the payment page's own "Download
+              invoice" points at (apps/api's public/invoices/:token/pdf) —
+              draft invoices have no active public token yet, so this stays
+              disabled until the invoice is actually sent. */}
+            {invoice && status !== 'DRAFT' ? (
+              <a
+                href={`${process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000'}/public/invoices/${invoice.publicToken}/pdf`}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#D4D4D4] bg-white px-4
+                           text-sm font-bold text-ink-strong transition-colors hover:bg-surface-muted"
+              >
+                <Download className="h-4 w-4" aria-hidden />
+                Download PDF
+              </a>
+            ) : (
+              <button
+                type="button"
+                disabled
+                title={status === 'DRAFT' ? 'Send the invoice first to generate a PDF' : undefined}
+                className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-[#D4D4D4]
+                           bg-white px-4 text-sm font-bold text-ink-muted opacity-60"
+              >
+                <Download className="h-4 w-4" aria-hidden />
+                Download PDF
+              </button>
+            )}
             {status === 'DRAFT' && (
               <button
                 type="button"

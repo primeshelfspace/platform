@@ -34,6 +34,7 @@
     "bullmq": "^5.34.5",
     "ioredis": "^5.4.2",
     "nodemailer": "^6.9.16",
+    "puppeteer": "^25.9.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "stripe": "^17.5.0",
