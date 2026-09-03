@@ -152,6 +152,12 @@ export class ZohoConnectController {
     url.searchParams.set('access_type', 'offline'); // without this, no refresh_token comes back
     url.searchParams.set('prompt', 'consent');
     url.searchParams.set('state', state);
+    // Client id and redirect_uri are not secrets — logging them is what makes
+    // an "Invalid Redirect Uri" from Zoho diagnosable without guessing what
+    // this process actually had loaded (never log client_secret/code/tokens).
+    this.logger.log(
+      `zoho connect: brand ${brandId} redirect_uri=${this.env.ZOHO_REDIRECT_URI} client_id=${this.env.ZOHO_CLIENT_ID}`,
+    );
     response.redirect(url.toString());
   }
 
