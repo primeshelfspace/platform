@@ -4,6 +4,7 @@ import {
   invoiceDraftSchema,
   invoiceListQuerySchema,
   sendInvoiceEmailSchema,
+  type EmailReceiptLayout,
   type InvoiceDraftInput,
   type InvoiceListQuery,
   type Scope,
@@ -96,7 +97,13 @@ export class InvoicesController {
     @CurrentScope() scope: Scope,
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('id', zodPipe(idSchema)) id: string,
-  ): Promise<{ to: string; subject: string; body: string }> {
+  ): Promise<{
+    to: string;
+    subject: string;
+    body: string;
+    layout: EmailReceiptLayout;
+    accentColor: string;
+  }> {
     return this.invoices.prepareEmail(scope, brandId, id);
   }
 

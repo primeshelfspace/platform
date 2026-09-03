@@ -15,6 +15,7 @@ import {
   renderEmailReceiptTemplate,
   STORAGE_PORT,
   toCurrencyCode,
+  type EmailReceiptLayout,
   type InvoiceDraftInput,
   type InvoiceListQuery,
   type MailPort,
@@ -194,12 +195,25 @@ export class InvoicesService {
    * template against this real invoice, `to` from the customer's email on
    * file (empty if it has none, rather than throwing — the modal lets a
    * merchant type one in for exactly that case).
+   *
+   * Also carries the layout/accentColor this brand has saved, so the
+   * modal's "Preview Email" can render the same look sendEmail below will
+   * actually send — it used to hardcode a single generic layout, which
+   * meant a merchant who picked Hero or Minimal in Brand Settings saw
+   * Classic in the compose preview and assumed their choice was being
+   * ignored, even though the real send already honoured it correctly.
    */
   async prepareEmail(
     scope: Scope,
     brandId: string,
     id: string,
-  ): Promise<{ to: string; subject: string; body: string }> {
+  ): Promise<{
+    to: string;
+    subject: string;
+    body: string;
+    layout: EmailReceiptLayout;
+    accentColor: string;
+  }> {
     const { invoice, settings } = await this.prisma.withScope(scope, async (tx) => {
       const invoiceRow = await tx.invoice.findFirst({
         where: { id, brandId },
@@ -225,6 +239,8 @@ export class InvoicesService {
       to: invoice.customer.email ?? '',
       subject: renderEmailReceiptTemplate(settings.emailReceiptSubject, variables),
       body: renderEmailReceiptTemplate(settings.emailReceiptBody, variables),
+      layout: settings.emailReceiptLayout,
+      accentColor: settings.accentColor,
     };
   }
 

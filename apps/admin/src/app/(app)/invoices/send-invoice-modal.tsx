@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, Pencil, X } from 'lucide-react';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
-import type { Brand, InvoiceDetail } from '@/lib/api';
+import type { Brand, EmailReceiptLayout, InvoiceDetail } from '@/lib/api';
 import { getInvoiceEmailDraftAction, issueInvoiceAction, sendInvoiceEmailAction } from './actions';
 
 const PAYMENT_PUBLIC_URL = process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
@@ -28,45 +28,78 @@ type ComposeError =
 /**
  * The rendered email — a simplified, non-editable version of
  * EmailReceiptEditor's own PreviewBody (brand-settings/email-receipt-editor.tsx):
- * no layout/theme switching (this is one real send, not a template being
- * designed), and no variable-highlighting (to/subject/body here are already
- * fully substituted text, not a template with {{}} placeholders — nothing
- * left to highlight).
+ * no variable-highlighting (to/subject/body here are already fully
+ * substituted text, not a template with {{}} placeholders — nothing left to
+ * highlight), but it DOES switch header treatment on `layout`, the same
+ * three ways PreviewBody and the real send (renderEmailReceiptHtml) do —
+ * this used to hardcode the Classic header regardless of what a brand had
+ * saved, so picking Hero or Minimal in Brand Settings looked like it made no
+ * difference here even though the actual sent email already honoured it.
  */
 function EmailPreview({
   brand,
+  layout,
+  accentColor,
   subject,
   body,
   invoice,
   viewUrl,
 }: {
   brand: Brand;
+  layout: EmailReceiptLayout;
+  accentColor: string;
   subject: string;
   body: string;
   invoice: InvoiceDetail;
   viewUrl: string;
 }) {
   const currency = toCurrencyCode(invoice.currency);
+
+  const avatar = (size: string, fallbackBg?: string, borderClassName = '') => (
+    <span
+      className={`flex ${size} shrink-0 items-center justify-center overflow-hidden rounded-full text-sm
+                  font-bold text-white ${borderClassName}`}
+      style={{ backgroundColor: brand.logoUrl ? undefined : (fallbackBg ?? brand.themeColor) }}
+      aria-hidden
+    >
+      {brand.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={brand.logoUrl} alt="" className="h-full w-full object-cover" />
+      ) : (
+        initialOf(brand.displayName)
+      )}
+    </span>
+  );
+
   return (
     <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
-      <div style={{ backgroundColor: brand.themeColor }} className="h-1.5 w-full" aria-hidden />
-      <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-6 py-5">
-        <span
-          className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-bold text-white"
-          style={{ backgroundColor: brand.logoUrl ? undefined : brand.themeColor }}
-          aria-hidden
+      {(layout === 'HERO' || layout === 'CLASSIC') && (
+        <div style={{ backgroundColor: brand.themeColor }} className="h-1.5 w-full" aria-hidden />
+      )}
+
+      {layout === 'HERO' ? (
+        <div
+          style={{ backgroundColor: brand.themeColor }}
+          className="flex flex-col items-center gap-2 px-6 py-8"
         >
-          {brand.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={brand.logoUrl} alt="" className="h-full w-full object-cover" />
-          ) : (
-            initialOf(brand.displayName)
-          )}
-        </span>
-        <span className="block text-base font-bold text-ink-strong">{brand.displayName}</span>
-      </div>
+          {avatar('h-[60px] w-[60px]', 'rgba(255,255,255,0.2)', 'border-[3px] border-white')}
+          <span className="text-lg font-bold text-white">{brand.displayName}</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 border-b border-[#E5E7EB] px-6 py-5">
+          {avatar('h-10 w-10')}
+          <span className="block text-base font-bold text-ink-strong">{brand.displayName}</span>
+        </div>
+      )}
 
       <div className="p-6">
+        {layout === 'MINIMAL' && (
+          <div
+            style={{ backgroundColor: brand.themeColor }}
+            className="mb-4 h-1.5 w-10 rounded-full"
+            aria-hidden
+          />
+        )}
         <p className="text-base font-bold text-ink-strong">{subject}</p>
         <div className="mt-3 space-y-3 text-sm text-ink-muted">
           {body
@@ -83,7 +116,8 @@ function EmailPreview({
         <a
           href={viewUrl}
           onClick={(event) => event.preventDefault()}
-          className="mt-5 block w-full rounded-lg bg-black px-5 py-3.5 text-center text-sm font-bold text-white transition-opacity hover:opacity-90"
+          style={{ backgroundColor: accentColor }}
+          className="mt-5 block w-full rounded-lg px-5 py-3.5 text-center text-sm font-bold text-white transition-opacity hover:opacity-90"
         >
           View &amp; Pay Invoice
         </a>
@@ -140,6 +174,11 @@ export function SendInvoiceModal({
   const [cc, setCc] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  // What this brand has saved in Brand Settings > Branding — governs the
+  // real send (see InvoicesService.sendEmail), so the preview below must
+  // read from the same place rather than assuming a fixed look.
+  const [layout, setLayout] = useState<EmailReceiptLayout>('CLASSIC');
+  const [accentColor, setAccentColor] = useState('#171717');
   const [composeError, setComposeError] = useState<ComposeError | null>(null);
   const [sending, setSending] = useState(false);
 
@@ -159,6 +198,8 @@ export function SendInvoiceModal({
           setTo(result.data.to);
           setSubject(result.data.subject);
           setBody(result.data.body);
+          setLayout(result.data.layout);
+          setAccentColor(result.data.accentColor);
           if (!result.data.to) {
             setComposeError({
               kind: 'no-email',
@@ -268,6 +309,8 @@ export function SendInvoiceModal({
           ) : view === 'preview' ? (
             <EmailPreview
               brand={brand}
+              layout={layout}
+              accentColor={accentColor}
               subject={subject}
               body={body}
               invoice={invoice}

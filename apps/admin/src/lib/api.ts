@@ -589,18 +589,27 @@ export function getInvoiceEvents(brandId: string, id: string): Promise<InvoiceAc
 
 /** What the Send/Resend compose modal opens with — subject/body already
  * substituted from the brand's Email Receipt template against this real
- * invoice; `to` is the customer's email on file, or '' if it has none. */
+ * invoice; `to` is the customer's email on file, or '' if it has none.
+ * `layout`/`accentColor` are this brand's saved Email Receipt settings, so
+ * the modal's own preview can render the same look sendEmail will actually
+ * send, rather than a generic one that ignores what was picked in Brand
+ * Settings > Branding. */
 export interface InvoiceEmailDraft {
   to: string;
   subject: string;
   body: string;
+  layout: EmailReceiptLayout;
+  accentColor: string;
 }
 
 export function getInvoiceEmailPreview(brandId: string, id: string): Promise<InvoiceEmailDraft> {
   return apiFetch<InvoiceEmailDraft>(`/brands/${brandId}/invoices/${id}/email-preview`);
 }
 
-export interface InvoiceEmailSendInput extends InvoiceEmailDraft {
+export interface InvoiceEmailSendInput {
+  to: string;
+  subject: string;
+  body: string;
   /** '' (not omitted) means no CC — the compose modal's CC field is blank
    * by default and always sent, same as `to`/`subject`/`body`. */
   cc: string;
