@@ -17,7 +17,14 @@ export class InvoicePdfService implements OnModuleInit, OnModuleDestroy {
   private browser: Browser | null = null;
 
   async onModuleInit(): Promise<void> {
-    this.browser = await puppeteer.launch({ headless: true });
+    // --no-sandbox: Chrome's own sandbox needs unprivileged user namespaces,
+    // which recent Ubuntu locks down via AppArmor by default. Safe to drop
+    // here — this browser only ever renders our own invoice-pdf-html.ts
+    // output, never arbitrary/untrusted content from the web.
+    this.browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
     this.logger.log('headless chromium launched for invoice PDF rendering');
   }
 
