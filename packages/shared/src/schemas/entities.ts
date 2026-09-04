@@ -279,6 +279,11 @@ export const sendInvoiceEmailSchema = z.object({
   cc: z.union([emailSchema, z.literal('')]).optional(),
   subject: z.string().trim().min(1, 'subject is required').max(200),
   body: z.string().trim().min(1, 'body is required').max(5000),
+  /** The compose modal's "Attach Invoice PDF" checkbox — renders the same
+   * PDF the Invoices detail drawer's own Download PDF button produces and
+   * attaches it. Optional/omittable rather than defaulted false in the
+   * schema so older clients that don't send it at all keep working. */
+  attachPdf: z.boolean().optional(),
 });
 export type SendInvoiceEmailInput = z.infer<typeof sendInvoiceEmailSchema>;
 

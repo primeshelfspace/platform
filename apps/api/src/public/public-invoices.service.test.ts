@@ -18,6 +18,7 @@ import { CustomersService } from '../customers/customers.service.js';
 import { InvoicesService } from '../invoices/invoices.service.js';
 import { StripeAccountService } from '../integrations/stripe-account.service.js';
 import { LocalDiskAdapter } from '../adapters/storage/local-disk.adapter.js';
+import { InvoicePdfService } from './invoice-pdf.service.js';
 import { PublicInvoicesService } from './public-invoices.service.js';
 
 loadEnv();
@@ -35,6 +36,7 @@ describeWithDb('PublicInvoicesService', () => {
     createFakeMailPort(),
     env!,
     new LocalDiskAdapter(env!),
+    new InvoicePdfService(),
   );
   // Local disk is the right storage here: these tests assert invoice data, and
   // a real bucket would make them depend on credentials and the network.

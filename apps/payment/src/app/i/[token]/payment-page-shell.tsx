@@ -1,5 +1,6 @@
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
+import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
 import { DownloadIcon } from './icons';
 
@@ -18,9 +19,9 @@ import { DownloadIcon } from './icons';
  * `children` is the live payment form. This component only ever arranges
  * brand identity and invoice numbers around it, and never fabricates either.
  *
- * Where the editor's preview shows a "View Invoice" link, the real page shows
- * "Download invoice" — the same slot in the same design, pointing at the
- * invoice document route rather than back at itself.
+ * "Download invoice" links straight at the API's PDF endpoint (the same one
+ * the admin Invoices detail drawer's Download PDF button uses) rather than at
+ * an in-app route, so clicking it downloads the file instead of navigating.
  */
 export function PaymentPageShell({
   invoice,
@@ -170,7 +171,7 @@ function InvoiceSummary({
           </span>
         </span>
         <a
-          href={`/i/${token}/invoice`}
+          href={`${API_URL}/public/invoices/${token}/pdf`}
           className={`inline-flex items-center gap-1.5 rounded-lg border font-semibold ${
             light
               ? 'border-white bg-transparent px-4 py-2 text-sm text-white hover:bg-white/10'

@@ -9,6 +9,7 @@ import { Toggle } from '@/components/ui/toggle';
 import type { Brand, Customer, CustomerListRow, CustomerWithContacts, Invoice } from '@/lib/api';
 import { AddCustomerModal } from './add-customer-modal';
 import { CustomerDetailDrawer } from './customer-detail-drawer';
+import { EditCustomerModal } from './edit-customer-modal';
 import { getCustomerDetailAction } from './actions';
 
 /** How long the search box waits after the last keystroke before pushing a
@@ -58,6 +59,7 @@ export function CustomersPageClient({
     invoices: Invoice[];
   } | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
 
   function openCustomerDetail(row: CustomerListRow) {
     setDetailRow(row);
@@ -82,6 +84,17 @@ export function CustomersPageClient({
     setDetailRow(null);
     setDetail(null);
     setDetailError(null);
+    setEditOpen(false);
+  }
+
+  /** The Edit Details modal's success handler — merges the saved fields back
+   * into the open drawer (contactPersons rides along unchanged, since the
+   * edit form never touches it) and refreshes the list behind it, same as
+   * onCustomerCreated does after an add. */
+  function onCustomerUpdated(customer: Customer) {
+    setEditOpen(false);
+    setDetail((prev) => (prev ? { ...prev, customer: { ...prev.customer, ...customer } } : prev));
+    router.refresh();
   }
 
   // A brand switch or a searchParams change from elsewhere (browser back,
@@ -352,6 +365,7 @@ export function CustomersPageClient({
       <CustomerDetailDrawer
         open={detailRow !== null}
         onClose={closeCustomerDetail}
+        onEdit={() => setEditOpen(true)}
         brandName={brand?.displayName}
         loading={detailLoading}
         error={detailError}
@@ -360,6 +374,16 @@ export function CustomersPageClient({
         outstandingMinor={detailRow?.outstandingMinor ?? 0}
         currency={currency}
       />
+
+      {detail?.customer && (
+        <EditCustomerModal
+          open={editOpen}
+          brandId={detail.customer.brandId}
+          customer={detail.customer}
+          onClose={() => setEditOpen(false)}
+          onUpdated={onCustomerUpdated}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,16 @@
 import { randomBytes } from 'node:crypto';
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, type Invoice, type LineItem } from '@prisma/client';
 import {
+  formatQuantity,
+  IntegrationError,
   MAIL_PORT,
   PAYABLE_STATUSES,
   calculate,
@@ -13,6 +22,7 @@ import {
   quantityFrom,
   renderEmailReceiptHtml,
   renderEmailReceiptTemplate,
+  renderInvoicePdfHtml,
   STORAGE_PORT,
   toCurrencyCode,
   type EmailReceiptLayout,
@@ -22,11 +32,12 @@ import {
   type Scope,
   type StoragePort,
 } from '@fenwick/shared';
-import { formatBrandAddress, parseFrom } from '../brands/brand-settings.service.js';
+import { formatBrandAddress, parseFrom, toInvoicePdfSettings } from '../brands/brand-settings.service.js';
 import { brandLogoAttachment, LOGO_CID } from '../common/logo-upload.js';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
+import { InvoicePdfService } from '../public/invoice-pdf.service.js';
 
 export type InvoiceWithLines = Invoice & { lineItems: LineItem[] };
 
@@ -70,12 +81,15 @@ export interface InvoiceActivityEntry {
  */
 @Injectable()
 export class InvoicesService {
+  private readonly logger = new Logger(InvoicesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly queue: QueueService,
     @Inject(MAIL_PORT) private readonly mail: MailPort,
     @Inject(ENV) private readonly env: Env,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    private readonly invoicePdf: InvoicePdfService,
   ) {}
 
   /**
@@ -263,14 +277,20 @@ export class InvoicesService {
     scope: Scope,
     brandId: string,
     id: string,
-    input: { to: string; cc?: string; subject: string; body: string },
+    input: { to: string; cc?: string; subject: string; body: string; attachPdf?: boolean },
   ): Promise<void> {
     const invoice = await this.prisma.withScope(scope, (tx) =>
       tx.invoice.findFirst({
         where: { id, brandId },
         // customer only so the body can emphasise their name the way the
-        // editor's preview does; nothing else here reads it.
-        include: { customer: true, brand: { include: { settings: true } } },
+        // editor's preview does; nothing else here reads it. lineItems is
+        // only actually used when input.attachPdf is set, but it's cheap
+        // enough to always join rather than branch the query.
+        include: {
+          customer: true,
+          brand: { include: { settings: true } },
+          lineItems: { orderBy: { position: 'asc' } },
+        },
       }),
     );
     if (!invoice) throw new NotFoundException('invoice not found');
@@ -296,38 +316,114 @@ export class InvoicesService {
     };
     const linkUrl = `${this.env.PAYMENT_PUBLIC_URL}/i/${invoice.publicToken}`;
 
-    await this.mail.send({
-      to: [input.to],
-      cc: input.cc ? [input.cc] : undefined,
-      from: parseFrom(this.env.MAIL_FROM),
-      subject: input.subject,
-      text: [
-        input.body,
-        '',
-        `Invoice ${summary.invoiceNumber}`,
-        `Amount due: ${summary.amountDue}`,
-        `Due date: ${summary.dueDate}`,
-        '',
-        `View and pay: ${linkUrl}`,
-      ].join('\n'),
-      html: renderEmailReceiptHtml({
-        layout,
-        brandName: invoice.brand.displayName,
-        themeColor: invoice.brand.themeColor,
-        accentColor,
-        logoSrc: logo ? `cid:${LOGO_CID}` : null,
-        senderAddress: parseFrom(this.env.MAIL_FROM).address,
+    // The "Attach Invoice PDF" checkbox — same renderer and settings the
+    // Invoices detail drawer's own Download PDF button uses (invoice-pdf-html.ts
+    // via InvoicePdfService), so the attachment always matches what a
+    // merchant would get downloading it separately.
+    let pdfAttachment: { filename: string; contentType: string; content: Buffer } | undefined;
+    if (input.attachPdf) {
+      const invoicePdfSettings = branding
+        ? toInvoicePdfSettings(branding, invoice.brand)
+        : {
+            themeColor: invoice.brand.themeColor,
+            accentColor,
+            invoicePdfLayout: 'CLASSIC' as const,
+            showCompanyAddress: true,
+            showPaymentTerms: true,
+            showTaxBreakdown: true,
+            showNotes: true,
+            companyName: invoice.brand.displayName,
+            companyAddress: formatBrandAddress(invoice.brand.mailingAddress),
+            paymentTerms: 'DUE_ON_RECEIPT' as const,
+            notes: 'Thank you for your business. Please contact us with any questions.',
+          };
+
+      const html = renderInvoicePdfHtml({
+        number: invoice.number,
+        invoiceDate: formatDateForDisplay(invoice.invoiceDate),
+        dueDate: formatDateForDisplay(invoice.dueDate),
+        brand: {
+          displayName: invoice.brand.displayName,
+          themeColor: invoice.brand.themeColor,
+          logoUrl: logo ? `cid:${LOGO_CID}` : null,
+        },
+        customerName: invoice.customer.displayName,
+        customerAddress: formatBrandAddress(invoice.customer.billingAddress),
+        settings: invoicePdfSettings,
+        lines: invoice.lineItems.map((line) => ({
+          itemName: line.itemName,
+          quantityLabel: formatQuantity(line.quantity),
+          rateLabel: formatMinorForDisplay(Number(line.unitPriceMinor), currency),
+          amountLabel: formatMinorForDisplay(Number(line.lineTotalMinor), currency),
+        })),
+        subtotalLabel: formatMinorForDisplay(Number(invoice.subtotalMinor), currency),
+        totalLabel: formatMinorForDisplay(Number(invoice.totalMinor), currency),
+        balanceDueLabel: formatMinorForDisplay(Number(invoice.balanceMinor), currency),
+      });
+      const pdf = await this.invoicePdf.render(html);
+      pdfAttachment = {
+        filename: `invoice-${invoice.number}.pdf`,
+        contentType: 'application/pdf',
+        content: pdf,
+      };
+    }
+
+    const attachments = [logo, pdfAttachment].filter((a) => a !== null && a !== undefined);
+
+    try {
+      await this.mail.send({
+        to: [input.to],
+        cc: input.cc ? [input.cc] : undefined,
+        from: parseFrom(this.env.MAIL_FROM),
         subject: input.subject,
-        body: input.body,
-        variables: summary,
-        linkUrl,
-      }),
-      attachments: logo ? [logo] : undefined,
-      messageTag: { brandId, invoiceId: id, templateKey: 'email-receipt.invoice-send' },
-      // Every click is a deliberate send — a merchant clicking twice in a
-      // row (e.g. after fixing a typo'd address) expects two emails.
-      idempotencyKey: `invoice-send:${id}:${Date.now()}`,
-    });
+        text: [
+          input.body,
+          '',
+          `Invoice ${summary.invoiceNumber}`,
+          `Amount due: ${summary.amountDue}`,
+          `Due date: ${summary.dueDate}`,
+          '',
+          `View and pay: ${linkUrl}`,
+        ].join('\n'),
+        html: renderEmailReceiptHtml({
+          layout,
+          brandName: invoice.brand.displayName,
+          themeColor: invoice.brand.themeColor,
+          accentColor,
+          logoSrc: logo ? `cid:${LOGO_CID}` : null,
+          senderAddress: parseFrom(this.env.MAIL_FROM).address,
+          subject: input.subject,
+          body: input.body,
+          variables: summary,
+          linkUrl,
+        }),
+        attachments: attachments.length > 0 ? attachments : undefined,
+        messageTag: { brandId, invoiceId: id, templateKey: 'email-receipt.invoice-send' },
+        // Every click is a deliberate send — a merchant clicking twice in a
+        // row (e.g. after fixing a typo'd address) expects two emails.
+        idempotencyKey: `invoice-send:${id}:${Date.now()}`,
+      });
+    } catch (error) {
+      // The adapter's own failure (auth rejected, connection refused, a
+      // recipient the provider bounced) must not reach the caller as Nest's
+      // generic 500 — that's the one thing a merchant actually needs to see
+      // to fix a send. Logged here (brand/invoice/provider context, never
+      // SMTP_PASSWORD or any other credential — those never flow into
+      // IntegrationError.message/providerMessage in the first place) so a
+      // failure is diagnosable from server logs even when the client only
+      // gets the safe, generic message below.
+      const providerMessage =
+        error instanceof IntegrationError ? error.providerMessage : undefined;
+      this.logger.error(
+        `invoice email send failed — brand ${brandId} invoice ${id}: ${
+          providerMessage ?? (error instanceof Error ? error.message : String(error))
+        }`,
+      );
+      throw new BadGatewayException(
+        'Could not send this email — the mail server rejected it or could not be reached. ' +
+          'Check the SMTP configuration and try again.',
+      );
+    }
 
     await this.prisma.withScope(scope, (tx) =>
       tx.invoiceEvent.create({

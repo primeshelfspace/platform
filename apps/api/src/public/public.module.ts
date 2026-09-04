@@ -12,5 +12,9 @@ import { PublicInvoicesService } from './public-invoices.service.js';
   imports: [PaymentsModule, IntegrationsModule, StorageModule],
   controllers: [PublicInvoicesController],
   providers: [PublicInvoicesService, InvoicePdfService],
+  // InvoicePdfService is also used by InvoicesModule, to attach a PDF to a
+  // sent invoice email — one headless-Chromium instance for the whole
+  // process, not a second one per module.
+  exports: [InvoicePdfService],
 })
 export class PublicModule {}

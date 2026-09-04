@@ -221,9 +221,8 @@ function InvoiceSummary({
           </span>
         </span>
         {/* "Download invoice", not "View Invoice": the real page's counterpart
-          of this slot links to the invoice document (PaymentPageShell in
-          apps/payment), because the payment page is now what the emailed
-          button opens and the document is what sits behind it. */}
+          of this slot (PaymentPageShell in apps/payment) links straight at the
+          API's PDF endpoint, so it downloads the file rather than navigating. */}
         {invoice?.invoiceUrl && (
           <a
             href={invoice.invoiceUrl}

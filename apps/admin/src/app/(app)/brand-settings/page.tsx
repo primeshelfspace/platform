@@ -82,6 +82,8 @@ export const dynamic = 'force-dynamic';
 
 // Same convention as the Invoices list page's "Open payment page" link.
 const PAYMENT_PUBLIC_URL = process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
+// Same convention as the Invoices detail drawer's "Download PDF" button.
+const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
 
 /**
  * What the Payment Page tab's preview shows: this brand's actual most recent
@@ -118,11 +120,10 @@ async function loadPreviewInvoice(brandId: string): Promise<PaymentPagePreviewIn
     settledLabel,
     // A draft has no public token worth linking to yet.
     viewUrl: latest.status === 'DRAFT' ? null : `${PAYMENT_PUBLIC_URL}/i/${latest.publicToken}`,
-    // The same link one level down: the payment page is what the emailed
-    // button opens, the invoice document is what its "Download invoice"
-    // action opens.
+    // The payment page is what the emailed button opens; its own "Download
+    // invoice" action opens this — the real PDF, not another page.
     invoiceUrl:
-      latest.status === 'DRAFT' ? null : `${PAYMENT_PUBLIC_URL}/i/${latest.publicToken}/invoice`,
+      latest.status === 'DRAFT' ? null : `${API_URL}/public/invoices/${latest.publicToken}/pdf`,
   };
 }
 

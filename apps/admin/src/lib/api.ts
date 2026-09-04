@@ -457,6 +457,17 @@ export function createCustomer(brandId: string, input: CustomerFormInput): Promi
   });
 }
 
+export function updateCustomer(
+  brandId: string,
+  id: string,
+  input: CustomerFormInput,
+): Promise<Customer> {
+  return apiFetch<Customer>(`/brands/${brandId}/customers/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
 // --- Invoices (FR-INV) --------------------------------------------------------
 
 export interface LineItem {
@@ -613,6 +624,8 @@ export interface InvoiceEmailSendInput {
   /** '' (not omitted) means no CC — the compose modal's CC field is blank
    * by default and always sent, same as `to`/`subject`/`body`. */
   cc: string;
+  /** The compose modal's "Attach Invoice PDF" checkbox. */
+  attachPdf?: boolean;
 }
 
 /** The Send/Resend compose modal's actual submit — sends exactly what's on

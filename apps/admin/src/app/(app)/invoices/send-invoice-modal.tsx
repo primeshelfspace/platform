@@ -174,6 +174,7 @@ export function SendInvoiceModal({
   const [cc, setCc] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [attachPdf, setAttachPdf] = useState(false);
   // What this brand has saved in Brand Settings > Branding — governs the
   // real send (see InvoicesService.sendEmail), so the preview below must
   // read from the same place rather than assuming a fixed look.
@@ -192,6 +193,7 @@ export function SendInvoiceModal({
     setView('compose');
     setComposeError(null);
     setCc('');
+    setAttachPdf(false);
     getInvoiceEmailDraftAction(brand.id, invoice.id)
       .then((result) => {
         if (result.ok) {
@@ -255,6 +257,7 @@ export function SendInvoiceModal({
       cc: trimmedCc,
       subject,
       body,
+      attachPdf,
     });
     setSending(false);
     if (result.ok) {
@@ -403,11 +406,13 @@ export function SendInvoiceModal({
                 />
               </label>
 
-              <label
-                className="flex cursor-not-allowed items-center gap-2 text-sm text-ink-muted opacity-60"
-                title="PDF generation isn't built yet"
-              >
-                <input type="checkbox" disabled className="h-4 w-4 rounded border-[#D4D4D4]" />
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-strong">
+                <input
+                  type="checkbox"
+                  checked={attachPdf}
+                  onChange={(event) => setAttachPdf(event.target.checked)}
+                  className="h-4 w-4 rounded border-[#D4D4D4] accent-black"
+                />
                 Attach Invoice PDF
               </label>
             </div>

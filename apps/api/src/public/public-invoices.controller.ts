@@ -104,6 +104,10 @@ export class PublicInvoicesController {
     const pdf = await this.invoicePdf.render(html);
     response.setHeader('content-type', 'application/pdf');
     response.setHeader('content-disposition', `attachment; filename="invoice-${view.number}.pdf"`);
+    // The balance and the brand's Invoice PDF layout can both change between
+    // one download and the next; without this a browser that already cached
+    // this exact URL will hand back a stale PDF instead of asking again.
+    response.setHeader('cache-control', 'no-store');
     response.send(pdf);
   }
 

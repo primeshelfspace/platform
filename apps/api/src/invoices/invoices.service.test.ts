@@ -14,6 +14,7 @@ import { getEnv } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { createFakeQueueService } from '../infra/queue/fake-queue.service.js';
 import { CustomersService } from '../customers/customers.service.js';
+import { InvoicePdfService } from '../public/invoice-pdf.service.js';
 import { InvoicesService } from './invoices.service.js';
 
 loadEnv();
@@ -26,7 +27,16 @@ describeWithDb('InvoicesService', () => {
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
   const mail = createFakeMailPort();
-  const invoices = new InvoicesService(prisma, queue, mail, env!, new LocalDiskAdapter(env!));
+  // No onModuleInit call — fine as long as no test here exercises
+  // attachPdf: true, which is the only path that touches the browser.
+  const invoices = new InvoicesService(
+    prisma,
+    queue,
+    mail,
+    env!,
+    new LocalDiskAdapter(env!),
+    new InvoicePdfService(),
+  );
   const owner = new PrismaClient({
     datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
   });

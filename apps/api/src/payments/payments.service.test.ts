@@ -17,6 +17,7 @@ import { createFakeQueueService } from '../infra/queue/fake-queue.service.js';
 import { FakeGatewayAdapter } from '../adapters/gateway/fake-gateway.adapter.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { InvoicesService } from '../invoices/invoices.service.js';
+import { InvoicePdfService } from '../public/invoice-pdf.service.js';
 import { PaymentsService } from './payments.service.js';
 
 loadEnv();
@@ -35,6 +36,7 @@ describeWithDb('PaymentsService', () => {
     createFakeMailPort(),
     env!,
     new LocalDiskAdapter(env!),
+    new InvoicePdfService(),
   );
   const payments = new PaymentsService(prisma, env!, gateway, queue);
   const owner = new PrismaClient({

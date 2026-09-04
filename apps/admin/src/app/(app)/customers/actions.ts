@@ -4,6 +4,7 @@ import {
   createCustomer,
   getCustomer,
   listInvoices,
+  updateCustomer,
   type Customer,
   type CustomerAddress,
   type CustomerFormInput,
@@ -66,6 +67,67 @@ export async function createCustomerAction(
     return { customer };
   } catch (error) {
     return { error: describeActionError(error, 'Could not create this customer.') };
+  }
+}
+
+export interface UpdateCustomerState {
+  readonly error?: string;
+  readonly customer?: Customer;
+}
+
+/**
+ * The Edit Details modal's action — a sibling of createCustomerAction above,
+ * same field parsing/derivation, PATCH instead of POST. Kept as its own
+ * independent function rather than sharing the parsing logic, same
+ * duplicate-rather-than-couple reasoning this file's other action already
+ * follows: each stays safe to change without touching the other.
+ */
+export async function updateCustomerAction(
+  brandId: string,
+  customerId: string,
+  _prevState: UpdateCustomerState,
+  formData: FormData,
+): Promise<UpdateCustomerState> {
+  const type = formData.get('type') === 'INDIVIDUAL' ? 'INDIVIDUAL' : 'BUSINESS';
+  const companyName = emptyToNull(formData.get('companyName'));
+  const firstName = emptyToNull(formData.get('firstName'));
+  const lastName = emptyToNull(formData.get('lastName'));
+
+  const joinedName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  const displayName = companyName ?? (joinedName || null);
+
+  if (!displayName) {
+    return {
+      error: type === 'BUSINESS' ? 'Enter a company name.' : 'Enter a first or last name.',
+    };
+  }
+
+  const billingAddress = addressFromForm(formData, 'billing');
+  const shippingAddress: CustomerAddress | null =
+    formData.get('sameAsBilling') === 'on' ? billingAddress : addressFromForm(formData, 'shipping');
+
+  const input: CustomerFormInput = {
+    type,
+    // Not collected by this form, same as the Add Customer modal it mirrors
+    // — but unlike a fresh create, an edit must not silently null out a
+    // salutation the customer already had (e.g. from a Zoho sync), so this
+    // round-trips whatever the form was given rather than hardcoding null.
+    salutation: emptyToNull(formData.get('salutation')),
+    firstName,
+    lastName,
+    companyName,
+    displayName,
+    email: emptyToNull(formData.get('email')),
+    phone: emptyToNull(formData.get('phone')),
+    billingAddress,
+    shippingAddress,
+  };
+
+  try {
+    const customer = await updateCustomer(brandId, customerId, input);
+    return { customer };
+  } catch (error) {
+    return { error: describeActionError(error, 'Could not save these changes.') };
   }
 }
 
