@@ -32,7 +32,11 @@ import {
   type Scope,
   type StoragePort,
 } from '@fenwick/shared';
-import { formatBrandAddress, parseFrom, toInvoicePdfSettings } from '../brands/brand-settings.service.js';
+import {
+  formatBrandAddress,
+  parseFrom,
+  toInvoicePdfSettings,
+} from '../brands/brand-settings.service.js';
 import { brandLogoAttachment, LOGO_CID } from '../common/logo-upload.js';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -412,8 +416,7 @@ export class InvoicesService {
       // IntegrationError.message/providerMessage in the first place) so a
       // failure is diagnosable from server logs even when the client only
       // gets the safe, generic message below.
-      const providerMessage =
-        error instanceof IntegrationError ? error.providerMessage : undefined;
+      const providerMessage = error instanceof IntegrationError ? error.providerMessage : undefined;
       this.logger.error(
         `invoice email send failed — brand ${brandId} invoice ${id}: ${
           providerMessage ?? (error instanceof Error ? error.message : String(error))

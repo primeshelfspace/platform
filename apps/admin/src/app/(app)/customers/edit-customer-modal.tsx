@@ -221,7 +221,9 @@ export function EditCustomerModal({
     if (!open) return;
     setCustomerType(customer.type);
     setBillingCountry(customer.billingAddress?.country ?? 'US');
-    setShippingCountry(customer.shippingAddress?.country ?? customer.billingAddress?.country ?? 'US');
+    setShippingCountry(
+      customer.shippingAddress?.country ?? customer.billingAddress?.country ?? 'US',
+    );
     setSameAsBilling(addressesMatch(customer.billingAddress, customer.shippingAddress));
     setFieldErrors({});
     firstFieldRef.current?.focus();
