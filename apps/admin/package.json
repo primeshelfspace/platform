@@ -5,7 +5,7 @@
   "description": "Authenticated admin application for merchant staff.",
   "scripts": {
     "dev": "node ../../scripts/with-env.mjs next dev --port '${ADMIN_PORT:-3000}'",
-    "build": "next build",
+    "build": "node ../../scripts/with-env.mjs next build",
     "start": "node ../../scripts/with-env.mjs next start --port '${ADMIN_PORT:-3000}'",
     "typecheck": "tsc --noEmit",
     "lint": "next lint"

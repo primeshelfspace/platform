@@ -22,6 +22,13 @@ export function parseValue(raw) {
  * Loads the root .env into process.env. An ambient value always wins, so
  * `API_PORT=4002 pnpm dev` overrides the file rather than the reverse.
  *
+ * NODE_ENV is deliberately never loaded from the file: every command this
+ * wraps (next dev, next build, next start, prisma, ...) already picks the
+ * right one on its own, and forcing the file's NODE_ENV=development onto a
+ * spawned `next build` corrupts the production output (Next prerenders the
+ * app in dev mode and fails on the synthesized /404 page with a spurious
+ * "<Html> should not be imported outside of pages/_document" error).
+ *
  * Returns true when a .env was found. Callers that only need to read a couple
  * of settings (ports, say) get the same parse as the apps themselves, which is
  * the point: two implementations of "read the root .env" drift silently.
@@ -34,7 +41,7 @@ export function loadRootEnv(envPath = path.join(ROOT, '.env')) {
     const eq = line.indexOf('=');
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
-    if (key in process.env) continue;
+    if (key === 'NODE_ENV' || key in process.env) continue;
     process.env[key] = parseValue(line.slice(eq + 1));
   }
   return true;
