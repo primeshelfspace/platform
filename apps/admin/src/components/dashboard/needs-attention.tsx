@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useTransition } from 'react';
+import { useTransition } from 'react';
 import { AlertTriangle, CheckCircle2, FileClock, RefreshCw } from 'lucide-react';
+import { toast } from '@fenwick/ui/toast';
 import { retrySyncJobAction } from '../../app/(app)/dashboard-actions';
 import type { NeedsAttentionItem, NeedsAttentionResult } from '@/lib/api';
 
@@ -20,7 +21,6 @@ const ICON: Record<NeedsAttentionItem['kind'], typeof AlertTriangle> = {
 
 function RetryButton({ syncJobId }: { syncJobId: string }) {
   const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-1">
@@ -29,9 +29,8 @@ function RetryButton({ syncJobId }: { syncJobId: string }) {
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
-            setError(null);
             const result = await retrySyncJobAction(syncJobId);
-            if (!result.ok) setError(result.error);
+            if (!result.ok) toast.error(result.error);
           })
         }
         className="inline-flex items-center gap-1.5 rounded-md bg-ink-strong px-3 py-1.5 text-xs font-semibold text-ink-inverse hover:opacity-90 disabled:opacity-60"
@@ -39,7 +38,6 @@ function RetryButton({ syncJobId }: { syncJobId: string }) {
         <RefreshCw className={`h-3.5 w-3.5 ${pending ? 'animate-spin' : ''}`} aria-hidden />
         {pending ? 'Retrying…' : 'Retry'}
       </button>
-      {error && <span className="max-w-[160px] text-right text-[11px] text-danger">{error}</span>}
     </div>
   );
 }

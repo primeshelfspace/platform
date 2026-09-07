@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown, Plus, ScrollText, Search } from 'lucide-react';
+import { toast } from '@fenwick/ui/toast';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import type { Brand, Invoice, InvoiceActivityEntry, InvoiceDetail } from '@/lib/api';
@@ -129,6 +130,17 @@ export function InvoicesPageClient({
   // another tab) should still show up in the box, not just this box's own edits.
   useEffect(() => setSearchTerm(search), [search]);
 
+  // createInvoiceAction redirects here on success (a server action redirect
+  // crosses the page boundary before any client code can react), so the
+  // confirmation has to be carried through the URL rather than fired where
+  // the action itself resolves.
+  useEffect(() => {
+    if (justCreated) {
+      toast.success('Invoice created and issued.', { description: 'Its payment link is below.' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justCreated]);
+
   function pushParams(next: Record<string, string | null>) {
     const query = new URLSearchParams(searchParams.toString());
     for (const [key, value] of Object.entries(next)) {
@@ -235,12 +247,6 @@ export function InvoicesPageClient({
         </div>
       ) : (
         <>
-          {justCreated && (
-            <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
-              Invoice created and issued. Its payment link is below.
-            </div>
-          )}
-
           <div className="mb-3 flex items-center gap-6 border-b border-[#E5E7EB]">
             {TABS.map((t) => {
               const active = t.key === tab;

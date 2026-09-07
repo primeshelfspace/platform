@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ChevronRight, Link2, Loader2, Unlink } from 'lucide-react';
+import { toast } from '@fenwick/ui/toast';
 import type {
   PaymentGatewayProvider,
   PaymentGatewaySummary,
@@ -184,24 +185,21 @@ function GatewayList({
 }) {
   const router = useRouter();
   const [connecting, setConnecting] = useState<PaymentGatewayProvider | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   async function connect(provider: Extract<PaymentGatewayProvider, 'PAYPAL'>) {
     setConnecting(provider);
-    setError(null);
     const result = await connectPaymentGatewayAction(brandId, provider);
     setConnecting(null);
     if (result.ok) {
       onConnected(provider);
       router.push(`${listHref}&gateway=${provider.toLowerCase()}`);
     } else {
-      setError(result.error);
+      toast.error(result.error);
     }
   }
 
   return (
     <div className="mt-4 space-y-3">
-      {error && <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">{error}</div>}
       {gateways.map((gateway) => (
         <div
           key={gateway.provider}
@@ -301,7 +299,6 @@ function GatewayDetail({
   const router = useRouter();
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [disconnectError, setDisconnectError] = useState<string | null>(null);
   const [connectingOther, setConnectingOther] = useState<PaymentGatewayProvider | null>(null);
 
   const dialogRef = useDismissablePanel<HTMLDivElement>(confirmingDisconnect, () =>
@@ -321,7 +318,6 @@ function GatewayDetail({
 
   async function confirmDisconnect() {
     setDisconnecting(true);
-    setDisconnectError(null);
     const result = await disconnectPaymentGatewayAction(brandId, gateway.provider);
     setDisconnecting(false);
     if (result.ok) {
@@ -333,7 +329,7 @@ function GatewayDetail({
       );
       router.push(listHref);
     } else {
-      setDisconnectError(result.error);
+      toast.error(result.error);
     }
   }
 
@@ -469,11 +465,6 @@ function GatewayDetail({
                 immediately, and any recurring payments through it will be affected. Its transaction
                 history stays right where it is, and you can reconnect at any time.
               </p>
-              {disconnectError && (
-                <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">
-                  {disconnectError}
-                </div>
-              )}
               <div className="mt-5 flex justify-end gap-3">
                 <button
                   type="button"
@@ -520,7 +511,6 @@ function AuthorizeNetConnectModal({
   const [transactionKey, setTransactionKey] = useState('');
   const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const dialogRef = useDismissablePanel<HTMLFormElement>(true, onClose);
 
@@ -535,7 +525,6 @@ function AuthorizeNetConnectModal({
   async function submit(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
-    setError(null);
     const result = await connectAuthorizeNetAction(brandId, {
       apiLoginId: apiLoginId.trim(),
       transactionKey: transactionKey.trim(),
@@ -545,7 +534,7 @@ function AuthorizeNetConnectModal({
     if (result.ok) {
       onConnected();
     } else {
-      setError(result.error);
+      toast.error(result.error);
     }
   }
 
@@ -568,10 +557,6 @@ function AuthorizeNetConnectModal({
           From your Authorize.net Merchant Interface: Account &rarr; Settings &rarr; Security
           Settings &rarr; API Credentials &amp; Keys.
         </p>
-
-        {error && (
-          <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">{error}</div>
-        )}
 
         <div className="mt-4 space-y-3">
           <label className="block">
@@ -649,7 +634,6 @@ function PaymentMethodsSection({
 }) {
   const [settings, setSettings] = useState(initial);
   const [savingField, setSavingField] = useState<keyof PaymentMethodSettings | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const save = useCallback(
     async (field: keyof PaymentMethodSettings, checked: boolean) => {
@@ -657,14 +641,13 @@ function PaymentMethodsSection({
       const next = { ...settings, [field]: checked };
       setSettings(next);
       setSavingField(field);
-      setError(null);
       const result = await updatePaymentMethodSettingsAction(brandId, next);
       setSavingField(null);
       if (result.ok) {
         setSettings(result.data);
       } else {
         setSettings(previous);
-        setError(result.error);
+        toast.error(result.error);
       }
     },
     [brandId, settings],
@@ -676,9 +659,6 @@ function PaymentMethodsSection({
       <p className="mt-1 text-sm text-ink-muted">
         Which methods this brand&rsquo;s payment page offers customers.
       </p>
-      {error && (
-        <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">{error}</div>
-      )}
       <div className="mt-2">
         <Toggle
           layout="row"

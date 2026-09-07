@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { Building2, Plus } from 'lucide-react';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { chooseBrandStructureAction, type BrandStructureState } from './actions';
 
 const initialState: BrandStructureState = {};
@@ -64,6 +65,7 @@ function StructureCard({
 
 export function StructureForm() {
   const [state, formAction, pending] = useActionState(chooseBrandStructureAction, initialState);
+  useFormStatusToast(state);
   const [selected, setSelected] = useState<Structure | null>(null);
 
   return (
@@ -84,15 +86,6 @@ export function StructureForm() {
           />
         ))}
       </div>
-
-      {state.error && (
-        <p
-          role="alert"
-          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {state.error}
-        </p>
-      )}
 
       <button
         type="submit"

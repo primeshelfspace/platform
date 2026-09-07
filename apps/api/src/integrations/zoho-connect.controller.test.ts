@@ -76,8 +76,11 @@ describe('ZohoConnectController.callback', () => {
 
     await controller.callback('auth-code', state, undefined, response);
 
-    expect(sync.enqueueBackfill).toHaveBeenCalledWith(BRAND_ID);
-    expect(queue.enqueue).toHaveBeenCalledWith('sync', 'zoho-pull-brand', { brandId: BRAND_ID });
+    expect(sync.enqueueBackfill).toHaveBeenCalledWith(BRAND_ID, { skipPayments: true });
+    expect(queue.enqueue).toHaveBeenCalledWith('sync', 'zoho-pull-brand', {
+      brandId: BRAND_ID,
+      skipPayments: true,
+    });
     expect(response.redirect).toHaveBeenCalledWith(
       expect.stringContaining(`brandId=${BRAND_ID}&connected=1`),
     );

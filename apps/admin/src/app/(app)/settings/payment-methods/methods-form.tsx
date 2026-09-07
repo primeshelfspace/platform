@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import type { PaymentMethodSettings } from '@/lib/api';
 import { Toggle } from '@/components/ui/toggle';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { updatePaymentMethodsAction, type ToggleMethodsState } from './actions';
 
 const initialState: ToggleMethodsState = {};
@@ -15,6 +16,7 @@ export function MethodsForm({
   initial: PaymentMethodSettings;
 }) {
   const [state, formAction, pending] = useActionState(updatePaymentMethodsAction, initialState);
+  useFormStatusToast(state);
   const [settings, setSettings] = useState(initial);
 
   function set<K extends keyof PaymentMethodSettings>(key: K, value: boolean) {
@@ -75,12 +77,6 @@ export function MethodsForm({
           At least one method must stay enabled, or every invoice for this brand becomes unpayable.
         </div>
       )}
-      {state.error && (
-        <div className="mt-4 rounded-md bg-danger-surface p-3 text-sm text-danger">
-          {state.error}
-        </div>
-      )}
-
       <button
         type="submit"
         disabled={pending || !anyEnabled}

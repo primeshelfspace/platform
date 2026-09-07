@@ -9,9 +9,10 @@ import type {
   IntegrationError as IntegrationErrorType,
   Scope,
 } from '@fenwick/shared';
-import { IntegrationError } from '@fenwick/shared';
+import { IntegrationError, isSupportedCurrency } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
+import { RedisService } from '../infra/redis/redis.service.js';
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
 import { ZohoBooksAdapter } from '../adapters/accounting/zoho-books.adapter.js';
 import { IntegrationConnectionService } from './integration-connection.service.js';
@@ -88,6 +89,7 @@ export class ZohoSyncService {
     private readonly connections: IntegrationConnectionService,
     private readonly systemScope: SystemScopeResolver,
     private readonly queue: QueueService,
+    private readonly redis: RedisService,
   ) {}
 
   /**
@@ -115,19 +117,35 @@ export class ZohoSyncService {
    * the ledger of record, so the worst case is a duplicate entry a bookkeeper
    * merges by hand, not a financial error.
    */
-  async enqueueBackfill(brandId: string): Promise<BackfillCounts> {
+  async enqueueBackfill(
+    brandId: string,
+    opts?: { readonly skipPayments?: boolean },
+  ): Promise<BackfillCounts> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-backfill');
     if (!scope) throw new ConflictException('unknown brand');
 
     const connection = await this.connections.buildAccountingConnection(scope, brandId);
     if (!connection) throw new ConflictException('brand is not connected to Zoho');
 
+    // computeBackfillTargets treats an empty payments array correctly on its
+    // own: with nothing covering them, every eligible invoice is pushed
+    // directly instead of via a payment's cascade — no other branching needed.
+    const skipPayments = opts?.skipPayments ?? false;
+
     const [rawPayments, invoices, customers] = await this.prisma.withScope(scope, (tx) =>
       Promise.all([
-        tx.payment.findMany({
-          where: { brandId, zohoPaymentId: null, status: { in: [...SETTLED_PAYMENT_STATUSES] } },
-          select: { id: true, invoiceId: true, invoice: { select: { customerId: true } } },
-        }),
+        skipPayments
+          ? Promise.resolve<
+              Array<{ id: string; invoiceId: string; invoice: { customerId: string } }>
+            >([])
+          : tx.payment.findMany({
+              where: {
+                brandId,
+                zohoPaymentId: null,
+                status: { in: [...SETTLED_PAYMENT_STATUSES] },
+              },
+              select: { id: true, invoiceId: true, invoice: { select: { customerId: true } } },
+            }),
         tx.invoice.findMany({
           where: { brandId, zohoInvoiceId: null, status: { not: 'DRAFT' } },
           select: { id: true, customerId: true },
@@ -215,6 +233,21 @@ export class ZohoSyncService {
         currency: customer.brand.currency as AccountingCustomer['currency'],
       };
 
+      const unsyncedReason = this.validateCustomerForSync(dto);
+      if (unsyncedReason) {
+        await this.markUnsynced(scope, 'customer', customer.id, unsyncedReason);
+        throw new IntegrationError({
+          message: unsyncedReason,
+          errorClass: 'VALIDATION',
+          provider: 'zoho-books',
+        });
+      }
+
+      // FR-ZHO-webhook loop prevention: written before the outbound call so
+      // the webhook Zoho fires right back for this same write — recognised
+      // by ZohoWebhookService via the same (brandId, customer.id, 'customer')
+      // key — is dropped as a duplicate instead of being re-applied.
+      await this.redis.markSyncAction(brandId, customer.id, 'customer');
       const result = await this.zoho.upsertCustomer(connection, dto);
       await this.prisma.withScope(scope, (tx) =>
         tx.customer.update({
@@ -227,6 +260,7 @@ export class ZohoSyncService {
             // with whatever Zoho derived from contact_name (Customer
             // .zohoSyncedVersion in schema.prisma spells out why).
             zohoSyncedVersion: result.updatedAt ?? null,
+            zohoUnsyncedReason: null,
           },
         }),
       );
@@ -294,6 +328,18 @@ export class ZohoSyncService {
         status: this.toAccountingInvoiceStatus(invoice.status),
       };
 
+      const unsyncedReason = this.validateInvoiceForSync(dto);
+      if (unsyncedReason) {
+        await this.markUnsynced(scope, 'invoice', invoice.id, unsyncedReason);
+        throw new IntegrationError({
+          message: unsyncedReason,
+          errorClass: 'VALIDATION',
+          provider: 'zoho-books',
+        });
+      }
+
+      // See pushCustomer's own comment on this same call.
+      await this.redis.markSyncAction(brandId, invoice.id, 'invoice');
       const result = await this.zoho.pushInvoice(connection, dto);
       await this.prisma.withScope(scope, (tx) =>
         tx.invoice.update({
@@ -305,6 +351,7 @@ export class ZohoSyncService {
             // pull reads our own write back as a changed invoice and rewrites
             // subtotalMinor to include them. See Invoice.zohoSyncedVersion.
             zohoSyncedVersion: result.updatedAt ?? null,
+            zohoUnsyncedReason: null,
           },
         }),
       );
@@ -362,13 +409,80 @@ export class ZohoSyncService {
         reference: refreshed.gatewayReference,
       };
 
+      const unsyncedReason = this.validatePaymentForSync(dto);
+      if (unsyncedReason) {
+        await this.markUnsynced(scope, 'payment', refreshed.id, unsyncedReason);
+        throw new IntegrationError({
+          message: unsyncedReason,
+          errorClass: 'VALIDATION',
+          provider: 'zoho-books',
+        });
+      }
+
+      // See pushCustomer's own comment on this same call. Payment sync is
+      // platform → Zoho only, so this key only ever guards against a
+      // duplicate redelivery of the invoice.status_updated echo it causes —
+      // there is no separate payment webhook to drop (FR-ZHO-webhook).
+      await this.redis.markSyncAction(brandId, refreshed.id, 'payment');
       const result = await this.zoho.pushPayment(connection, dto);
       await this.prisma.withScope(scope, (tx) =>
         tx.payment.update({
           where: { id: refreshed.id },
-          data: { zohoPaymentId: result.remoteId },
+          data: { zohoPaymentId: result.remoteId, zohoUnsyncedReason: null },
         }),
       );
+    });
+  }
+
+  /** FR-ZHO-webhook mandatory-field check. Only what Zoho's own Create
+   * Contact would itself reject as incomplete — everything else is optional
+   * both here and there. */
+  private validateCustomerForSync(customer: AccountingCustomer): string | null {
+    if (!customer.displayName.trim()) return 'customer has no display name';
+    return null;
+  }
+
+  /** FR-ZHO-webhook mandatory-field check. The currency rule mirrors
+   * ZohoPullService's own refusal of an unsupported-currency invoice
+   * (isSupportedCurrency) — the same corruption risk applies in reverse:
+   * pushing an amount under the wrong currency label misrepresents it in
+   * Zoho just as importing one would here. */
+  private validateInvoiceForSync(invoice: AccountingInvoice): string | null {
+    if (!isSupportedCurrency(invoice.currency)) {
+      return `invoice currency ${invoice.currency} is not supported for Zoho sync`;
+    }
+    if (invoice.lines.length === 0) return 'invoice has no line items';
+    if (!invoice.number.trim()) return 'invoice has no invoice number';
+    if (!invoice.customerRemoteId) return 'invoice has no synced customer to bill';
+    return null;
+  }
+
+  private validatePaymentForSync(payment: AccountingPayment): string | null {
+    if (payment.amountMinor <= 0) return 'payment amount must be greater than zero';
+    if (!isSupportedCurrency(payment.currency)) {
+      return `payment currency ${payment.currency} is not supported for Zoho sync`;
+    }
+    return null;
+  }
+
+  /** FR-ZHO-webhook "Outbound... mandatory fields": recorded on the record
+   * itself (not just the SyncJob row runJob writes below) so the reason is
+   * visible wherever that customer/invoice/payment itself is shown, not only
+   * on the Sync Dashboard. */
+  private async markUnsynced(
+    scope: Scope,
+    kind: 'customer' | 'invoice' | 'payment',
+    id: string,
+    reason: string,
+  ): Promise<void> {
+    await this.prisma.withScope(scope, async (tx) => {
+      if (kind === 'customer') {
+        await tx.customer.update({ where: { id }, data: { zohoUnsyncedReason: reason } });
+      } else if (kind === 'invoice') {
+        await tx.invoice.update({ where: { id }, data: { zohoUnsyncedReason: reason } });
+      } else {
+        await tx.payment.update({ where: { id }, data: { zohoUnsyncedReason: reason } });
+      }
     });
   }
 

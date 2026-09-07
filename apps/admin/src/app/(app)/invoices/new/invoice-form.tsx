@@ -7,6 +7,7 @@ import {
   TOKEN_FIELD_INPUT_CLASS as inputClass,
   TOKEN_FIELD_LABEL_CLASS as labelClass,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { createInvoiceAction, type CreateInvoiceState } from './actions';
 
 const initialState: CreateInvoiceState = {};
@@ -38,6 +39,7 @@ export function InvoiceForm({
   customers: Customer[];
 }) {
   const [state, formAction, pending] = useActionState(createInvoiceAction, initialState);
+  useFormStatusToast(state);
   const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -201,10 +203,6 @@ export function InvoiceForm({
         <span className={labelClass}>Notes (optional, shown to the customer)</span>
         <textarea name="notes" rows={2} className={inputClass} />
       </label>
-
-      {state.error && (
-        <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">{state.error}</div>
-      )}
 
       <div className="flex items-center gap-3">
         <button

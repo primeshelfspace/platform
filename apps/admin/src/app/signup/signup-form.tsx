@@ -7,6 +7,7 @@ import {
   FIELD_INVALID_BORDER as invalidBorder,
   FIELD_VALID_BORDER_SECONDARY as validBorder,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { signupAction, type SignupState } from './actions';
 
 const initialState: SignupState = {};
@@ -24,6 +25,7 @@ interface FieldErrors {
 
 export function SignupForm() {
   const [state, formAction, pending] = useActionState(signupAction, initialState);
+  useFormStatusToast(state);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const nameId = useId();
   const emailId = useId();
@@ -96,15 +98,6 @@ export function SignupForm() {
             </p>
           )}
         </label>
-
-        {state.error && (
-          <p
-            role="alert"
-            className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          >
-            {state.error}
-          </p>
-        )}
       </div>
 
       <button

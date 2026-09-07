@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import type { Brand } from '@/lib/api';
 import { addBrandAction, type AddBrandState } from '@/app/(app)/brands/actions';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { Modal } from '@/components/ui/modal';
 import {
   STATIC_FIELD_INPUT_CLASS as inputClass,
@@ -36,6 +37,7 @@ export function AddBrandModal({
 }) {
   const action = addBrandAction.bind(null, brands);
   const [state, formAction, pending] = useActionState(action, initialState);
+  useFormStatusToast(state);
   const formRef = useRef<HTMLFormElement>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
@@ -103,15 +105,6 @@ export function AddBrandModal({
             />
           </div>
         </label>
-
-        {state.error && (
-          <p
-            role="alert"
-            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          >
-            {state.error}
-          </p>
-        )}
 
         <div className="flex justify-end gap-3 pt-2">
           <button

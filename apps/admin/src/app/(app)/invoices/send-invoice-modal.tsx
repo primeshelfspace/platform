@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, Pencil, X } from 'lucide-react';
+import { toast } from '@fenwick/ui/toast';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import type { Brand, EmailReceiptLayout, InvoiceDetail } from '@/lib/api';
@@ -248,6 +249,7 @@ export function SendInvoiceModal({
       if (!issueResult.ok) {
         setSending(false);
         setComposeError({ kind: 'send-failed', message: issueResult.error });
+        toast.error(issueResult.error);
         return;
       }
     }
@@ -265,6 +267,7 @@ export function SendInvoiceModal({
       onClose();
     } else {
       setComposeError({ kind: 'send-failed', message: result.error });
+      toast.error(result.error);
     }
   }
 
@@ -333,7 +336,7 @@ export function SendInvoiceModal({
                 <span className="font-semibold text-ink-strong">{brand.displayName}</span>
               </div>
 
-              {composeError && (
+              {composeError && composeError.kind !== 'send-failed' && (
                 <div
                   role="alert"
                   className="flex items-start gap-2 rounded-md bg-danger-surface p-3 text-sm text-danger"

@@ -6,7 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
-  Download,
+  ExternalLink,
   FileCheck2,
   Landmark,
   Monitor,
@@ -14,6 +14,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import type { Brand, PaymentPageDisplaySettings, PaymentPageLayout } from '@/lib/api';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { savePaymentPageDisplayAction, type PaymentPageDisplayState } from './actions';
 import { BrandingSubTabs, type BrandingSubTab } from './tabs';
 import { SaveBar } from './save-bar';
@@ -42,7 +43,7 @@ export interface PaymentPagePreviewInvoice {
    * link yet. Read by the Email Receipt editor's preview, not by this one. */
   viewUrl: string | null;
   /** The invoice document one level down, behind the payment page's own
-   * "Download invoice" action — which is the link this preview draws. Null
+   * "View Invoice" action — which is the link this preview draws. Null
    * for a draft, for the same reason. */
   invoiceUrl: string | null;
 }
@@ -188,8 +189,27 @@ function InvoiceSummary({
     </span>
   );
 
+  const viewInvoiceButton = invoice?.invoiceUrl && (
+    <a
+      href={invoice.invoiceUrl}
+      target="_blank"
+      rel="noreferrer"
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md border font-semibold ${
+        light
+          ? 'border-white bg-transparent px-4 py-2 text-sm text-white hover:bg-white/10'
+          : 'border-blue-600 bg-white py-[7px] pl-[10px] pr-2 text-xs text-blue-600 hover:bg-blue-50'
+      }`}
+    >
+      View Invoice
+      <ExternalLink className={light ? 'h-4 w-4' : 'h-3 w-3'} aria-hidden />
+    </a>
+  );
+
   return (
-    <div className={centered ? 'text-center' : ''}>
+    <div className={`relative ${centered ? 'text-center' : ''}`}>
+      {!light && !centered && viewInvoiceButton && (
+        <div className="absolute right-0 top-0">{viewInvoiceButton}</div>
+      )}
       {light ? (
         <p className="text-base font-bold leading-snug text-white">
           <span className="block">Invoice {data.number}</span>
@@ -199,7 +219,7 @@ function InvoiceSummary({
           </span>
         </p>
       ) : (
-        <p className="text-sm text-ink-muted">
+        <p className={`text-sm text-ink-muted ${centered ? '' : 'pr-28'}`}>
           Invoice {data.number} &bull; {data.customerName}
           {sampleBadge}
         </p>
@@ -215,29 +235,12 @@ function InvoiceSummary({
         } ${centered ? 'flex-col items-center' : light ? 'flex-col items-start' : 'items-center justify-between'}`}
       >
         <span>
-          Due Date:{' '}
+          <span className={light ? undefined : 'font-semibold text-ink-strong'}>Due Date:</span>{' '}
           <span className={light ? undefined : 'font-semibold text-orange-600'}>
             {data.dueDateLabel}
           </span>
         </span>
-        {/* "Download invoice", not "View Invoice": the real page's counterpart
-          of this slot (PaymentPageShell in apps/payment) links straight at the
-          API's PDF endpoint, so it downloads the file rather than navigating. */}
-        {invoice?.invoiceUrl && (
-          <a
-            href={invoice.invoiceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className={`inline-flex items-center gap-1.5 rounded-lg border font-semibold ${
-              light
-                ? 'border-white bg-transparent px-4 py-2 text-sm text-white hover:bg-white/10'
-                : 'border-blue-600 bg-white px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50'
-            }`}
-          >
-            Download invoice
-            <Download className={light ? 'h-4 w-4' : 'h-3 w-3'} aria-hidden />
-          </a>
-        )}
+        {(centered || light) && viewInvoiceButton}
       </div>
       {isSample && (
         <p
@@ -484,7 +487,8 @@ function PreviewBody({
       )}
       <div className="p-6">
         <InvoiceSummary invoice={invoice} centered={layout === 'CENTERED'} />
-        <div className="mt-6">{paymentForm}</div>
+        <div className="my-6 border-t border-[#E5E7EB]" />
+        {paymentForm}
       </div>
     </>
   );
@@ -505,6 +509,7 @@ export function PaymentPageEditor({
 }) {
   const action = savePaymentPageDisplayAction.bind(null, brand);
   const [state, formAction, pending] = useActionState(action, initialState);
+  useFormStatusToast(state);
 
   const [themeColor, setThemeColor] = useState(brand.themeColor);
   const [accentColor, setAccentColor] = useState(display.accentColor);
@@ -693,31 +698,6 @@ export function PaymentPageEditor({
               </div>
             </div>
           </div>
-
-          {state.error && (
-            <p
-              role="alert"
-              className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-            >
-              {state.error}
-            </p>
-          )}
-          {state.warning && (
-            <p
-              role="status"
-              className="mt-6 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
-            >
-              {state.warning}
-            </p>
-          )}
-          {/* Not shown alongside a warning: the warning text ("saved, but the
-              logo did not upload") already says the save itself went through
-              — a green "Saved." next to it reads as everything having worked. */}
-          {state.success && !state.warning && (
-            <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              Saved.
-            </p>
-          )}
 
           {/* Save/Discard live in the sticky bar below, outside this card —
             see EmailReceiptEditor's identical bar for the full rationale. */}

@@ -223,7 +223,10 @@ export class ZohoConnectController {
       // than silently losing it, but it must never block on the jobs
       // actually running.
       try {
-        await this.sync.enqueueBackfill(brandId);
+        // skipPayments: a fresh connection should only call Zoho for
+        // customers and invoices — payments sync normally from here on via
+        // the scheduled tick and the manual "pull now"/"backfill" actions.
+        await this.sync.enqueueBackfill(brandId, { skipPayments: true });
       } catch (backfillError) {
         this.logger.warn(
           `initial backfill enqueue failed for brand ${brandId}: ${backfillError instanceof Error ? backfillError.message : backfillError}`,
@@ -237,7 +240,7 @@ export class ZohoConnectController {
       // failure here is logged, not fatal to the connect itself, since the
       // cron will still pick it up on schedule regardless.
       try {
-        await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId });
+        await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId, skipPayments: true });
       } catch (pullError) {
         this.logger.warn(
           `initial pull enqueue failed for brand ${brandId}: ${pullError instanceof Error ? pullError.message : pullError}`,

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
+import { Toaster } from '@fenwick/ui/toast';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -31,6 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
        * reported — which matters more here than anywhere else in the system. */}
       <body className="min-h-full" suppressHydrationWarning>
         {children}
+        <Toaster />
       </body>
     </html>
   );

@@ -110,4 +110,39 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     if (count === 1) await this.cache.expire(key, windowSeconds);
     return count <= limit;
   }
+
+  /**
+   * FR-ZHO-webhook loop prevention and duplicate-delivery protection.
+   *
+   * Written before every outbound Zoho push (ZohoSyncService) so the webhook
+   * this platform's own write causes Zoho to fire right back — the "echo" —
+   * is recognised inside this key's 30s TTL and dropped instead of being
+   * re-applied as though it were an independent edit made in Zoho. The same
+   * key is written again once an inbound webhook is actually applied, so a
+   * plain redelivery of that same webhook within the window is dropped too.
+   *
+   * Keyed by the platform's own record id, not Zoho's — the id both
+   * directions agree on before any push completes (a push always targets an
+   * already-existing local row; see ZohoWebhookService's own comment on why
+   * the "new record" ambiguity can never apply to a platform-originated
+   * write).
+   */
+  async markSyncAction(
+    brandId: string,
+    recordId: string,
+    action: string,
+    ttlSeconds = 30,
+  ): Promise<void> {
+    await this.cache.set(this.syncGuardKey(brandId, recordId, action), '1', 'EX', ttlSeconds);
+  }
+
+  async hasSyncAction(brandId: string, recordId: string, action: string): Promise<boolean> {
+    return (await this.cache.exists(this.syncGuardKey(brandId, recordId, action))) === 1;
+  }
+
+  /** `{brand_id}:{record_id}:{action}`, namespaced against this cache's other
+   * keys (zoho:access-token:…, ratelimit:brand:…) the same way those already are. */
+  private syncGuardKey(brandId: string, recordId: string, action: string): string {
+    return `zoho:sync-guard:${brandId}:${recordId}:${action}`;
+  }
 }

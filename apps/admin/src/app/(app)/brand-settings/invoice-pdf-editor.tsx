@@ -9,6 +9,7 @@ import type {
   InvoicePdfSettings,
 } from '@/lib/api';
 import { Toggle } from '@/components/ui/toggle';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { saveInvoicePdfSettingsAction, type InvoicePdfState } from './actions';
 import { BrandingSubTabs, type BrandingSubTab } from './tabs';
 import { SaveBar } from './save-bar';
@@ -558,6 +559,7 @@ export function InvoicePdfEditor({
 }) {
   const saveAction = saveInvoicePdfSettingsAction.bind(null, brand);
   const [state, formAction, pending] = useActionState(saveAction, initialState);
+  useFormStatusToast(state);
 
   const [themeColor, setThemeColor] = useState(brand.themeColor);
   const [layout, setLayout] = useState<InvoicePdfLayout>(settings.invoicePdfLayout);
@@ -933,32 +935,6 @@ export function InvoicePdfEditor({
                 </div>
               </div>
             </div>
-
-            {state.error && (
-              <p
-                role="alert"
-                className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-              >
-                {state.error}
-              </p>
-            )}
-            {state.warning && (
-              <p
-                role="status"
-                className="mt-6 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
-              >
-                {state.warning}
-              </p>
-            )}
-            {/* Not shown alongside a warning: the warning text ("saved, but
-                the logo did not upload") already says the save itself went
-                through — a green "Saved." next to it reads as everything
-                having worked. */}
-            {state.success && !state.warning && (
-              <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                Saved.
-              </p>
-            )}
 
             {/* Save/Discard live in the sticky bar below, outside this card —
               see EmailReceiptEditor's identical bar for the full rationale. */}

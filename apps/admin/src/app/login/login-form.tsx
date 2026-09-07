@@ -7,6 +7,7 @@ import {
   FIELD_INVALID_BORDER as invalidBorder,
   FIELD_VALID_BORDER_SECONDARY as validBorder,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { loginAction, type LoginState } from './actions';
 
 const initialState: LoginState = {};
@@ -24,6 +25,7 @@ interface FieldErrors {
 
 export function LoginForm({ returnTo }: { returnTo: string }) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
+  useFormStatusToast(state);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const emailId = useId();
   const passwordId = useId();
@@ -117,15 +119,6 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
           You&rsquo;ll be required to reset your password after logging in.
         </p>
       </div>
-
-      {state.error && (
-        <p
-          role="alert"
-          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {state.error}
-        </p>
-      )}
 
       <button
         type="submit"

@@ -5,6 +5,7 @@ import {
   TOKEN_FIELD_INPUT_CLASS as inputClass,
   TOKEN_FIELD_LABEL_CLASS as labelClass,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { createCustomerAction, type CreateCustomerState } from './actions';
 
 const initialState: CreateCustomerState = {};
@@ -46,6 +47,7 @@ function AddressFields({ prefix, disabled }: { prefix: string; disabled?: boolea
 
 export function CustomerForm({ brandId }: { brandId: string }) {
   const [state, formAction, pending] = useActionState(createCustomerAction, initialState);
+  useFormStatusToast(state);
   const [type, setType] = useState<'BUSINESS' | 'INDIVIDUAL'>('BUSINESS');
   const [sameAsBilling, setSameAsBilling] = useState(true);
 
@@ -117,10 +119,6 @@ export function CustomerForm({ brandId }: { brandId: string }) {
         </label>
         <AddressFields prefix="shipping" disabled={sameAsBilling} />
       </fieldset>
-
-      {state.error && (
-        <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">{state.error}</div>
-      )}
 
       <div className="flex items-center gap-3">
         <button

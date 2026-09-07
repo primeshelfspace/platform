@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Users } from 'lucide-react';
+import { toast } from '@fenwick/ui/toast';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { Toggle } from '@/components/ui/toggle';
 import type { Brand, Customer, CustomerListRow, CustomerWithContacts, Invoice } from '@/lib/api';
@@ -45,7 +46,6 @@ export function CustomersPageClient({
   const [searchTerm, setSearchTerm] = useState(search);
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [justAdded, setJustAdded] = useState<Customer | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // The detail slide-over. `detailRow` (the list row already on screen) drives
@@ -142,7 +142,7 @@ export function CustomersPageClient({
 
   function onCustomerCreated(customer: Customer) {
     setAddOpen(false);
-    setJustAdded(customer);
+    toast.success(`${customer.displayName} was added.`);
     router.refresh();
   }
 
@@ -189,12 +189,6 @@ export function CustomersPageClient({
         </div>
       ) : (
         <>
-          {justAdded && (
-            <div className="mb-4 rounded-md bg-success-surface p-3 text-sm text-success">
-              {justAdded.displayName} was added.
-            </div>
-          )}
-
           <div className="mb-3 flex items-center justify-between gap-4">
             <div className="relative max-w-xs flex-1">
               <Search

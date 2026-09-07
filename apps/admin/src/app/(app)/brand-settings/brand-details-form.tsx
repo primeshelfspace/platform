@@ -10,6 +10,7 @@ import {
   COMPACT_FIELD_INPUT_CLASS as inputClass,
   STATIC_FIELD_LABEL_CLASS as labelClass,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { saveBrandDetailsAction, type BrandDetailsState } from './actions';
 import { SaveBar } from './save-bar';
 
@@ -249,6 +250,7 @@ function AddressFields({
 export function BrandDetailsForm({ brand }: { brand: Brand }) {
   const action = saveBrandDetailsAction.bind(null, brand);
   const [state, formAction, pending] = useActionState(action, initialState);
+  useFormStatusToast(state);
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoError, setLogoError] = useState<string | undefined>();
@@ -499,30 +501,6 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
           </div>
         </section>
 
-        {state.error && (
-          <p
-            role="alert"
-            className="max-w-2xl rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          >
-            {state.error}
-          </p>
-        )}
-        {state.warning && (
-          <p
-            role="status"
-            className="max-w-2xl rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
-          >
-            {state.warning}
-          </p>
-        )}
-        {/* Not shown alongside a warning: the warning text ("saved, but the
-            logo did not upload") already says the save itself went through —
-            a green "Saved." next to it reads as everything having worked. */}
-        {state.success && !state.warning && (
-          <p className="max-w-2xl rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Saved.
-          </p>
-        )}
       </fieldset>
       <SaveBar dirty={isDirty} pending={pending} onDiscard={handleDiscard} />
     </form>

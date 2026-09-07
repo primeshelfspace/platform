@@ -15,7 +15,7 @@
 
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: ['@fenwick/shared'],
+  transpilePackages: ['@fenwick/shared', '@fenwick/ui'],
 
   // No build id derived from source paths, no source maps in production: the
   // payment bundle should reveal as little about internals as possible.

@@ -87,7 +87,12 @@ describe('ZohoBooksAdapter.fromZohoAddress', () => {
     expect(adapter.fromZohoAddress({})).toBeNull();
   });
 
-  it('maps every field to our AccountingAddress shape', () => {
+  it('maps the street/city/state/zip fields, leaving line2 and country null', () => {
+    // FR-ZHO-webhook address rules: line2 is never reconstructed from Zoho's
+    // street2 (inbound sync cannot honestly un-concatenate a value that may
+    // itself be this platform's own push), and country is platform-only —
+    // ZohoPullService is responsible for preserving whatever country value
+    // already exists locally rather than trusting this null.
     expect(
       adapter.fromZohoAddress({
         address: '1 Harbour Street',
@@ -99,11 +104,11 @@ describe('ZohoBooksAdapter.fromZohoAddress', () => {
       }),
     ).toEqual({
       line1: '1 Harbour Street',
-      line2: 'Suite 4',
+      line2: null,
       city: 'Boston',
       region: 'MA',
       postalCode: '02110',
-      country: 'US',
+      country: null,
     });
   });
 

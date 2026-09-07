@@ -2,7 +2,7 @@ import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
-import { DownloadIcon } from './icons';
+import { ExternalLinkIcon } from './icons';
 
 /**
  * The hosted payment page's brand chrome.
@@ -19,9 +19,9 @@ import { DownloadIcon } from './icons';
  * `children` is the live payment form. This component only ever arranges
  * brand identity and invoice numbers around it, and never fabricates either.
  *
- * "Download invoice" links straight at the API's PDF endpoint (the same one
- * the admin Invoices detail drawer's Download PDF button uses) rather than at
- * an in-app route, so clicking it downloads the file instead of navigating.
+ * "View Invoice" links straight at the API's PDF endpoint (the same one the
+ * admin Invoices detail drawer's Download PDF button uses) rather than at an
+ * in-app route.
  */
 export function PaymentPageShell({
   invoice,
@@ -80,7 +80,8 @@ export function PaymentPageShell({
 
         <div className="p-6">
           <InvoiceSummary invoice={invoice} token={token} centered={layout === 'CENTERED'} />
-          <div className="mt-6">{children}</div>
+          <div className="my-6 border-t border-[#E5E7EB]" />
+          {children}
         </div>
       </div>
     </main>
@@ -138,15 +139,32 @@ function InvoiceSummary({
 }) {
   const amountLabel = formatMinorForDisplay(invoice.balanceMinor, toCurrencyCode(invoice.currency));
 
+  const viewInvoiceButton = (
+    <a
+      href={`${API_URL}/public/invoices/${token}/pdf`}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-md border font-semibold ${
+        light
+          ? 'border-white bg-transparent px-4 py-2 text-sm text-white hover:bg-white/10'
+          : 'border-blue-600 bg-white py-[7px] pl-[10px] pr-2 text-xs text-blue-600 hover:bg-blue-50'
+      }`}
+    >
+      View Invoice
+      <ExternalLinkIcon className={light ? 'h-4 w-4' : 'h-3 w-3'} />
+    </a>
+  );
+
   return (
-    <div className={centered ? 'text-center' : ''}>
+    <div className={`relative ${centered ? 'text-center' : ''}`}>
+      {!light && !centered && (
+        <div className="absolute right-0 top-0">{viewInvoiceButton}</div>
+      )}
       {light ? (
         <p className="text-base font-bold leading-snug text-white">
           <span className="block">Invoice {invoice.number}</span>
           <span className="block">{invoice.customerName}</span>
         </p>
       ) : (
-        <p className="text-sm text-ink-muted">
+        <p className={`text-sm text-ink-muted ${centered ? '' : 'pr-28'}`}>
           Invoice {invoice.number} &bull; {invoice.customerName}
         </p>
       )}
@@ -165,22 +183,12 @@ function InvoiceSummary({
         }`}
       >
         <span>
-          Due Date:{' '}
+          <span className={light ? undefined : 'font-semibold text-ink-strong'}>Due Date:</span>{' '}
           <span className={light ? undefined : 'font-semibold text-orange-600'}>
             {formatDateForDisplay(invoice.dueDate)}
           </span>
         </span>
-        <a
-          href={`${API_URL}/public/invoices/${token}/pdf`}
-          className={`inline-flex items-center gap-1.5 rounded-lg border font-semibold ${
-            light
-              ? 'border-white bg-transparent px-4 py-2 text-sm text-white hover:bg-white/10'
-              : 'border-blue-600 bg-white px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50'
-          }`}
-        >
-          Download invoice
-          <DownloadIcon className={light ? 'h-4 w-4' : 'h-3 w-3'} />
-        </a>
+        {(centered || light) && viewInvoiceButton}
       </div>
     </div>
   );

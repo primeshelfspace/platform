@@ -17,23 +17,61 @@ export class InvoicePdfService implements OnModuleInit, OnModuleDestroy {
   private browser: Browser | null = null;
 
   async onModuleInit(): Promise<void> {
-    // --no-sandbox: Chrome's own sandbox needs unprivileged user namespaces,
-    // which recent Ubuntu locks down via AppArmor by default. Safe to drop
-    // here — this browser only ever renders our own invoice-pdf-html.ts
-    // output, never arbitrary/untrusted content from the web.
-    this.browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    this.logger.log('headless chromium launched for invoice PDF rendering');
+    try {
+      await this.launch();
+      this.logger.log('headless chromium launched for invoice PDF rendering');
+    } catch (error) {
+      // Deliberately swallowed, not rethrown: onModuleInit throwing here
+      // would crash Nest's bootstrap and take the *entire* API down over a
+      // side feature — that already happened once on staging (AppArmor
+      // blocking the sandboxed launch, fixed in a prior commit) and cost
+      // every other endpoint, not just Download PDF. render() below still
+      // reports a clear per-request failure; nothing else is allowed to.
+      this.logger.error(
+        `headless chromium failed to launch — invoice PDF generation will fail until this ` +
+          `is fixed (see the app's own logs above for the underlying error): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+      );
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.browser?.close();
   }
 
+  private async launch(): Promise<void> {
+    this.browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        // Chrome's own sandbox needs unprivileged user namespaces, which
+        // recent Ubuntu locks down via AppArmor by default. Safe to drop
+        // here — this browser only ever renders our own invoice-pdf-html.ts
+        // output, never arbitrary/untrusted content from the web.
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        // /dev/shm defaults to 64MB on many cloud VMs/containers — too small
+        // for Chrome's shared memory needs, and it crashes rather than
+        // falling back gracefully. This makes it use /tmp instead, which is
+        // slower but not size-capped the same way.
+        '--disable-dev-shm-usage',
+        // No display and nothing this renders needs GPU-accelerated
+        // compositing; avoids a class of driver/EGL failures headless
+        // servers otherwise hit trying to initialise one anyway.
+        '--disable-gpu',
+      ],
+    });
+  }
+
   async render(html: string): Promise<Buffer> {
-    if (!this.browser) throw new Error('InvoicePdfService used before onModuleInit ran');
+    // A boot-time launch failure (see onModuleInit) leaves this null forever
+    // otherwise — retrying here means a transient failure (box was mid
+    // provisioning, briefly out of memory) recovers on its own instead of
+    // requiring a manual restart once whatever caused it clears up.
+    if (!this.browser) await this.launch().catch(() => undefined);
+    if (!this.browser) {
+      throw new Error('headless chromium is not available — invoice PDF rendering is down');
+    }
 
     const page = await this.browser.newPage();
     try {

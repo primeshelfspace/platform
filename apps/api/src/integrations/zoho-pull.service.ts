@@ -224,6 +224,31 @@ export class ZohoPullService {
     }
   }
 
+  /**
+   * FR-ZHO-webhook address rules: country is platform-only, and
+   * ZohoBooksAdapter.fromZohoAddress always reports it as null since Zoho is
+   * never treated as authoritative for it. Overwriting the stored value with
+   * that null on every single pull would silently erase a country a
+   * merchant entered directly, so this restores whatever was already on the
+   * record before Zoho's own fields are applied. `existingJson` is untyped
+   * Prisma Json — read defensively rather than trusted as any particular
+   * shape.
+   */
+  private preserveLocalCountry(
+    pulled: ReturnType<ZohoBooksAdapter['fromZohoAddress']>,
+    existingJson: unknown,
+  ): ReturnType<ZohoBooksAdapter['fromZohoAddress']> {
+    if (!pulled) return pulled;
+    const existingCountry =
+      existingJson && typeof existingJson === 'object' && 'country' in existingJson
+        ? ((existingJson as { country?: unknown }).country ?? null)
+        : null;
+    return {
+      ...pulled,
+      country: typeof existingCountry === 'string' ? existingCountry : null,
+    };
+  }
+
   private isOwnPushEcho(
     zohoLastModified: string | undefined,
     syncedVersion: Date | null | undefined,
@@ -238,8 +263,16 @@ export class ZohoPullService {
    * @param forceFullScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS and
    * PAYMENTS_FULL_SCAN_FLOOR_SECONDS — set by the on-demand "pull now"
    * endpoint, never by the scheduled tick.
+   * @param opts.skipPayments Set only by the initial post-connect pull
+   * (FR-ZHO-001's callback) so a fresh connection only calls Zoho for
+   * customers and invoices — the scheduled tick and a manual "pull now"
+   * never set this, and still pull payments as usual.
    */
-  async pullBrand(brandId: string, forceFullScan = false): Promise<PullCounts> {
+  async pullBrand(
+    brandId: string,
+    forceFullScan = false,
+    opts?: { readonly skipPayments?: boolean },
+  ): Promise<PullCounts> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-pull');
     if (!scope) return { customers: 0, invoices: 0, payments: 0 };
     const connection = await this.connections.buildAccountingConnection(scope, brandId);
@@ -265,7 +298,9 @@ export class ZohoPullService {
     const [customers, invoices, payments] = await Promise.all([
       this.pullCustomersIfDue(scope, brandId, connection, cursor, forceFullScan),
       this.pullInvoices(scope, brandId, connection, cursor),
-      this.pullPaymentsIfDue(scope, brandId, connection, forceFullScan),
+      opts?.skipPayments
+        ? Promise.resolve(0)
+        : this.pullPaymentsIfDue(scope, brandId, connection, forceFullScan),
       // Deletion detection, on its own much coarser clock. Safe to run
       // alongside the three phases above: it only ever acts on records that
       // predate its own scan by RECONCILE_CREATION_GRACE_MS, so nothing those
@@ -292,6 +327,33 @@ export class ZohoPullService {
       `pull complete for brand ${brandId}: ${counts.customers} customers, ${counts.invoices} invoices, ${counts.payments} payments`,
     );
     return counts;
+  }
+
+  /**
+   * FR-ZHO-webhook: a targeted, immediate pull of one contact, used by
+   * ZohoWebhookService so an inbound event is reflected within seconds
+   * rather than waiting for the next scheduled pullBrand tick (which also
+   * floors a full contact scan to once per CONTACTS_FULL_SCAN_FLOOR_SECONDS —
+   * far too coarse for "near real-time"). Reuses pullOneCustomer as-is: same
+   * echo suppression, same field mapping, same SyncJob audit trail, and the
+   * same upsert-on-(brandId, zohoContactId) that creates the local row when
+   * it does not exist yet (the "new record, single brand" routing case).
+   */
+  async pullOneCustomerNow(brandId: string, contactId: string): Promise<boolean> {
+    const scope = await this.systemScope.forBrand(brandId, 'zoho-webhook');
+    if (!scope) return false;
+    const connection = await this.connections.buildAccountingConnection(scope, brandId);
+    if (!connection) return false;
+    return this.pullOneCustomer(scope, brandId, connection, contactId);
+  }
+
+  /** Same as pullOneCustomerNow, for one invoice. */
+  async pullOneInvoiceNow(brandId: string, invoiceId: string): Promise<boolean> {
+    const scope = await this.systemScope.forBrand(brandId, 'zoho-webhook');
+    if (!scope) return false;
+    const connection = await this.connections.buildAccountingConnection(scope, brandId);
+    if (!connection) return false;
+    return this.pullOneInvoice(scope, brandId, connection, invoiceId);
   }
 
   private async pullCustomersIfDue(
@@ -397,7 +459,7 @@ export class ZohoPullService {
       const existing = await this.prisma.withScope(scope, (tx) =>
         tx.customer.findFirst({
           where: { brandId, zohoContactId: contactId },
-          select: { zohoSyncedVersion: true },
+          select: { zohoSyncedVersion: true, billingAddress: true, shippingAddress: true },
         }),
       );
       if (this.isOwnPushEcho(contact.last_modified_time, existing?.zohoSyncedVersion)) {
@@ -417,10 +479,14 @@ export class ZohoPullService {
         email: contact.email ?? null,
         phone: contact.phone ?? null,
         status: mapContactStatus(contact.status),
-        billingAddress: (this.zoho.fromZohoAddress(contact.billing_address) ??
-          Prisma.JsonNull) as Prisma.InputJsonValue,
-        shippingAddress: (this.zoho.fromZohoAddress(contact.shipping_address) ??
-          Prisma.JsonNull) as Prisma.InputJsonValue,
+        billingAddress: (this.preserveLocalCountry(
+          this.zoho.fromZohoAddress(contact.billing_address),
+          existing?.billingAddress,
+        ) ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        shippingAddress: (this.preserveLocalCountry(
+          this.zoho.fromZohoAddress(contact.shipping_address),
+          existing?.shippingAddress,
+        ) ?? Prisma.JsonNull) as Prisma.InputJsonValue,
       };
 
       // A single upsert, not a separate findFirst-then-create/update: two

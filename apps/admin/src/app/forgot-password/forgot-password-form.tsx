@@ -6,6 +6,7 @@ import {
   FIELD_INVALID_BORDER as invalidBorder,
   FIELD_VALID_BORDER_SECONDARY as validBorder,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { forgotPasswordAction, type ForgotPasswordState } from './actions';
 
 const initialState: ForgotPasswordState = {};
@@ -18,6 +19,7 @@ const labelClass = 'mb-2 block text-sm font-bold text-[#0F172A]';
 
 export function ForgotPasswordForm() {
   const [state, formAction, pending] = useActionState(forgotPasswordAction, initialState);
+  useFormStatusToast(state);
   const [emailError, setEmailError] = useState<string | undefined>();
   const emailId = useId();
   const emailErrorId = useId();
@@ -55,15 +57,6 @@ export function ForgotPasswordForm() {
           </p>
         )}
       </label>
-
-      {state.error && (
-        <p
-          role="alert"
-          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {state.error}
-        </p>
-      )}
 
       <button
         type="submit"

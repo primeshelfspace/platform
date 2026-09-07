@@ -6,6 +6,7 @@ import {
   FIELD_INVALID_BORDER as invalidBorder,
   FIELD_VALID_BORDER_SECONDARY as validBorder,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { createBrandsAction, type CreateBrandsState } from './actions';
 
 const initialState: CreateBrandsState = {};
@@ -145,6 +146,7 @@ function BrandRow({
  */
 export function BrandsForm() {
   const [state, formAction, pending] = useActionState(createBrandsAction, initialState);
+  useFormStatusToast(state);
   const [rows, setRows] = useState<Row[]>([{ key: 0, name: '', logo: null }]);
   const [showErrors, setShowErrors] = useState(false);
   const nextKey = useRef(1);
@@ -215,15 +217,6 @@ export function BrandsForm() {
         <Plus className="h-4 w-4" aria-hidden />
         Add Another Brand
       </button>
-
-      {state.error && (
-        <p
-          role="alert"
-          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {state.error}
-        </p>
-      )}
 
       <button
         type="submit"

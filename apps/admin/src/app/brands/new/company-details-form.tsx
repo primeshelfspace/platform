@@ -22,6 +22,7 @@ import {
   VALIDATED_FIELD_INPUT_CLASS as inputClass,
   VALIDATED_FIELD_LABEL_CLASS as labelClass,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { saveCompanyDetailsAction, type CompanyDetailsState } from './actions';
 
 const initialState: CompanyDetailsState = {};
@@ -178,6 +179,7 @@ function AddressFields({
 
 export function CompanyDetailsForm() {
   const [state, formAction, pending] = useActionState(saveCompanyDetailsAction, initialState);
+  useFormStatusToast(state);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -441,15 +443,6 @@ export function CompanyDetailsForm() {
           </div>
         </div>
       </div>
-
-      {state.error && (
-        <p
-          role="alert"
-          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {state.error}
-        </p>
-      )}
 
       <button
         type="submit"

@@ -14,11 +14,14 @@ import { ZohoPullService } from './zoho-pull.service.js';
 import { ZohoSandboxController } from './zoho-sandbox.controller.js';
 import { ZohoSandboxService } from './zoho-sandbox.service.js';
 import { ZohoSyncService } from './zoho-sync.service.js';
+import { ZohoWebhookController } from './zoho-webhook.controller.js';
+import { ZohoWebhookService } from './zoho-webhook.service.js';
 
 @Module({
   imports: [AccountingModule],
   controllers: [
     ZohoConnectController,
+    ZohoWebhookController,
     ZohoSandboxController,
     StripeAccountController,
     SquareAccountController,
@@ -29,6 +32,7 @@ import { ZohoSyncService } from './zoho-sync.service.js';
     IntegrationConnectionService,
     ZohoSyncService,
     ZohoPullService,
+    ZohoWebhookService,
     ZohoSandboxService,
     StripeAccountService,
     SquareAccountService,
@@ -39,6 +43,7 @@ import { ZohoSyncService } from './zoho-sync.service.js';
     IntegrationConnectionService,
     ZohoSyncService,
     ZohoPullService,
+    ZohoWebhookService,
     ZohoSandboxService,
     StripeAccountService,
     SquareAccountService,

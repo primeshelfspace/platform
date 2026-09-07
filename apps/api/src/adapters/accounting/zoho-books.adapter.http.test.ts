@@ -300,6 +300,43 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
     expect(body.line_items.map((l) => l.rate)).toEqual([100, 8, 3]);
   });
 
+  it('concatenates line1/line2 into one street address and never sends country', async () => {
+    // FR-ZHO-webhook address rules: Zoho's contact address is one street
+    // value, and country is platform-only — never pushed.
+    zohoServer.on('POST /books/v3/contacts', () => ({
+      status: 200,
+      body: { contact: { contact_id: 'contact-1', last_modified_time: '2026-08-20T10:00:00+0000' } },
+    }));
+    await adapter.upsertCustomer(connection, {
+      localId: 'local-1',
+      remoteId: null,
+      type: 'BUSINESS',
+      displayName: 'Acme Co',
+      companyName: null,
+      firstName: null,
+      lastName: null,
+      email: null,
+      phone: null,
+      billingAddress: {
+        line1: '1 Harbour Street',
+        line2: 'Suite 4',
+        city: 'Boston',
+        region: 'MA',
+        postalCode: '02110',
+        country: 'US',
+      },
+      shippingAddress: null,
+      currency: 'USD',
+    });
+
+    const body = zohoServer.requests[0]!.body as {
+      billing_address: Record<string, unknown>;
+    };
+    expect(body.billing_address['address']).toBe('1 Harbour Street\nSuite 4');
+    expect(body.billing_address['street2']).toBeUndefined();
+    expect(body.billing_address['country']).toBeUndefined();
+  });
+
   // --- error classification -------------------------------------------------
 
   it('classifies a 429 as transient and carries Retry-After through', async () => {

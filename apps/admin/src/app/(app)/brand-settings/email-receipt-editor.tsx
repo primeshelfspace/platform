@@ -3,6 +3,7 @@
 import { startTransition, useActionState, useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Send } from 'lucide-react';
 import type { Brand, EmailReceiptLayout, EmailReceiptSettings } from '@/lib/api';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import {
   saveEmailReceiptSettingsAction,
   sendTestEmailAction,
@@ -366,9 +367,11 @@ export function EmailReceiptEditor({
 }) {
   const saveAction = saveEmailReceiptSettingsAction.bind(null, brand);
   const [saveState, saveFormAction, savePending] = useActionState(saveAction, initialSaveState);
+  useFormStatusToast(saveState);
 
   const sendAction = sendTestEmailAction.bind(null, brand);
   const [sendState, sendFormAction, sendPending] = useActionState(sendAction, initialSendState);
+  useFormStatusToast(sendState, `Test email sent to ${userEmail}.`);
 
   const [themeColor, setThemeColor] = useState(brand.themeColor);
   const [accentColor, setAccentColor] = useState(initialAccentColor);
@@ -694,32 +697,6 @@ export function EmailReceiptEditor({
               </div>
             </div>
 
-            {saveState.error && (
-              <p
-                role="alert"
-                className="mt-6 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-              >
-                {saveState.error}
-              </p>
-            )}
-            {saveState.warning && (
-              <p
-                role="status"
-                className="mt-6 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
-              >
-                {saveState.warning}
-              </p>
-            )}
-            {/* Not shown alongside a warning: the warning text ("saved, but
-                the logo did not upload") already says the save itself went
-                through — a green "Saved." next to it reads as everything
-                having worked. */}
-            {saveState.success && !saveState.warning && (
-              <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                Saved.
-              </p>
-            )}
-
             {/* Save/Discard live in the sticky bar below, outside this card —
               see the comment there for why. */}
           </div>
@@ -746,14 +723,6 @@ export function EmailReceiptEditor({
                 <Send className="h-3.5 w-3.5" aria-hidden />
                 {sendPending ? 'Sending…' : 'Send Test Email'}
               </button>
-              {sendState.error && (
-                <p role="alert" className="mt-2 text-sm text-red-700">
-                  {sendState.error}
-                </p>
-              )}
-              {sendState.success && (
-                <p className="mt-2 text-sm text-emerald-700">Test email sent to {userEmail}.</p>
-              )}
             </div>
           </div>
         </section>

@@ -663,6 +663,14 @@ export class ZohoBooksAdapter implements AccountingPort {
     return value ? new Date(value) : null;
   }
 
+  /**
+   * FR-ZHO-webhook address rules. Zoho Books' contact address is a single
+   * street-address value — there is no dedicated Line 2 field — so Line 1
+   * and Line 2 are concatenated here, Line 2 on its own line within that one
+   * field, rather than silently dropping it. `country` is never sent: it is
+   * platform-only (see fromZohoAddress's own comment for the inbound half of
+   * this rule).
+   */
   private toZohoAddress(address: {
     line1: string | null;
     line2: string | null;
@@ -671,13 +679,14 @@ export class ZohoBooksAdapter implements AccountingPort {
     postalCode: string | null;
     country: string | null;
   }): Record<string, string | undefined> {
+    const streetLines = [address.line1, address.line2].filter(
+      (line): line is string => Boolean(line?.trim()),
+    );
     return {
-      address: address.line1 ?? undefined,
-      street2: address.line2 ?? undefined,
+      address: streetLines.length > 0 ? streetLines.join('\n') : undefined,
       city: address.city ?? undefined,
       state: address.region ?? undefined,
       zip: address.postalCode ?? undefined,
-      country: address.country ?? undefined,
     };
   }
 
@@ -850,9 +859,21 @@ export class ZohoBooksAdapter implements AccountingPort {
     return body.payment;
   }
 
-  /** Inverse of toZohoAddress — null when Zoho returned no address at all,
-   * so a customer with genuinely no address on file stores null rather than
-   * an object of empty strings. */
+  /**
+   * Inverse of toZohoAddress — null when Zoho returned no address at all, so
+   * a customer with genuinely no address on file stores null rather than an
+   * object of empty strings.
+   *
+   * FR-ZHO-webhook address rules, deliberately not a full inverse:
+   *  - line2 is always null. Zoho's own `street2` is not read — inbound sync
+   *    cannot honestly reconstruct a two-line split Zoho was never actually
+   *    the source of, since `address` may itself already be a concatenation
+   *    this platform pushed (toZohoAddress). Everything lands in line1.
+   *  - country is always null. It is platform-only — Zoho's contact address
+   *    has no field this platform treats as authoritative for it — so the
+   *    caller (ZohoPullService) is expected to keep whatever country value
+   *    already exists locally rather than take this null at face value.
+   */
   fromZohoAddress(address: ZohoAddressResponse | undefined): {
     line1: string | null;
     line2: string | null;
@@ -864,11 +885,11 @@ export class ZohoBooksAdapter implements AccountingPort {
     if (!address || Object.keys(address).length === 0) return null;
     return {
       line1: address.address ?? null,
-      line2: address.street2 ?? null,
+      line2: null,
       city: address.city ?? null,
       region: address.state ?? null,
       postalCode: address.zip ?? null,
-      country: address.country ?? null,
+      country: null,
     };
   }
 

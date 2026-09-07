@@ -102,6 +102,17 @@ const envSchema = z
     ZOHO_REDIRECT_URI: z.string().optional(),
     ZOHO_API_DOMAIN: z.string().default('https://www.zohoapis.com'),
     ZOHO_ACCOUNTS_DOMAIN: z.string().default('https://accounts.zoho.com'),
+    /**
+     * Shared secret this platform requires as a `?token=` query parameter on
+     * every inbound Zoho Books webhook URL. Zoho Books webhooks carry no
+     * standard request signature the way Stripe's do; the documented
+     * mechanism it does offer is per-webhook static query/form parameters, so
+     * this is set as one of those when the webhook is registered in Zoho
+     * (Settings > Automation > Webhooks), alongside `organization_id` and
+     * `event` — see ZohoWebhookController. Unset means every webhook call is
+     * refused, matching how STRIPE_WEBHOOK_SECRET behaves unset.
+     */
+    ZOHO_WEBHOOK_SECRET: z.string().optional(),
 
     API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
     ADMIN_PUBLIC_URL: z.string().url().default('http://localhost:3000'),

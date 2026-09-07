@@ -12,6 +12,7 @@ import {
   VALIDATED_FIELD_LABEL_CLASS as labelClass,
 } from '@/components/ui/form-styles';
 import type { Customer, CustomerAddress } from '@/lib/api';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { updateCustomerAction, type UpdateCustomerState } from './actions';
 
 const initialState: UpdateCustomerState = {};
@@ -193,6 +194,7 @@ export function EditCustomerModal({
 }) {
   const action = updateCustomerAction.bind(null, brandId, customer.id);
   const [state, formAction, pending] = useActionState(action, initialState);
+  useFormStatusToast(state);
   const formRef = useRef<HTMLFormElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
@@ -415,15 +417,6 @@ export function EditCustomerModal({
             </div>
           </div>
         </div>
-
-        {state.error && (
-          <p
-            role="alert"
-            className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          >
-            {state.error}
-          </p>
-        )}
 
         <div className="flex justify-end gap-3 border-t border-[#E5E7EB] pt-3">
           <button

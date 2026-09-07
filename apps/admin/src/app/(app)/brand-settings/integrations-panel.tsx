@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Unlink,
 } from 'lucide-react';
+import { toast } from '@fenwick/ui/toast';
 import type {
   ZohoActivityEntry,
   ZohoConnectionStatus,
@@ -212,12 +213,9 @@ function ZohoDetail({
   const [savingField, setSavingField] = useState<
     'pullFrequencyMinutes' | 'customerSyncEnabled' | 'invoiceSyncEnabled' | null
   >(null);
-  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [resyncing, setResyncing] = useState(false);
-  const [resyncMessage, setResyncMessage] = useState<string | null>(null);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [disconnectError, setDisconnectError] = useState<string | null>(null);
 
   const dialogRef = useDismissablePanel<HTMLDivElement>(confirmingDisconnect, () =>
     setConfirmingDisconnect(false),
@@ -260,7 +258,6 @@ function ZohoDetail({
     const previous = status;
     setStatus((s) => ({ ...s, ...optimistic }));
     setSavingField(field);
-    setSettingsError(null);
 
     const result = await updateZohoSyncSettingsAction(brandId, patch);
     setSavingField(null);
@@ -268,24 +265,23 @@ function ZohoDetail({
       setStatus(result.data);
     } else {
       setStatus(previous); // roll back the optimistic update
-      setSettingsError(result.error);
+      toast.error(result.error);
     }
   }
 
   async function runManualResync() {
     setResyncing(true);
-    setResyncMessage(null);
     try {
       const response = await fetch(`/settings/zoho/pull?brandId=${brandId}`, { method: 'POST' });
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { message?: string } | null;
-        setResyncMessage(body?.message ?? 'Could not queue a resync.');
+        toast.error(body?.message ?? 'Could not queue a resync.');
       } else {
-        setResyncMessage('Resync queued — watch the log below.');
+        toast.success('Resync queued — watch the log below.');
         void refreshActivity();
       }
     } catch (error) {
-      setResyncMessage(error instanceof Error ? error.message : 'Could not reach the server.');
+      toast.error(error instanceof Error ? error.message : 'Could not reach the server.');
     } finally {
       setResyncing(false);
     }
@@ -293,7 +289,6 @@ function ZohoDetail({
 
   async function confirmDisconnect() {
     setDisconnecting(true);
-    setDisconnectError(null);
     const result = await disconnectZohoAction(brandId);
     setDisconnecting(false);
     if (result.ok) {
@@ -309,7 +304,7 @@ function ZohoDetail({
         invoiceSyncEnabled: true,
       });
     } else {
-      setDisconnectError(result.error);
+      toast.error(result.error);
     }
   }
 
@@ -367,12 +362,6 @@ function ZohoDetail({
 
       {status.connected && (
         <>
-          {settingsError && (
-            <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">
-              {settingsError}
-            </div>
-          )}
-
           <div className="grid gap-6 sm:grid-cols-2">
             <section className="rounded-xl border border-border bg-surface p-5 shadow-sm sm:p-6">
               <h3 className="text-base font-bold text-ink-strong">Sync Frequency</h3>
@@ -473,12 +462,6 @@ function ZohoDetail({
               </button>
             </div>
 
-            {resyncMessage && (
-              <p className="border-b border-border px-5 py-2 text-sm text-ink-muted sm:px-6">
-                {resyncMessage}
-              </p>
-            )}
-
             {entries.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-ink-muted sm:px-6">
                 No activity yet — Manual Resync or the next scheduled sync will populate this log.
@@ -557,11 +540,6 @@ function ZohoDetail({
                 {brandDisplayName} will stop pushing and pulling records with Zoho Books
                 immediately. You can reconnect at any time.
               </p>
-              {disconnectError && (
-                <div className="mt-3 rounded-md bg-danger-surface p-3 text-sm text-danger">
-                  {disconnectError}
-                </div>
-              )}
               <div className="mt-5 flex justify-end gap-3">
                 <button
                   type="button"
@@ -605,7 +583,6 @@ function ZohoSandboxSection({ brandId }: { brandId: string }) {
   const [loading, setLoading] = useState(false);
   const [newSandboxName, setNewSandboxName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [pendingSandboxId, setPendingSandboxId] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [changesFor, setChangesFor] = useState<ZohoSandbox | null>(null);
@@ -635,20 +612,18 @@ function ZohoSandboxSection({ brandId }: { brandId: string }) {
 
   async function handleCreate() {
     setCreating(true);
-    setActionError(null);
     const result = await createZohoSandboxAction(brandId, newSandboxName.trim() || undefined);
     setCreating(false);
     if (result.ok) {
       setNewSandboxName('');
       setSandboxes((prev) => [...(prev ?? []), result.data]);
     } else {
-      setActionError(result.error);
+      toast.error(result.error);
     }
   }
 
   async function handleToggleActive(sandbox: ZohoSandbox) {
     setPendingSandboxId(sandbox.sandboxId);
-    setActionError(null);
     const result = await setZohoSandboxActiveAction(brandId, sandbox.sandboxId, !sandbox.active);
     setPendingSandboxId(null);
     if (result.ok) {
@@ -656,13 +631,12 @@ function ZohoSandboxSection({ brandId }: { brandId: string }) {
         (prev) => prev?.map((s) => (s.sandboxId === sandbox.sandboxId ? result.data : s)) ?? null,
       );
     } else {
-      setActionError(result.error);
+      toast.error(result.error);
     }
   }
 
   async function handleRebuild(sandbox: ZohoSandbox) {
     setPendingSandboxId(sandbox.sandboxId);
-    setActionError(null);
     const result = await rebuildZohoSandboxAction(brandId, sandbox.sandboxId);
     setPendingSandboxId(null);
     if (result.ok) {
@@ -670,7 +644,7 @@ function ZohoSandboxSection({ brandId }: { brandId: string }) {
         (prev) => prev?.map((s) => (s.sandboxId === sandbox.sandboxId ? result.data : s)) ?? null,
       );
     } else {
-      setActionError(result.error);
+      toast.error(result.error);
     }
   }
 
@@ -682,7 +656,7 @@ function ZohoSandboxSection({ brandId }: { brandId: string }) {
     if (result.ok) {
       setSandboxes((prev) => prev?.filter((s) => s.sandboxId !== sandboxId) ?? null);
     } else {
-      setActionError(result.error);
+      toast.error(result.error);
     }
   }
 
@@ -696,7 +670,7 @@ function ZohoSandboxSection({ brandId }: { brandId: string }) {
       setChanges(result.data);
     } else {
       setChanges([]);
-      setActionError(result.error);
+      toast.error(result.error);
     }
   }
 
@@ -744,9 +718,6 @@ function ZohoSandboxSection({ brandId }: { brandId: string }) {
       </div>
 
       <div className="space-y-4 px-5 py-4 sm:px-6">
-        {actionError && (
-          <div className="rounded-md bg-danger-surface p-3 text-sm text-danger">{actionError}</div>
-        )}
         {loadError && (
           <div className="rounded-md bg-warning-surface p-3 text-sm text-warning">
             {loadError} — this usually means Sandbox isn&apos;t enabled for this Zoho Books account

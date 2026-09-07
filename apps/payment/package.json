@@ -14,6 +14,7 @@
   "//stripe": "@stripe/stripe-js + @stripe/react-stripe-js: Stripe Elements collects card data directly into Stripe's own iframe, so it never touches this app's JS context or our server — this is what keeps PCI scope at SAQ A instead of SAQ D.",
   "dependencies": {
     "@fenwick/shared": "workspace:*",
+    "@fenwick/ui": "workspace:*",
     "@stripe/react-stripe-js": "^2.9.0",
     "@stripe/stripe-js": "^4.10.0",
     "next": "^15.1.3",

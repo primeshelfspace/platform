@@ -191,6 +191,25 @@ enum CheckStatus {
   REJECTED
 }
 
+/// FR-ZHO-webhook. PENDING until a Finance Manager assigns it (or, for an
+/// ORPHANED_UPDATE row, resolves it by hand) — see PendingBrandAssignment.
+enum PendingAssignmentStatus {
+  PENDING
+  ASSIGNED
+}
+
+/// Why a Zoho-native webhook event could not be routed to a brand
+/// automatically (FR-ZHO-webhook "New records created natively in Zoho").
+enum PendingAssignmentReason {
+  /// contact.created / invoice.created for an organization connected to more
+  /// than one brand here — organization_id alone cannot pick one, and this
+  /// platform never guesses.
+  NEW_RECORD_MULTI_BRAND
+  /// contact.status_updated / invoice.status_updated naming a zoho_contact_id
+  /// / zoho_invoice_id this platform has never seen locally under any brand.
+  ORPHANED_UPDATE
+}
+
 // ---------------------------------------------------------------------------
 // Tenancy
 // ---------------------------------------------------------------------------
@@ -233,9 +252,10 @@ model Merchant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users     User[]
-  brands    Brand[]
-  auditLogs AuditLog[]
+  users                   User[]
+  brands                  Brand[]
+  auditLogs               AuditLog[]
+  pendingBrandAssignments PendingBrandAssignment[]
 
   @@map("merchant")
 }
@@ -360,6 +380,7 @@ model Brand {
   connections IntegrationConnection[]
   syncJobs    SyncJob[]
   checks      CheckSubmission[]
+  pendingAssignments PendingBrandAssignment[]
 
   @@index([merchantId])
   @@map("brand")
@@ -468,6 +489,11 @@ model Customer {
   /// first_name/last_name back. Null means "never pushed from here", which
   /// correctly reads as "not an echo".
   zohoSyncedVersion DateTime?      @map("zoho_synced_version")
+  /// Set when a required-field check blocks an outbound Zoho push (FR-ZHO
+  /// webhook "Outbound"/"mandatory fields"), so the reason is visible on the
+  /// customer itself, not only in the Sync Dashboard's SyncJob trail. Cleared
+  /// the moment a push for this customer succeeds.
+  zohoUnsyncedReason String?       @map("zoho_unsynced_reason")
   notes             String?
   status            CustomerStatus @default(ACTIVE)
   createdAt         DateTime       @default(now()) @map("created_at")
@@ -567,6 +593,10 @@ model Invoice {
   /// migration comment for why inferring deletion from silence must not
   /// rewrite the ledger.
   zohoMissingSince  DateTime?      @map("zoho_missing_since")
+  /// Same purpose as Customer.zohoUnsyncedReason: a blocked outbound push
+  /// (unsupported currency, no line items, ...) is recorded here so it is
+  /// visible on the invoice itself, and cleared the moment a push succeeds.
+  zohoUnsyncedReason String?       @map("zoho_unsynced_reason")
   taxRateId         String?        @map("tax_rate_id") @db.Uuid
   issuedAt          DateTime?      @map("issued_at")
   firstViewedAt     DateTime?      @map("first_viewed_at")
@@ -648,6 +678,9 @@ model Payment {
   settledAt     DateTime? @map("settled_at")
   refundedMinor BigInt    @default(0) @map("refunded_minor")
   zohoPaymentId String?   @map("zoho_payment_id")
+  /// Same purpose as Customer.zohoUnsyncedReason. Payment sync is
+  /// platform → Zoho only, so this is the only unsynced-reason surface for it.
+  zohoUnsyncedReason String? @map("zoho_unsynced_reason")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -766,6 +799,51 @@ model SyncJob {
   @@index([brandId, status])
   @@index([status, nextAttemptAt])
   @@map("sync_job")
+}
+
+/// FR-ZHO-webhook. A Zoho-native contact/invoice event whose brand could not
+/// be determined automatically — either created directly in Zoho under an
+/// organisation connected to more than one brand here (organization_id is
+/// ambiguous, so this platform never guesses), or an update naming a
+/// zoho_contact_id/zoho_invoice_id no local record has ever carried. Surfaced
+/// on the Sync Dashboard until a Finance Manager assigns it to a brand (or,
+/// for an ORPHANED_UPDATE row, resolves it by hand — assigning one of those
+/// does not itself create anything, since an update has no full record body
+/// to create from).
+///
+/// merchantId is populated from a sibling IntegrationConnection that already
+/// shares this organizationId (every brand connected to one Zoho
+/// organisation belongs to one merchant in practice, since a Zoho
+/// organisation is itself owned by one Zoho account) — this is what lets the
+/// row carry real row-level security instead of living outside every tenant
+/// boundary.
+model PendingBrandAssignment {
+  id              String                  @id @default(uuid()) @db.Uuid
+  merchantId      String                  @map("merchant_id") @db.Uuid
+  provider        IntegrationProvider
+  organizationId  String                  @map("organization_id")
+  /// 'CUSTOMER' | 'INVOICE' — same plain-string convention as SyncJob.objectType.
+  objectType      String                  @map("object_type")
+  /// The Zoho contact_id / invoice_id the event named.
+  remoteId        String                  @map("remote_id")
+  reason          PendingAssignmentReason
+  status          PendingAssignmentStatus @default(PENDING)
+  /// The webhook's own record payload, for the assignment screen to show
+  /// something human-readable without an extra Zoho call.
+  payload         Json?
+  assignedBrandId String?                 @map("assigned_brand_id") @db.Uuid
+  assignedAt      DateTime?               @map("assigned_at")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  merchant      Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  assignedBrand Brand?   @relation(fields: [assignedBrandId], references: [id], onDelete: SetNull)
+
+  /// A redelivered webhook for the same never-resolved record must refresh
+  /// this row, not duplicate it.
+  @@unique([provider, organizationId, objectType, remoteId])
+  @@index([merchantId, status])
+  @@map("pending_brand_assignment")
 }
 
 // ---------------------------------------------------------------------------

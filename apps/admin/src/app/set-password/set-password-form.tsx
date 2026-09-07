@@ -6,6 +6,7 @@ import {
   FIELD_INVALID_BORDER as invalidBorder,
   FIELD_VALID_BORDER_SECONDARY as validBorder,
 } from '@/components/ui/form-styles';
+import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import { setPasswordAction, type SetPasswordState } from './actions';
 
 const initialState: SetPasswordState = {};
@@ -96,6 +97,7 @@ export function SetPasswordForm({
   token?: string;
 }) {
   const [state, formAction, pending] = useActionState(setPasswordAction, initialState);
+  useFormStatusToast(state);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [touched, setTouched] = useState(false);
@@ -157,15 +159,6 @@ export function SetPasswordForm({
         errorId={confirmPasswordErrorId}
         placeholder="Repeat new password"
       />
-
-      {state.error && (
-        <p
-          role="alert"
-          className="rounded-[10px] border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-        >
-          {state.error}
-        </p>
-      )}
 
       <button
         type="submit"
