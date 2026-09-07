@@ -65,13 +65,11 @@ function fakePrisma(users: UserRow[], audit: AuditRow[]) {
 
   const client = {
     user: {
-      findMany: async ({
-        where,
-      }: {
-        where: { email: string; status?: { not: string } };
-      }) =>
+      findMany: async ({ where }: { where: { email: string; status?: { not: string } } }) =>
         users
-          .filter((u) => u.email === where.email && (!where.status || u.status !== where.status.not))
+          .filter(
+            (u) => u.email === where.email && (!where.status || u.status !== where.status.not),
+          )
           .sort((a, b) => +a.createdAt - +b.createdAt),
       update: async ({ where, data }: { where: { id: string }; data: Partial<UserRow> }) => {
         const row = users.find((u) => u.id === where.id);
@@ -146,7 +144,10 @@ function recordingResets(issued: string[]) {
   return {
     issue: async (userId: string) => {
       issued.push(userId);
-      return { token: `reset-token-for-${userId}`, expiresAt: new Date(Date.now() + 24 * 3_600_000) };
+      return {
+        token: `reset-token-for-${userId}`,
+        expiresAt: new Date(Date.now() + 24 * 3_600_000),
+      };
     },
     consume: () => {
       throw new Error('requestPasswordReset must not consume a token');
@@ -390,7 +391,13 @@ describe('AuthService.logout', () => {
       },
     } as unknown as SessionService;
 
-    const auth = new AuthService(fakePrisma([], audit), sessions, fakeResets(), fakeMail(), fakeRedis());
+    const auth = new AuthService(
+      fakePrisma([], audit),
+      sessions,
+      fakeResets(),
+      fakeMail(),
+      fakeRedis(),
+    );
     const scope: RequestScope = {
       merchantId: 'merchant-1',
       userId: 'user-1',
@@ -494,7 +501,9 @@ describe('AuthService.requestPasswordReset', () => {
       fakeRedis(),
     );
 
-    await expect(auth.requestPasswordReset('nobody@fenwick.test', context)).resolves.toBeUndefined();
+    await expect(
+      auth.requestPasswordReset('nobody@fenwick.test', context),
+    ).resolves.toBeUndefined();
 
     expect(issued).toEqual([]);
     expect(sent).toEqual([]);
@@ -527,7 +536,11 @@ describe('AuthService.requestPasswordReset', () => {
   // caller means, so both get their own link.
   it('sends a separate link to every non-suspended account sharing the address', async () => {
     const users = [
-      makeUser({ id: 'user-1', merchantId: 'merchant-1', passwordHash: await hashPassword(PASSWORD) }),
+      makeUser({
+        id: 'user-1',
+        merchantId: 'merchant-1',
+        passwordHash: await hashPassword(PASSWORD),
+      }),
       makeUser({
         id: 'user-2',
         merchantId: 'merchant-2',

@@ -101,7 +101,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * mechanism as acquireRateToken, generalized for callers that are not keyed
    * by brand (e.g. forgot-password, keyed by email address).
    */
-  async acquireGenericRateToken(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+  async acquireGenericRateToken(
+    key: string,
+    limit: number,
+    windowSeconds: number,
+  ): Promise<boolean> {
     const count = await this.cache.incr(key);
     if (count === 1) await this.cache.expire(key, windowSeconds);
     return count <= limit;
