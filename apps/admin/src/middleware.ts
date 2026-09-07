@@ -25,12 +25,17 @@ const SESSION_COOKIE = 'fenwick_admin_session';
  * with neither. Bouncing it to /login would make the link useless — the
  * recipient has no password yet, which is the entire reason they are here.
  *
+ * `/forgot-password` is here for the same reason as `/login` and `/signup`:
+ * the entire point of "I forgot my password" is that there is no session to
+ * check yet.
+ *
  * `/terms` and `/privacy` are linked from the sign-up form, which by
  * definition is filled out by someone with no session yet.
  */
 const PUBLIC_PATHS = [
   '/login',
   '/signup',
+  '/forgot-password',
   '/check-inbox',
   '/set-password',
   '/welcome',
