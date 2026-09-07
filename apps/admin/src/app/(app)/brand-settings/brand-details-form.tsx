@@ -515,7 +515,10 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             {state.warning}
           </p>
         )}
-        {state.success && (
+        {/* Not shown alongside a warning: the warning text ("saved, but the
+            logo did not upload") already says the save itself went through —
+            a green "Saved." next to it reads as everything having worked. */}
+        {state.success && !state.warning && (
           <p className="max-w-2xl rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             Saved.
           </p>

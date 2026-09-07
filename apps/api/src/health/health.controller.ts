@@ -48,8 +48,18 @@ export class HealthController {
         return true;
       }),
       this.check('storage', async () => {
-        // A head on a key that need not exist still proves the driver answers.
-        await this.storage.head('.healthcheck');
+        // A write, not a head: heading a key that need not exist is not a
+        // reliable proof of access under least-privilege S3 credentials
+        // (TDD-001 §15.2) — without s3:ListBucket, S3 answers a missing key
+        // with 403, identical to a real permission failure, so that check
+        // could never tell "storage is fine, this key just doesn't exist"
+        // apart from "storage is actually broken". A write exercises the one
+        // permission every upload path actually depends on.
+        await this.storage.put({
+          key: '.healthcheck',
+          body: Buffer.from(new Date().toISOString()),
+          contentType: 'text/plain',
+        });
         return true;
       }),
     ]);

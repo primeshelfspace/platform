@@ -90,8 +90,19 @@ export class S3Adapter implements StoragePort {
         checksum: (response.ETag ?? '').replace(/"/g, ''),
         storedAt: response.LastModified ?? new Date(),
       };
-    } catch {
-      return null;
+    } catch (error) {
+      // A missing object is a legitimate "no" for callers checking existence
+      // (scan() below, in particular). Anything else — no permission, wrong
+      // bucket, a network failure — must not look identical to "not found":
+      // a health check reading this as a clean miss is exactly how a real S3
+      // outage went unnoticed here (NFR-OPS). Note that without s3:ListBucket
+      // (least-privilege on purpose — TDD-001 §15.2), S3 itself reports a
+      // missing key as 403 rather than 404, so this only catches a genuine
+      // 404/NotFound; a 403 for a key that legitimately does not exist yet
+      // still surfaces, which is why the health check below proves access by
+      // writing a real object rather than heading one that never exists.
+      if (isNotFoundError(error)) return null;
+      throw error;
     }
   }
 
@@ -124,4 +135,16 @@ export class S3Adapter implements StoragePort {
     await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: '.healthcheck' }));
     return true;
   }
+}
+
+/** True only for S3's own "no such key" — a 403 (missing s3:ListBucket, wrong
+ * credentials, no policy at all) must not be mistaken for one. */
+function isNotFoundError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const name = 'name' in error ? String((error as { name: unknown }).name) : '';
+  const status =
+    'httpStatusCode' in error
+      ? Number((error as { httpStatusCode: unknown }).httpStatusCode)
+      : (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+  return name === 'NotFound' || name === 'NoSuchKey' || status === 404;
 }

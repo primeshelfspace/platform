@@ -710,7 +710,11 @@ export function EmailReceiptEditor({
                 {saveState.warning}
               </p>
             )}
-            {saveState.success && (
+            {/* Not shown alongside a warning: the warning text ("saved, but
+                the logo did not upload") already says the save itself went
+                through — a green "Saved." next to it reads as everything
+                having worked. */}
+            {saveState.success && !saveState.warning && (
               <p className="mt-6 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                 Saved.
               </p>

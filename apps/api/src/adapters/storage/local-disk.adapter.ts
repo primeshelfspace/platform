@@ -70,8 +70,13 @@ export class LocalDiskAdapter implements StoragePort {
           .digest('hex'),
         storedAt: stat.mtime,
       };
-    } catch {
-      return null;
+    } catch (error) {
+      // A missing file is a legitimate "no" for callers checking existence.
+      // Anything else — permission denied, a full disk, the root itself
+      // missing — must not look identical to "not found" (see S3Adapter.head
+      // for why that distinction matters to the health check).
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
+      throw error;
     }
   }
 
