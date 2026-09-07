@@ -1,10 +1,12 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import {
+  forgotPasswordSchema,
   loginSchema,
   registerSchema,
   setPasswordSchema,
   setPasswordWithTokenSchema,
+  type ForgotPasswordInput,
   type LoginInput,
   type RegisterInput,
   type RequestScope,
@@ -83,6 +85,28 @@ export class AuthController {
     @Req() request: Request,
   ): Promise<{ ok: true }> {
     await this.auth.register(body, {
+      sourceIp: request.ip ?? null,
+      userAgent: request.headers['user-agent'] ?? null,
+    });
+    return { ok: true };
+  }
+
+  /**
+   * FR-AUTH-005. Public — this is the whole point, since the caller has just
+   * lost the one credential a session would otherwise require. Answers with a
+   * bare acknowledgement whether or not the address matches anything, and
+   * whether or not the caller has already hit the rate limit: see
+   * AuthService.requestPasswordReset for why neither is allowed to be
+   * observable from the response.
+   */
+  @Post('forgot-password')
+  @Public()
+  @HttpCode(202)
+  async forgotPassword(
+    @Body(zodPipe(forgotPasswordSchema)) body: ForgotPasswordInput,
+    @Req() request: Request,
+  ): Promise<{ ok: true }> {
+    await this.auth.requestPasswordReset(body.email, {
       sourceIp: request.ip ?? null,
       userAgent: request.headers['user-agent'] ?? null,
     });

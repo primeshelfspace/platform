@@ -33,6 +33,13 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** FR-AUTH-005: "I forgot my password." Only an address — proving control of
+ * it is what the emailed link is for, same as registerSchema. */
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
 /**
  * Self-serve signup. Deliberately only a name and an email — no password.
  *

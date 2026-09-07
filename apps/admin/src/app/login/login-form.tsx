@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useId, useState } from 'react';
+import Link from 'next/link';
 import { emailSchema } from '@fenwick/shared';
 import {
   FIELD_INVALID_BORDER as invalidBorder,
@@ -77,7 +78,12 @@ export function LoginForm({ returnTo }: { returnTo: string }) {
       </label>
 
       <label className="block" htmlFor={passwordId}>
-        <span className={labelClass}>Password</span>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-bold text-[#0F172A]">Password</span>
+          <Link href="/forgot-password" className="text-sm font-semibold text-[#0F172A] underline">
+            Forgot password?
+          </Link>
+        </div>
         <input
           id={passwordId}
           name="password"

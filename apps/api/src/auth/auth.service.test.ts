@@ -10,6 +10,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RequestScope } from '@fenwick/shared';
 import type { PrismaService } from '../infra/prisma/prisma.service.js';
+import type { RedisService } from '../infra/redis/redis.service.js';
 import { AuthService } from './auth.service.js';
 import type { AuthMailService } from './auth-mail.service.js';
 import type { PasswordResetService } from './password-reset.service.js';
@@ -64,8 +65,14 @@ function fakePrisma(users: UserRow[], audit: AuditRow[]) {
 
   const client = {
     user: {
-      findMany: async ({ where }: { where: { email: string } }) =>
-        users.filter((u) => u.email === where.email).sort((a, b) => +a.createdAt - +b.createdAt),
+      findMany: async ({
+        where,
+      }: {
+        where: { email: string; status?: { not: string } };
+      }) =>
+        users
+          .filter((u) => u.email === where.email && (!where.status || u.status !== where.status.not))
+          .sort((a, b) => +a.createdAt - +b.createdAt),
       update: async ({ where, data }: { where: { id: string }; data: Partial<UserRow> }) => {
         const row = users.find((u) => u.id === where.id);
         if (row) Object.assign(row, data);
@@ -125,6 +132,36 @@ function fakeMail() {
   } as unknown as AuthMailService;
 }
 
+/** Always grants a slot — the paths that are not exercising the limiter
+ * itself should not have to think about it. */
+function fakeRedis(overrides: Partial<{ allow: boolean }> = {}) {
+  return {
+    acquireGenericRateToken: async () => overrides.allow ?? true,
+  } as unknown as RedisService;
+}
+
+/** Unlike fakeResets/fakeMail above, requestPasswordReset is expected to call
+ * both — these record what it sent instead of throwing. */
+function recordingResets(issued: string[]) {
+  return {
+    issue: async (userId: string) => {
+      issued.push(userId);
+      return { token: `reset-token-for-${userId}`, expiresAt: new Date(Date.now() + 24 * 3_600_000) };
+    },
+    consume: () => {
+      throw new Error('requestPasswordReset must not consume a token');
+    },
+  } as unknown as PasswordResetService;
+}
+
+function recordingMail(sent: Array<{ to: string; isNewAccount: boolean }>) {
+  return {
+    sendSetPasswordLink: async (input: { to: string; isNewAccount: boolean }) => {
+      sent.push({ to: input.to, isNewAccount: input.isNewAccount });
+    },
+  } as unknown as AuthMailService;
+}
+
 function makeUser(overrides: Partial<UserRow> & { passwordHash: string }): UserRow {
   return {
     id: 'user-1',
@@ -169,6 +206,7 @@ describe('AuthService.login', () => {
       fakeSessions(issued),
       fakeResets(),
       fakeMail(),
+      fakeRedis(),
     );
   });
 
@@ -352,7 +390,7 @@ describe('AuthService.logout', () => {
       },
     } as unknown as SessionService;
 
-    const auth = new AuthService(fakePrisma([], audit), sessions, fakeResets(), fakeMail());
+    const auth = new AuthService(fakePrisma([], audit), sessions, fakeResets(), fakeMail(), fakeRedis());
     const scope: RequestScope = {
       merchantId: 'merchant-1',
       userId: 'user-1',
@@ -387,6 +425,7 @@ describe('AuthService.setPassword', () => {
       fakeSessions([]),
       fakeResets(),
       fakeMail(),
+      fakeRedis(),
     );
 
     await auth.setPassword(scope, 'a-brand-new-password');
@@ -401,10 +440,134 @@ describe('AuthService.setPassword', () => {
 
   it('leaves an already-ACTIVE user ACTIVE', async () => {
     const users = [makeUser({ passwordHash: await hashPassword(PASSWORD), status: 'ACTIVE' })];
-    const auth = new AuthService(fakePrisma(users, []), fakeSessions([]), fakeResets(), fakeMail());
+    const auth = new AuthService(
+      fakePrisma(users, []),
+      fakeSessions([]),
+      fakeResets(),
+      fakeMail(),
+      fakeRedis(),
+    );
 
     await auth.setPassword(scope, 'a-brand-new-password');
 
     expect(users[0]!.status).toBe('ACTIVE');
+  });
+});
+
+describe('AuthService.requestPasswordReset', () => {
+  const context = { sourceIp: '198.51.100.7', userAgent: 'vitest' };
+
+  it('issues a token and emails a reset link for a matching ACTIVE account', async () => {
+    const users = [makeUser({ passwordHash: await hashPassword(PASSWORD) })];
+    const audit: AuditRow[] = [];
+    const issued: string[] = [];
+    const sent: Array<{ to: string; isNewAccount: boolean }> = [];
+    const auth = new AuthService(
+      fakePrisma(users, audit),
+      fakeSessions([]),
+      recordingResets(issued),
+      recordingMail(sent),
+      fakeRedis(),
+    );
+
+    await auth.requestPasswordReset('dana@fenwick.test', context);
+
+    expect(issued).toEqual(['user-1']);
+    expect(sent).toEqual([{ to: 'dana@fenwick.test', isNewAccount: false }]);
+    expect(audit.at(-1)).toMatchObject({
+      action: 'AUTH_PASSWORD_RESET_REQUEST',
+      outcome: 'SUCCESS',
+    });
+  });
+
+  // FR-AUTH-003's non-disclosure applies here too: an unknown address must
+  // not behave any differently from a known one.
+  it('does nothing observable for an address that matches no account', async () => {
+    const audit: AuditRow[] = [];
+    const issued: string[] = [];
+    const sent: Array<{ to: string; isNewAccount: boolean }> = [];
+    const auth = new AuthService(
+      fakePrisma([], audit),
+      fakeSessions([]),
+      recordingResets(issued),
+      recordingMail(sent),
+      fakeRedis(),
+    );
+
+    await expect(auth.requestPasswordReset('nobody@fenwick.test', context)).resolves.toBeUndefined();
+
+    expect(issued).toEqual([]);
+    expect(sent).toEqual([]);
+    expect(audit).toEqual([]);
+  });
+
+  // The follow-through link flips status to ACTIVE (FR-AUTH-006) — sending it
+  // to a SUSPENDED account would turn "forgot my password" into a way to lift
+  // a suspension.
+  it('does not send a reset link to a SUSPENDED account', async () => {
+    const users = [makeUser({ passwordHash: await hashPassword(PASSWORD), status: 'SUSPENDED' })];
+    const issued: string[] = [];
+    const sent: Array<{ to: string; isNewAccount: boolean }> = [];
+    const auth = new AuthService(
+      fakePrisma(users, []),
+      fakeSessions([]),
+      recordingResets(issued),
+      recordingMail(sent),
+      fakeRedis(),
+    );
+
+    await auth.requestPasswordReset('dana@fenwick.test', context);
+
+    expect(issued).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  // Email is unique per merchant, not globally — the same address may hold
+  // two accounts, and a forgot-password request cannot tell which one the
+  // caller means, so both get their own link.
+  it('sends a separate link to every non-suspended account sharing the address', async () => {
+    const users = [
+      makeUser({ id: 'user-1', merchantId: 'merchant-1', passwordHash: await hashPassword(PASSWORD) }),
+      makeUser({
+        id: 'user-2',
+        merchantId: 'merchant-2',
+        passwordHash: await hashPassword(OTHER_PASSWORD),
+        createdAt: new Date('2026-02-01'),
+      }),
+    ];
+    const issued: string[] = [];
+    const sent: Array<{ to: string; isNewAccount: boolean }> = [];
+    const auth = new AuthService(
+      fakePrisma(users, []),
+      fakeSessions([]),
+      recordingResets(issued),
+      recordingMail(sent),
+      fakeRedis(),
+    );
+
+    await auth.requestPasswordReset('dana@fenwick.test', context);
+
+    expect(issued).toEqual(['user-1', 'user-2']);
+    expect(sent).toHaveLength(2);
+  });
+
+  // A caller over the limit gets the exact same silent ack as a miss — the
+  // limit itself must not be observable from the response.
+  it('sends nothing once the per-address rate limit is exhausted', async () => {
+    const users = [makeUser({ passwordHash: await hashPassword(PASSWORD) })];
+    const issued: string[] = [];
+    const sent: Array<{ to: string; isNewAccount: boolean }> = [];
+    const auth = new AuthService(
+      fakePrisma(users, []),
+      fakeSessions([]),
+      recordingResets(issued),
+      recordingMail(sent),
+      fakeRedis({ allow: false }),
+    );
+
+    await expect(auth.requestPasswordReset('dana@fenwick.test', context)).resolves.toBeUndefined();
+
+    expect(issued).toEqual([]);
+    expect(sent).toEqual([]);
   });
 });

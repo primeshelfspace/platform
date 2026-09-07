@@ -183,6 +183,20 @@ export function setPasswordWithToken(token: string, newPassword: string): Promis
   });
 }
 
+/**
+ * FR-AUTH-005: "I forgot my password." Always resolves — the API acknowledges
+ * identically whether or not the address matches an account, so there is
+ * nothing here for the caller to branch on. `token: null` because there is no
+ * session yet.
+ */
+export function requestPasswordReset(email: string): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+    token: null,
+  });
+}
+
 export function logout(): Promise<void> {
   return apiFetch<void>('/auth/logout', { method: 'POST' });
 }

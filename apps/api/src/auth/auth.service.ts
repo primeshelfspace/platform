@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import type { RegisterInput, RequestScope, Role } from '@fenwick/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
+import { RedisService } from '../infra/redis/redis.service.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { SessionService } from './session.service.js';
 import { PasswordResetService } from './password-reset.service.js';
@@ -24,11 +25,17 @@ const FAILURE_WINDOW_MINUTES = 15;
 const MAX_FAILURES_IN_WINDOW = 5;
 const LOCKOUT_MINUTES = 30;
 
+/** FR-AUTH-005: at most 3 forgot-password requests per address per hour. Keyed
+ * by address rather than source IP — see requestPasswordReset. */
+const FORGOT_PASSWORD_LIMIT = 3;
+const FORGOT_PASSWORD_WINDOW_SECONDS = 3600;
+
 /** The audit `action` for a sign-in attempt, successful or not. */
 export const AUDIT_LOGIN = 'AUTH_LOGIN';
 export const AUDIT_LOGOUT = 'AUTH_LOGOUT';
 export const AUDIT_PASSWORD_SET = 'AUTH_PASSWORD_SET';
 export const AUDIT_REGISTER = 'AUTH_REGISTER';
+export const AUDIT_PASSWORD_RESET_REQUEST = 'AUTH_PASSWORD_RESET_REQUEST';
 
 export interface LoginAttempt {
   readonly email: string;
@@ -80,6 +87,7 @@ export class AuthService {
     private readonly sessions: SessionService,
     private readonly passwordResets: PasswordResetService,
     private readonly mail: AuthMailService,
+    private readonly redis: RedisService,
   ) {}
 
   async login(attempt: LoginAttempt): Promise<LoginResult> {
@@ -239,6 +247,61 @@ export class AuthService {
     });
 
     await this.record(created.merchantId, created.id, 'SUCCESS', null, context, AUDIT_REGISTER);
+  }
+
+  /**
+   * FR-AUTH-005: "I forgot my password." Always acknowledges the same way
+   * regardless of whether the address matches anything — same reasoning as
+   * GENERIC_FAILURE in login, and for the same reason: "no such account" is a
+   * free email-enumeration oracle, and so, just as much, is "you've already
+   * asked too many times" — so a caller over the limit gets this exact same
+   * silent return rather than a distinct error.
+   *
+   * Throttled per address rather than per source IP: a spray from many IPs
+   * must not be able to flood one inbox, and one office's shared IP must not
+   * lock everyone behind it out of resetting their own password.
+   *
+   * Email is unique per merchant, not globally (schema.prisma) — the same
+   * person may hold accounts at two client organisations — so every matching,
+   * non-suspended account gets its own link. SUSPENDED is excluded on
+   * purpose: the link's follow-through, setPasswordWithToken, flips status to
+   * ACTIVE by design (FR-AUTH-006), and this path must not become a back door
+   * out of a suspension.
+   */
+  async requestPasswordReset(email: string, context: AttemptContext): Promise<void> {
+    const allowed = await this.redis.acquireGenericRateToken(
+      `ratelimit:forgot-password:${email}`,
+      FORGOT_PASSWORD_LIMIT,
+      FORGOT_PASSWORD_WINDOW_SECONDS,
+    );
+    if (!allowed) return;
+
+    const candidates = await this.prisma.withoutScope(
+      'looking up an address for a forgot-password request (no scope exists until one is chosen)',
+      (client) =>
+        client.user.findMany({
+          where: { email, status: { not: 'SUSPENDED' } },
+          orderBy: { createdAt: 'asc' },
+        }),
+    );
+
+    for (const candidate of candidates) {
+      const { token } = await this.passwordResets.issue(candidate.id);
+      await this.mail.sendSetPasswordLink({
+        to: candidate.email,
+        name: candidate.name,
+        token,
+        isNewAccount: false,
+      });
+      await this.record(
+        candidate.merchantId,
+        candidate.id,
+        'SUCCESS',
+        null,
+        context,
+        AUDIT_PASSWORD_RESET_REQUEST,
+      );
+    }
   }
 
   /**
