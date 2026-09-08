@@ -44,6 +44,7 @@ jobs:
 
       # Everything downstream imports its types.
       - run: pnpm --filter @fenwick/shared build
+      - run: pnpm --filter @fenwick/ui build
 
       - run: pnpm --filter @fenwick/api db:generate
 
@@ -170,6 +171,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @fenwick/shared build
+      - run: pnpm --filter @fenwick/ui build
       - run: pnpm --filter @fenwick/api db:generate
       - run: pnpm --filter @fenwick/api build
       - run: pnpm --filter @fenwick/admin build
