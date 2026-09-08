@@ -15,6 +15,7 @@ import { RedisService } from '../infra/redis/redis.service.js';
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
 import {
   ZohoBooksAdapter,
+  type ZohoInvoiceDetail,
   type ZohoInvoiceListItem,
 } from '../adapters/accounting/zoho-books.adapter.js';
 import { IntegrationConnectionService } from './integration-connection.service.js';
@@ -954,6 +955,107 @@ export class ZohoPullService {
       },
       { skippedWhen: (applied) => applied === false },
     );
+  }
+
+  /**
+   * Line items, tax breakdown and notes are deliberately NOT part of the
+   * list-only bulk pull above — that is exactly what dropped the per-invoice
+   * getInvoice call to cut Zoho traffic down to the two list APIs. But an
+   * invoice detail screen genuinely needs them, so rather than reintroducing
+   * that detail fetch for every invoice on every sync cycle, it is fetched
+   * here instead: once, on demand, only for the one invoice someone actually
+   * opened. Called by InvoicesService.findOne when a Zoho-sourced invoice
+   * still has no local line items (i.e. it has never been opened, or was
+   * pulled after this on-demand path existed).
+   *
+   * Not wired into the regular pull's echo suppression / cursor machinery —
+   * this is a one-off enrichment of an already-synced invoice, not a step in
+   * the incremental scan, and does not touch zohoSyncedVersion.
+   */
+  async enrichInvoiceFromZohoOnDemand(
+    scope: Scope,
+    brandId: string,
+    invoiceId: string,
+  ): Promise<boolean> {
+    const existing = await this.prisma.withScope(scope, (tx) =>
+      tx.invoice.findFirst({
+        where: { id: invoiceId, brandId },
+        select: { zohoInvoiceId: true, currency: true },
+      }),
+    );
+    if (!existing?.zohoInvoiceId) return false;
+    const zohoInvoiceId = existing.zohoInvoiceId;
+    const currency = existing.currency as CurrencyCode;
+
+    const connection = await this.connections.buildAccountingConnection(scope, brandId);
+    if (!connection) return false;
+
+    return this.recordPull(
+      brandId,
+      'INVOICE',
+      zohoInvoiceId,
+      async () => {
+        const detail = await this.zoho.getInvoice(connection, zohoInvoiceId);
+
+        const taxRateBpApplied =
+          detail.sub_total > 0 ? Math.round((detail.tax_total / detail.sub_total) * 10000) : 0;
+        const lineItems = this.toLocalLineItems(invoiceId, detail, currency);
+
+        await this.prisma.withScope(scope, async (tx) => {
+          await tx.invoice.update({
+            where: { id: invoiceId },
+            data: {
+              subtotalMinor: BigInt(this.zoho.decimalToMinor(detail.sub_total, currency)),
+              taxRateBpApplied,
+              taxMinor: BigInt(this.zoho.decimalToMinor(detail.tax_total, currency)),
+              notes: detail.notes ?? null,
+            },
+          });
+          for (const item of lineItems) {
+            await tx.lineItem.upsert({
+              where: { invoiceId_position: { invoiceId, position: item.position } },
+              create: item,
+              update: item,
+            });
+          }
+          await tx.lineItem.deleteMany({
+            where: { invoiceId, position: { gte: lineItems.length } },
+          });
+        });
+        return true;
+      },
+      { skippedWhen: (applied) => applied === false },
+    );
+  }
+
+  /** Same mapping pullOneInvoice used before line items moved to the
+   * on-demand path above — kept here as its only remaining caller. */
+  private toLocalLineItems(
+    invoiceId: string,
+    invoice: ZohoInvoiceDetail,
+    currency: CurrencyCode,
+  ): Array<{
+    invoiceId: string;
+    position: number;
+    itemName: string;
+    description: string | null;
+    quantity: number;
+    unitPriceMinor: bigint;
+    lineTotalMinor: bigint;
+    taxExempt: boolean;
+  }> {
+    return invoice.line_items.map((line, position) => ({
+      invoiceId,
+      position,
+      itemName: line.name ?? `Line ${position + 1}`,
+      description: line.description ?? null,
+      // Our Quantity type is fixed-point scaled by 10,000 (packages/shared
+      // money/quantity.ts) — Zoho's quantity is a plain decimal.
+      quantity: Math.round(line.quantity * 10_000),
+      unitPriceMinor: BigInt(this.zoho.decimalToMinor(line.rate, currency)),
+      lineTotalMinor: BigInt(this.zoho.decimalToMinor(line.rate * line.quantity, currency)),
+      taxExempt: !line.tax_id,
+    }));
   }
 
   /**

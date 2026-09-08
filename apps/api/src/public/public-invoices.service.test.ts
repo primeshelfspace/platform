@@ -17,6 +17,7 @@ import { createFakeQueueService } from '../infra/queue/fake-queue.service.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { InvoicesService } from '../invoices/invoices.service.js';
 import { StripeAccountService } from '../integrations/stripe-account.service.js';
+import type { ZohoPullService } from '../integrations/zoho-pull.service.js';
 import { LocalDiskAdapter } from '../adapters/storage/local-disk.adapter.js';
 import { InvoicePdfService } from './invoice-pdf.service.js';
 import { PublicInvoicesService } from './public-invoices.service.js';
@@ -37,6 +38,9 @@ describeWithDb('PublicInvoicesService', () => {
     env!,
     new LocalDiskAdapter(env!),
     new InvoicePdfService(),
+    // No test here creates a Zoho-sourced invoice, so findOne's on-demand
+    // enrichment branch never fires.
+    {} as ZohoPullService,
   );
   // Local disk is the right storage here: these tests assert invoice data, and
   // a real bucket would make them depend on credentials and the network.
@@ -44,6 +48,9 @@ describeWithDb('PublicInvoicesService', () => {
     prisma,
     new StripeAccountService(prisma, env!),
     new LocalDiskAdapter(env!),
+    // No test here creates a Zoho-sourced invoice, so view's on-demand
+    // enrichment branch never fires.
+    {} as ZohoPullService,
   );
   const owner = new PrismaClient({
     datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },

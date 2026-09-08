@@ -17,6 +17,7 @@ import { createFakeQueueService } from '../infra/queue/fake-queue.service.js';
 import { FakeGatewayAdapter } from '../adapters/gateway/fake-gateway.adapter.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { InvoicesService } from '../invoices/invoices.service.js';
+import type { ZohoPullService } from '../integrations/zoho-pull.service.js';
 import { InvoicePdfService } from '../public/invoice-pdf.service.js';
 import { PaymentsService } from './payments.service.js';
 
@@ -37,6 +38,9 @@ describeWithDb('PaymentsService', () => {
     env!,
     new LocalDiskAdapter(env!),
     new InvoicePdfService(),
+    // No test here creates a Zoho-sourced invoice, so findOne's on-demand
+    // enrichment branch never fires.
+    {} as ZohoPullService,
   );
   const payments = new PaymentsService(prisma, env!, gateway, queue);
   const owner = new PrismaClient({

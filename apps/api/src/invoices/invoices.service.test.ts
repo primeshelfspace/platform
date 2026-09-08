@@ -14,6 +14,7 @@ import { getEnv } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { createFakeQueueService } from '../infra/queue/fake-queue.service.js';
 import { CustomersService } from '../customers/customers.service.js';
+import type { ZohoPullService } from '../integrations/zoho-pull.service.js';
 import { InvoicePdfService } from '../public/invoice-pdf.service.js';
 import { InvoicesService } from './invoices.service.js';
 
@@ -36,6 +37,10 @@ describeWithDb('InvoicesService', () => {
     env!,
     new LocalDiskAdapter(env!),
     new InvoicePdfService(),
+    // No test here creates a Zoho-sourced invoice, so findOne's on-demand
+    // enrichment branch never fires — a real ZohoPullService (OAuth
+    // connection, rate limiting, ...) would be pure overhead.
+    {} as ZohoPullService,
   );
   const owner = new PrismaClient({
     datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },

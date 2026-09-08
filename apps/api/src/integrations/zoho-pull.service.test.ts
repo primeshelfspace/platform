@@ -27,6 +27,7 @@ import {
   ZohoBooksAdapter,
   type ZohoContactDetail,
   type ZohoContactListItem,
+  type ZohoInvoiceDetail,
   type ZohoInvoiceListItem,
 } from '../adapters/accounting/zoho-books.adapter.js';
 import type { IntegrationConnectionService } from './integration-connection.service.js';
@@ -46,12 +47,16 @@ const describeWithDb = hasDb ? describe : describe.skip;
  */
 class FakeZohoBooksAdapter extends ZohoBooksAdapter {
   getContactCalls = 0;
+  getInvoiceCalls = 0;
 
   readonly contacts = new Map<string, ZohoContactDetail>();
   listedContacts: ZohoContactListItem[] = [];
   /** Drives both pullInvoices and reconcileInvoicePresence's full scan. Empty
    * by default, which is what every pre-existing test already assumed. */
   listedInvoices: ZohoInvoiceListItem[] = [];
+  /** Only consulted by enrichInvoiceFromZohoOnDemand — the regular pull
+   * never calls getInvoice at all anymore. */
+  readonly invoiceDetails = new Map<string, ZohoInvoiceDetail>();
 
   constructor() {
     super({} as Env, {} as RedisService);
@@ -78,6 +83,13 @@ class FakeZohoBooksAdapter extends ZohoBooksAdapter {
 
   override async listInvoicesPage() {
     return { invoices: this.listedInvoices, hasMorePage: false };
+  }
+
+  override async getInvoice(_connection: AccountingConnection, invoiceId: string) {
+    this.getInvoiceCalls++;
+    const detail = this.invoiceDetails.get(invoiceId);
+    if (!detail) throw new Error(`no fake invoice detail stubbed for ${invoiceId}`);
+    return detail;
   }
 }
 
@@ -112,6 +124,30 @@ function fakeInvoiceListItem(
     currency_code: 'USD',
     total: 100,
     balance: 100,
+  };
+}
+
+/** The single-record GET shape — only reachable via
+ * enrichInvoiceFromZohoOnDemand now, never the regular pull. */
+function fakeInvoiceDetail(
+  invoiceId: string,
+  number: string,
+  customerId: string,
+): ZohoInvoiceDetail {
+  return {
+    invoice_id: invoiceId,
+    customer_id: customerId,
+    invoice_number: number,
+    status: 'sent',
+    date: '2026-08-01',
+    due_date: '2026-08-31',
+    currency_code: 'USD',
+    total: 111,
+    balance: 111,
+    sub_total: 100,
+    tax_total: 11,
+    notes: 'Thanks for your business',
+    line_items: [{ name: 'Consulting', rate: 100, quantity: 1 }],
   };
 }
 
@@ -164,7 +200,13 @@ describeWithDb('ZohoPullService', () => {
     return new ZohoPullService(
       prisma,
       zoho,
-      {} as IntegrationConnectionService,
+      // Only buildAccountingConnection is real — enrichInvoiceFromZohoOnDemand
+      // is the one method here that builds its own connection rather than
+      // taking one as a parameter, matching pullOneCustomerNow/
+      // pullOneInvoiceNow's existing pattern.
+      {
+        buildAccountingConnection: async () => connection,
+      } as unknown as IntegrationConnectionService,
       {} as SystemScopeResolver,
       redis,
     ) as unknown as {
@@ -203,6 +245,11 @@ describeWithDb('ZohoPullService', () => {
         brandId: string,
         seen: ReadonlyArray<{ contactId: string; status: string | undefined }>,
       ) => Promise<void>;
+      enrichInvoiceFromZohoOnDemand: (
+        scope: RequestScope,
+        brandId: string,
+        invoiceId: string,
+      ) => Promise<boolean>;
     };
   }
 
@@ -237,6 +284,94 @@ describeWithDb('ZohoPullService', () => {
     });
     expect(invoices).toHaveLength(2);
     expect(invoices.every((i) => i.customerId === customers[0]!.id)).toBe(true);
+  });
+
+  describe('enrichInvoiceFromZohoOnDemand', () => {
+    async function zohoSourcedInvoiceWithNoLineItems(zohoInvoiceId: string) {
+      const contactId = `enrich-contact-${randomUUID()}`;
+      const customer = await owner.customer.create({
+        data: {
+          brandId,
+          type: 'BUSINESS',
+          displayName: 'Enrich Test Co',
+          zohoContactId: contactId,
+        },
+      });
+      const invoice = await owner.invoice.create({
+        data: {
+          brandId,
+          customerId: customer.id,
+          number: `ENRICH-${randomUUID().slice(0, 8)}`,
+          status: 'SENT',
+          invoiceDate: new Date('2026-08-01'),
+          dueDate: new Date('2026-08-31'),
+          currency: 'USD',
+          // What the list-only pull leaves behind: total/balance known,
+          // subtotal defaulted to total, tax at zero, no notes.
+          subtotalMinor: 11100n,
+          taxRateBpApplied: 0,
+          taxMinor: 0n,
+          totalMinor: 11100n,
+          balanceMinor: 11100n,
+          publicToken: randomUUID().replace(/-/g, ''),
+          zohoInvoiceId,
+        },
+      });
+      return { invoice, contactId };
+    }
+
+    it('fetches and stores line items, tax breakdown and notes for a Zoho invoice that has none yet', async () => {
+      const zohoInvoiceId = `enrich-invoice-${randomUUID()}`;
+      const { invoice } = await zohoSourcedInvoiceWithNoLineItems(zohoInvoiceId);
+
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.invoiceDetails.set(
+        zohoInvoiceId,
+        fakeInvoiceDetail(zohoInvoiceId, invoice.number, `contact-for-${zohoInvoiceId}`),
+      );
+
+      const applied = await service(zoho).enrichInvoiceFromZohoOnDemand(scope, brandId, invoice.id);
+      expect(applied).toBe(true);
+      expect(zoho.getInvoiceCalls).toBe(1);
+
+      const after = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      expect(after.subtotalMinor).toBe(10000n);
+      expect(after.taxMinor).toBe(1100n);
+      expect(after.notes).toBe('Thanks for your business');
+
+      const lines = await owner.lineItem.findMany({
+        where: { invoiceId: invoice.id },
+        orderBy: { position: 'asc' },
+      });
+      expect(lines).toHaveLength(1);
+      expect(lines[0]!.itemName).toBe('Consulting');
+      expect(lines[0]!.lineTotalMinor).toBe(10000n);
+    });
+
+    it('does nothing for an invoice with no Zoho id at all', async () => {
+      const customer = await owner.customer.create({
+        data: { brandId, type: 'BUSINESS', displayName: 'Local Only Co' },
+      });
+      const invoice = await owner.invoice.create({
+        data: {
+          brandId,
+          customerId: customer.id,
+          number: `LOCAL-${randomUUID().slice(0, 8)}`,
+          status: 'DRAFT',
+          invoiceDate: new Date('2026-08-01'),
+          dueDate: new Date('2026-08-31'),
+          currency: 'USD',
+          totalMinor: 5000n,
+          balanceMinor: 5000n,
+          publicToken: randomUUID().replace(/-/g, ''),
+        },
+      });
+
+      const zoho = new FakeZohoBooksAdapter();
+      const applied = await service(zoho).enrichInvoiceFromZohoOnDemand(scope, brandId, invoice.id);
+      expect(applied).toBe(false);
+      expect(zoho.getInvoiceCalls).toBe(0);
+    });
   });
 
   it('floors the full contacts scan, but a forced pull always bypasses it', async () => {

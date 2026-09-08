@@ -13,6 +13,7 @@ import {
 } from '../brands/brand-settings.service.js';
 import { LOGO_URL_TTL_SECONDS } from '../common/logo-upload.js';
 import { StripeAccountService } from '../integrations/stripe-account.service.js';
+import { ZohoPullService } from '../integrations/zoho-pull.service.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 
 export interface PublicInvoiceView {
@@ -86,6 +87,7 @@ export class PublicInvoicesService {
     private readonly prisma: PrismaService,
     private readonly stripeAccounts: StripeAccountService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    private readonly zohoPull: ZohoPullService,
   ) {}
 
   /** Null covers both "no such token" and "deactivated" — deliberately
@@ -117,15 +119,33 @@ export class PublicInvoicesService {
 
   async view(scope: PublicScope): Promise<PublicInvoiceView | null> {
     return this.prisma.withScope(scope, async (tx) => {
-      const invoice = await tx.invoice.findFirst({
-        where: { id: scope.invoiceId },
-        include: {
-          lineItems: { orderBy: { position: 'asc' } },
-          brand: { include: { settings: true } },
-          customer: { select: { displayName: true, billingAddress: true } },
-        },
-      });
+      const loadInvoice = () =>
+        tx.invoice.findFirst({
+          where: { id: scope.invoiceId },
+          include: {
+            lineItems: { orderBy: { position: 'asc' } },
+            brand: { include: { settings: true } },
+            customer: { select: { displayName: true, billingAddress: true } },
+          },
+        });
+
+      let invoice = await loadInvoice();
       if (!invoice) return null;
+
+      // Line items aren't part of the list-only Zoho pull (ZohoPullService's
+      // own doc comment) — fetched here, on demand, the first time a
+      // customer actually opens this invoice's payment page, same as
+      // InvoicesService.findOne's admin equivalent. Non-fatal: a failed
+      // enrichment (rate limit, revoked token, ...) still shows the invoice
+      // with whatever it already has, rather than failing the whole page.
+      if (invoice.zohoInvoiceId && invoice.lineItems.length === 0) {
+        const enriched = await this.zohoPull
+          .enrichInvoiceFromZohoOnDemand(scope, scope.brandId, invoice.id)
+          .catch(() => false);
+        if (enriched) {
+          invoice = (await loadInvoice()) ?? invoice;
+        }
+      }
 
       // FIRST_VIEW fires once; the guard only allows it from SENT, so a
       // second retrieval is a no-op (TDD-001 §8.2).

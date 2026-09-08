@@ -41,6 +41,7 @@ import { brandLogoAttachment, LOGO_CID } from '../common/logo-upload.js';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
+import { ZohoPullService } from '../integrations/zoho-pull.service.js';
 import { InvoicePdfService } from '../public/invoice-pdf.service.js';
 
 export type InvoiceWithLines = Invoice & { lineItems: LineItem[] };
@@ -94,6 +95,7 @@ export class InvoicesService {
     @Inject(ENV) private readonly env: Env,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly invoicePdf: InvoicePdfService,
+    private readonly zohoPull: ZohoPullService,
   ) {}
 
   /**
@@ -160,18 +162,48 @@ export class InvoicesService {
   }
 
   /** The Invoice Details screen's own fetch — InvoiceWithLines plus the
-   * customer identity its "Bill To" block needs (see InvoiceDetail). */
+   * customer identity its "Bill To" block needs (see InvoiceDetail).
+   *
+   * A Zoho-sourced invoice with no line items yet has never had its Zoho
+   * detail fetched — the regular pull is list-only (ZohoPullService's own
+   * doc comment) precisely so that a per-invoice detail call isn't made for
+   * every invoice on every sync. Fetching it here instead, the first time
+   * someone actually opens this invoice's details, gets the same data
+   * without paying that cost for invoices nobody looks at. Non-fatal: a
+   * failed enrichment (rate limit, revoked token, ...) still returns the
+   * invoice with whatever it already has, rather than failing the whole
+   * details view over a supplementary fetch.
+   */
   async findOne(scope: Scope, brandId: string, id: string): Promise<InvoiceDetail> {
-    const invoice = await this.prisma.withScope(scope, (tx) =>
-      tx.invoice.findFirst({
-        where: { id, brandId },
-        include: {
-          lineItems: { orderBy: { position: 'asc' } },
-          customer: { select: { displayName: true, email: true, billingAddress: true } },
-        },
-      }),
-    );
+    const load = () =>
+      this.prisma.withScope(scope, (tx) =>
+        tx.invoice.findFirst({
+          where: { id, brandId },
+          include: {
+            lineItems: { orderBy: { position: 'asc' } },
+            customer: { select: { displayName: true, email: true, billingAddress: true } },
+          },
+        }),
+      );
+
+    let invoice = await load();
     if (!invoice) throw new NotFoundException('invoice not found');
+
+    if (invoice.zohoInvoiceId && invoice.lineItems.length === 0) {
+      const enriched = await this.zohoPull
+        .enrichInvoiceFromZohoOnDemand(scope, brandId, id)
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `could not fetch Zoho line items on demand for invoice ${id}: ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+          );
+          return false;
+        });
+      if (enriched) {
+        invoice = (await load()) ?? invoice;
+      }
+    }
+
     return {
       ...invoice,
       customer: {
