@@ -1,5 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import {
+  BadGatewayException,
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import {
+  IntegrationError,
   idSchema,
   zohoSandboxActivationSchema,
   zohoSandboxChangeReviewSchema,
@@ -40,42 +52,58 @@ export class ZohoSandboxController {
 
   @Get()
   @RequirePermission('INTEGRATIONS', 'READ')
-  list(
+  async list(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @CurrentScope() scope: Scope,
   ): Promise<ZohoSandbox[]> {
-    return this.sandboxes.listSandboxes(scope, brandId);
+    try {
+      return await this.sandboxes.listSandboxes(scope, brandId);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   @Post()
   @RequirePermission('INTEGRATIONS', 'WRITE')
-  create(
+  async create(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Body(zodPipe(zohoSandboxCreateSchema)) body: ZohoSandboxCreateInput,
     @CurrentScope() scope: Scope,
   ): Promise<ZohoSandbox> {
-    return this.sandboxes.createSandbox(scope, brandId, body);
+    try {
+      return await this.sandboxes.createSandbox(scope, brandId, body);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   @Get(':sandboxId')
   @RequirePermission('INTEGRATIONS', 'READ')
-  get(
+  async get(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('sandboxId') sandboxId: string,
     @CurrentScope() scope: Scope,
   ): Promise<ZohoSandbox> {
-    return this.sandboxes.getSandbox(scope, brandId, sandboxId);
+    try {
+      return await this.sandboxes.getSandbox(scope, brandId, sandboxId);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   @Patch(':sandboxId')
   @RequirePermission('INTEGRATIONS', 'WRITE')
-  update(
+  async update(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('sandboxId') sandboxId: string,
     @Body(zodPipe(zohoSandboxUpdateSchema)) body: ZohoSandboxUpdateInput,
     @CurrentScope() scope: Scope,
   ): Promise<ZohoSandbox> {
-    return this.sandboxes.updateSandbox(scope, brandId, sandboxId, body);
+    try {
+      return await this.sandboxes.updateSandbox(scope, brandId, sandboxId, body);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   @Delete(':sandboxId')
@@ -85,40 +113,56 @@ export class ZohoSandboxController {
     @Param('sandboxId') sandboxId: string,
     @CurrentScope() scope: Scope,
   ): Promise<{ ok: true }> {
-    await this.sandboxes.deleteSandbox(scope, brandId, sandboxId);
+    try {
+      await this.sandboxes.deleteSandbox(scope, brandId, sandboxId);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
     return { ok: true };
   }
 
   @Patch(':sandboxId/activation')
   @RequirePermission('INTEGRATIONS', 'WRITE')
-  setActive(
+  async setActive(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('sandboxId') sandboxId: string,
     @Body(zodPipe(zohoSandboxActivationSchema)) body: ZohoSandboxActivationInput,
     @CurrentScope() scope: Scope,
   ): Promise<ZohoSandbox> {
-    return this.sandboxes.setSandboxActive(scope, brandId, sandboxId, body.active);
+    try {
+      return await this.sandboxes.setSandboxActive(scope, brandId, sandboxId, body.active);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   @Post(':sandboxId/rebuild')
   @RequirePermission('INTEGRATIONS', 'WRITE')
-  rebuild(
+  async rebuild(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('sandboxId') sandboxId: string,
     @CurrentScope() scope: Scope,
   ): Promise<ZohoSandbox> {
-    return this.sandboxes.rebuildSandbox(scope, brandId, sandboxId);
+    try {
+      return await this.sandboxes.rebuildSandbox(scope, brandId, sandboxId);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   @Get(':sandboxId/changes')
   @RequirePermission('INTEGRATIONS', 'READ')
-  changes(
+  async changes(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('sandboxId') sandboxId: string,
     @Query(zodPipe(zohoSandboxChangesScopeSchema)) query: ZohoSandboxChangesScopeInput,
     @CurrentScope() scope: Scope,
   ): Promise<ZohoSandboxChange[]> {
-    return this.sandboxes.listChanges(scope, brandId, sandboxId, query.target);
+    try {
+      return await this.sandboxes.listChanges(scope, brandId, sandboxId, query.target);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   @Patch(':sandboxId/changes/:changeId')
@@ -129,18 +173,26 @@ export class ZohoSandboxController {
     @Body(zodPipe(zohoSandboxChangeReviewSchema)) body: ZohoSandboxChangeReviewInput,
     @CurrentScope() scope: Scope,
   ): Promise<{ ok: true }> {
-    await this.sandboxes.markChangeReviewed(scope, brandId, changeId, body.reviewed);
+    try {
+      await this.sandboxes.markChangeReviewed(scope, brandId, changeId, body.reviewed);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
     return { ok: true };
   }
 
   @Post(':sandboxId/push/validate')
   @RequirePermission('INTEGRATIONS', 'WRITE')
-  validatePush(
+  async validatePush(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('sandboxId') sandboxId: string,
     @CurrentScope() scope: Scope,
   ): Promise<unknown> {
-    return this.sandboxes.validatePush(scope, brandId, sandboxId);
+    try {
+      return await this.sandboxes.validatePush(scope, brandId, sandboxId);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   /**
@@ -152,21 +204,43 @@ export class ZohoSandboxController {
    */
   @Post(':sandboxId/push')
   @RequirePermission('INTEGRATIONS', 'WRITE')
-  push(
+  async push(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('sandboxId') sandboxId: string,
     @Body(zodPipe(zohoSandboxPushConfirmSchema)) _body: { confirm: true },
     @CurrentScope() scope: Scope,
   ): Promise<unknown> {
-    return this.sandboxes.pushToProduction(scope, brandId, sandboxId);
+    try {
+      return await this.sandboxes.pushToProduction(scope, brandId, sandboxId);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
   }
 
   @Get('logs/deployments')
   @RequirePermission('INTEGRATIONS', 'READ')
-  deploymentLogs(
+  async deploymentLogs(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @CurrentScope() scope: Scope,
   ): Promise<unknown> {
-    return this.sandboxes.listDeploymentLogs(scope, brandId);
+    try {
+      return await this.sandboxes.listDeploymentLogs(scope, brandId);
+    } catch (cause) {
+      throw this.mapIntegrationError(cause);
+    }
+  }
+
+  /** A provider refusal (e.g. Sandbox not enabled for this Zoho org) is the
+   * request failing against a live service, not this API misbehaving —
+   * 400/502 with Zoho's own message, not a bare 500. Same shape as
+   * StripeAccountController's own copy of this. */
+  private mapIntegrationError(cause: unknown): Error {
+    if (cause instanceof IntegrationError) {
+      if (cause.errorClass === 'TRANSIENT') {
+        return new BadGatewayException(cause.providerMessage ?? cause.message);
+      }
+      return new BadRequestException(cause.providerMessage ?? cause.message);
+    }
+    return cause instanceof Error ? cause : new Error(String(cause));
   }
 }
