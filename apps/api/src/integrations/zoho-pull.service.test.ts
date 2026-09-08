@@ -1,20 +1,15 @@
 /**
- * ZohoPullService against a real database — the two things this checks are
- * exactly why the recent optimization work needed to touch the schema, not
- * just the service:
+ * ZohoPullService against a real database.
  *
- *  1. Running detail fetches concurrently (mapWithConcurrency) means two of
- *     pullOneInvoice's own cascade calls, or two of pullOnePayment's, can
- *     land on the same not-yet-seen remote contact/invoice in the same
- *     batch — one new customer's invoices both referencing it, or two
- *     partial payments both referencing one new invoice. The
- *     brandId_zohoContactId / brandId_zohoInvoiceId uniqueness plus the
- *     upsert those methods now use is what has to actually resolve that
- *     race, not just look like it does.
- *  2. pullPayments must skip getPayment entirely for a payment already
- *     pulled — that is the whole point of the payment_zoho_payment_id_idx
- *     change; a test that only checked "the counts still come out right"
- *     would not catch a regression back to fetching every payment every time.
+ * Invoices are pulled list-only (no per-invoice detail fetch), so
+ * pullOneInvoice takes the list item directly rather than an id it would
+ * otherwise have to re-fetch. The race this still has to resolve correctly:
+ * running a page's per-item work concurrently means two of pullOneInvoice's
+ * own cascade calls can land on the same not-yet-seen remote customer in the
+ * same batch — two invoices for one new customer, both referencing it. The
+ * brandId_zohoContactId / brandId_zohoInvoiceId uniqueness plus the upsert
+ * these methods use is what has to actually resolve that race, not just look
+ * like it does.
  *
  * Needs a migrated, seeded database:
  *   pnpm setup:local && pnpm --filter @fenwick/api test
@@ -32,10 +27,7 @@ import {
   ZohoBooksAdapter,
   type ZohoContactDetail,
   type ZohoContactListItem,
-  type ZohoInvoiceDetail,
   type ZohoInvoiceListItem,
-  type ZohoPaymentDetail,
-  type ZohoPaymentListItem,
 } from '../adapters/accounting/zoho-books.adapter.js';
 import type { IntegrationConnectionService } from './integration-connection.service.js';
 import type { SystemScopeResolver } from '../tenancy/system-scope.js';
@@ -47,24 +39,18 @@ const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
 
 /**
- * Programmable stand-in for the network calls only. fromZohoAddress,
- * decimalToMinor and reverseMapPaymentMode are the real, pure
- * implementations (inherited, unmodified) — the same ones
- * zoho-books.adapter.test.ts checks directly — so only the methods that
- * actually reach the network here are overridden.
+ * Programmable stand-in for the network calls only. fromZohoAddress and
+ * decimalToMinor are the real, pure implementations (inherited, unmodified)
+ * — the same ones zoho-books.adapter.test.ts checks directly — so only the
+ * methods that actually reach the network here are overridden.
  */
 class FakeZohoBooksAdapter extends ZohoBooksAdapter {
   getContactCalls = 0;
-  getInvoiceCalls = 0;
-  getPaymentCalls = 0;
 
   readonly contacts = new Map<string, ZohoContactDetail>();
-  readonly invoices = new Map<string, ZohoInvoiceDetail>();
-  readonly payments = new Map<string, ZohoPaymentDetail>();
   listedContacts: ZohoContactListItem[] = [];
-  listedPayments: ZohoPaymentListItem[] = [];
-  /** Drives reconcileInvoicePresence's full scan. Empty by default, which is
-   * what every pre-existing test already assumed. */
+  /** Drives both pullInvoices and reconcileInvoicePresence's full scan. Empty
+   * by default, which is what every pre-existing test already assumed. */
   listedInvoices: ZohoInvoiceListItem[] = [];
 
   constructor() {
@@ -75,8 +61,16 @@ class FakeZohoBooksAdapter extends ZohoBooksAdapter {
     return { contacts: this.listedContacts, hasMorePage: false };
   }
 
+  /** Lets a test make the customer cascade's detail fetch itself fail, to
+   * exercise how a phase reacts to a systemic error rather than a bad
+   * record — the invoice side has no detail fetch of its own to fail
+   * anymore, so this is the one real network call left in the cascade an
+   * invoice pull can still trigger. */
+  getContactImpl: ((contactId: string) => ZohoContactDetail) | undefined;
+
   override async getContact(_connection: AccountingConnection, contactId: string) {
     this.getContactCalls++;
+    if (this.getContactImpl) return this.getContactImpl(contactId);
     const contact = this.contacts.get(contactId);
     if (!contact) throw new Error(`no fake contact stubbed for ${contactId}`);
     return contact;
@@ -84,29 +78,6 @@ class FakeZohoBooksAdapter extends ZohoBooksAdapter {
 
   override async listInvoicesPage() {
     return { invoices: this.listedInvoices, hasMorePage: false };
-  }
-
-  /** Lets a test make the detail fetch itself fail, to exercise how a phase
-   * reacts to a systemic error rather than a bad record. */
-  getInvoiceImpl: ((invoiceId: string) => ZohoInvoiceDetail) | undefined;
-
-  override async getInvoice(_connection: AccountingConnection, invoiceId: string) {
-    this.getInvoiceCalls++;
-    if (this.getInvoiceImpl) return this.getInvoiceImpl(invoiceId);
-    const invoice = this.invoices.get(invoiceId);
-    if (!invoice) throw new Error(`no fake invoice stubbed for ${invoiceId}`);
-    return invoice;
-  }
-
-  override async listPaymentsPage() {
-    return { payments: this.listedPayments, hasMorePage: false };
-  }
-
-  override async getPayment(_connection: AccountingConnection, paymentId: string) {
-    this.getPaymentCalls++;
-    const payment = this.payments.get(paymentId);
-    if (!payment) throw new Error(`no fake payment stubbed for ${paymentId}`);
-    return payment;
   }
 }
 
@@ -123,7 +94,14 @@ function fakeContact(
   };
 }
 
-function fakeInvoice(invoiceId: string, number: string, customerId: string): ZohoInvoiceDetail {
+/** The list-response shape ZohoPullService's invoice pull now works from
+ * exclusively — no sub_total/tax_total/line_items, since those are only on
+ * the single-record GET this platform no longer calls. */
+function fakeInvoiceListItem(
+  invoiceId: string,
+  number: string,
+  customerId: string,
+): ZohoInvoiceListItem {
   return {
     invoice_id: invoiceId,
     customer_id: customerId,
@@ -134,20 +112,6 @@ function fakeInvoice(invoiceId: string, number: string, customerId: string): Zoh
     currency_code: 'USD',
     total: 100,
     balance: 100,
-    sub_total: 100,
-    tax_total: 0,
-    line_items: [{ name: 'Widget', rate: 100, quantity: 1 }],
-  };
-}
-
-function fakePayment(paymentId: string, customerId: string, invoiceId: string): ZohoPaymentDetail {
-  return {
-    payment_id: paymentId,
-    date: '2026-08-05',
-    payment_mode: 'banktransfer',
-    amount: 100,
-    customer_id: customerId,
-    invoices: [{ invoice_id: invoiceId, amount_applied: 100 }],
   };
 }
 
@@ -221,25 +185,8 @@ describeWithDb('ZohoPullService', () => {
         scope: RequestScope,
         brandId: string,
         connection: AccountingConnection,
-        invoiceId: string,
+        item: ZohoInvoiceListItem,
       ) => Promise<boolean>;
-      pullOnePayment: (
-        scope: RequestScope,
-        brandId: string,
-        connection: AccountingConnection,
-        paymentId: string,
-      ) => Promise<boolean>;
-      pullPayments: (
-        scope: RequestScope,
-        brandId: string,
-        connection: AccountingConnection,
-      ) => Promise<number>;
-      pullPaymentsIfDue: (
-        scope: RequestScope,
-        brandId: string,
-        connection: AccountingConnection,
-        force: boolean,
-      ) => Promise<number>;
       reconcileInvoicePresence: (
         scope: RequestScope,
         brandId: string,
@@ -271,19 +218,13 @@ describeWithDb('ZohoPullService', () => {
     // the fixed literal prefix every run, not anything unique, which quietly
     // collided the invoice_brand_id_number_key constraint against whatever
     // this same test had left behind from an earlier run.
-    zoho.invoices.set(
-      invoiceIdA,
-      fakeInvoice(invoiceIdA, `INV-A-${randomUUID().slice(0, 8)}`, contactId),
-    );
-    zoho.invoices.set(
-      invoiceIdB,
-      fakeInvoice(invoiceIdB, `INV-B-${randomUUID().slice(0, 8)}`, contactId),
-    );
+    const itemA = fakeInvoiceListItem(invoiceIdA, `INV-A-${randomUUID().slice(0, 8)}`, contactId);
+    const itemB = fakeInvoiceListItem(invoiceIdB, `INV-B-${randomUUID().slice(0, 8)}`, contactId);
 
     const svc = service(zoho);
     await Promise.all([
-      svc.pullOneInvoice(scope, brandId, connection, invoiceIdA),
-      svc.pullOneInvoice(scope, brandId, connection, invoiceIdB),
+      svc.pullOneInvoice(scope, brandId, connection, itemA),
+      svc.pullOneInvoice(scope, brandId, connection, itemB),
     ]);
 
     const customers = await owner.customer.findMany({
@@ -296,67 +237,6 @@ describeWithDb('ZohoPullService', () => {
     });
     expect(invoices).toHaveLength(2);
     expect(invoices.every((i) => i.customerId === customers[0]!.id)).toBe(true);
-  });
-
-  it('resolves two payments racing to create the same not-yet-seen invoice into exactly one row', async () => {
-    const zoho = new FakeZohoBooksAdapter();
-    const contactId = `race-contact-${randomUUID()}`;
-    const invoiceId = `race-invoice-${randomUUID()}`;
-    const paymentIdA = `race-payment-a-${randomUUID()}`;
-    const paymentIdB = `race-payment-b-${randomUUID()}`;
-
-    zoho.contacts.set(contactId, fakeContact(contactId, 'Race Test Co 2'));
-    zoho.invoices.set(
-      invoiceId,
-      fakeInvoice(invoiceId, `INV-C-${randomUUID().slice(0, 8)}`, contactId),
-    );
-    zoho.payments.set(paymentIdA, fakePayment(paymentIdA, contactId, invoiceId));
-    zoho.payments.set(paymentIdB, fakePayment(paymentIdB, contactId, invoiceId));
-
-    const svc = service(zoho);
-    const applied = await Promise.all([
-      svc.pullOnePayment(scope, brandId, connection, paymentIdA),
-      svc.pullOnePayment(scope, brandId, connection, paymentIdB),
-    ]);
-    expect(applied).toEqual([true, true]);
-
-    const invoices = await owner.invoice.findMany({ where: { brandId, zohoInvoiceId: invoiceId } });
-    expect(invoices).toHaveLength(1);
-
-    const payments = await owner.payment.findMany({
-      where: { brandId, zohoPaymentId: { in: [paymentIdA, paymentIdB] } },
-    });
-    expect(payments).toHaveLength(2);
-    expect(payments.every((p) => p.invoiceId === invoices[0]!.id)).toBe(true);
-  });
-
-  it('skips getPayment entirely for a payment already pulled', async () => {
-    const zoho = new FakeZohoBooksAdapter();
-    const contactId = `skip-contact-${randomUUID()}`;
-    const invoiceId = `skip-invoice-${randomUUID()}`;
-    const paymentId = `skip-payment-${randomUUID()}`;
-
-    zoho.contacts.set(contactId, fakeContact(contactId, 'Skip Test Co'));
-    zoho.invoices.set(
-      invoiceId,
-      fakeInvoice(invoiceId, `INV-D-${randomUUID().slice(0, 8)}`, contactId),
-    );
-    zoho.payments.set(paymentId, fakePayment(paymentId, contactId, invoiceId));
-    zoho.listedPayments = [
-      { payment_id: paymentId, date: '2026-08-05', payment_mode: 'banktransfer', amount: 100 },
-    ];
-
-    const svc = service(zoho);
-
-    const firstRunTouched = await svc.pullPayments(scope, brandId, connection);
-    expect(firstRunTouched).toBe(1);
-    expect(zoho.getPaymentCalls).toBe(1);
-
-    const secondRunTouched = await svc.pullPayments(scope, brandId, connection);
-    expect(secondRunTouched).toBe(0);
-    // The regression this guards against: without the already-pulled check,
-    // this would be 2 — every payment re-fetched on every single pull.
-    expect(zoho.getPaymentCalls).toBe(1);
   });
 
   it('floors the full contacts scan, but a forced pull always bypasses it', async () => {
@@ -387,50 +267,6 @@ describeWithDb('ZohoPullService', () => {
     const third = await svc.pullCustomersIfDue(scope, brandId, connection, null, true);
     expect(third).toBe(1);
     expect(zoho.getContactCalls).toBe(2);
-
-    await redis.invalidate(floorKey);
-  });
-
-  it('floors the full payments scan, but a forced pull always bypasses it', async () => {
-    const zoho = new FakeZohoBooksAdapter();
-    const contactId = `pay-floor-contact-${randomUUID()}`;
-    const invoiceId = `pay-floor-invoice-${randomUUID()}`;
-    const paymentId = `pay-floor-payment-${randomUUID()}`;
-
-    zoho.contacts.set(contactId, fakeContact(contactId, 'Payment Floor Test Co'));
-    zoho.invoices.set(
-      invoiceId,
-      fakeInvoice(invoiceId, `INV-PF-${randomUUID().slice(0, 8)}`, contactId),
-    );
-    zoho.payments.set(paymentId, fakePayment(paymentId, contactId, invoiceId));
-    zoho.listedPayments = [
-      { payment_id: paymentId, date: '2026-08-05', payment_mode: 'banktransfer', amount: 100 },
-    ];
-
-    // Same key ZohoPullService.pullPaymentsIfDue uses — cleared first so an
-    // earlier run against this same seeded brand can't leave the floor set.
-    const floorKey = `zoho:payments-scanned:${brandId}`;
-    await redis.invalidate(floorKey);
-
-    const svc = service(zoho, redis);
-
-    const first = await svc.pullPaymentsIfDue(scope, brandId, connection, false);
-    expect(first).toBe(1);
-    expect(zoho.getPaymentCalls).toBe(1);
-
-    // Same brand, unforced, immediately after — the scan is floored, so this
-    // must not touch Zoho again (no listPaymentsPage call either, but that's
-    // only observable indirectly here via getPaymentCalls staying put).
-    const second = await svc.pullPaymentsIfDue(scope, brandId, connection, false);
-    expect(second).toBe(0);
-    expect(zoho.getPaymentCalls).toBe(1);
-
-    // force: true is what the on-demand "pull now" endpoint sets — it must
-    // get a real scan even though the floor is still active. The payment was
-    // already pulled above, so this re-scans but finds nothing new to fetch.
-    const third = await svc.pullPaymentsIfDue(scope, brandId, connection, true);
-    expect(third).toBe(0);
-    expect(zoho.getPaymentCalls).toBe(1);
 
     await redis.invalidate(floorKey);
   });
@@ -530,17 +366,17 @@ describeWithDb('ZohoPullService', () => {
   });
 
   /**
-   * Echo suppression (Invoice.zohoSyncedVersion). These two are the regression
-   * guards for the round-trip corruption: push and pull were each correct on
-   * their own but were not inverse operations, so composing them destroyed the
-   * invoice's own arithmetic. The first case is what used to break; the second
-   * exists so the fix cannot be "stop pulling invoices", which would be a far
-   * worse bug than the one being fixed.
+   * Echo suppression (Invoice.zohoSyncedVersion / Customer.zohoSyncedVersion).
+   * pushInvoice sends tax and the card fee to Zoho as ordinary line items,
+   * and pushInvoice/upsertCustomer both send a narrower payload than what
+   * comes back on a pull — so reading our own write back as if it were a
+   * remote edit is a real hazard, not a hypothetical one. The invoice side is
+   * narrower than it used to be now that the pull is list-only (no more
+   * subtotal/tax/line-item corruption to guard, since those fields are no
+   * longer written on an update at all) — what's left to protect is
+   * total/balance/status not getting reverted to a stale push-time snapshot.
    */
   describe('push/pull echo suppression', () => {
-    /** A locally-issued invoice as it looks here: tax and card fee are their
-     * own fields, one line item. Plus the shape Zoho reports for that same
-     * invoice after our push turned tax and the fee into ordinary lines. */
     async function localInvoicePushedToZoho(zohoInvoiceId: string, syncedVersion: Date) {
       const contactId = `echo-contact-${randomUUID()}`;
       const customer = await owner.customer.create({
@@ -574,48 +410,7 @@ describeWithDb('ZohoPullService', () => {
           zohoSyncedVersion: syncedVersion,
         },
       });
-      await owner.lineItem.create({
-        data: {
-          invoiceId: invoice.id,
-          position: 0,
-          itemName: 'Consulting',
-          quantity: 10000,
-          unitPriceMinor: 10000n,
-          lineTotalMinor: 10000n,
-          taxExempt: false,
-        },
-      });
       return { customer, invoice, contactId };
-    }
-
-    /** What Zoho holds after pushInvoice appended tax and the card fee as
-     * plain line items: one invoice whose sub_total is our grand total, with
-     * no tax of its own. Applying this verbatim is the corruption. */
-    function zohoViewOfPushedInvoice(
-      zohoInvoiceId: string,
-      contactId: string,
-      number: string,
-      lastModified: string,
-    ): ZohoInvoiceDetail {
-      return {
-        invoice_id: zohoInvoiceId,
-        customer_id: contactId,
-        invoice_number: number,
-        status: 'sent',
-        date: '2026-08-01',
-        due_date: '2026-08-31',
-        currency_code: 'USD',
-        total: 111,
-        balance: 111,
-        sub_total: 111,
-        tax_total: 0,
-        last_modified_time: lastModified,
-        line_items: [
-          { name: 'Consulting', rate: 100, quantity: 1 },
-          { name: 'Tax', rate: 8, quantity: 1 },
-          { name: 'Card processing fee', rate: 3, quantity: 1 },
-        ],
-      };
     }
 
     it('leaves an invoice untouched when Zoho reports nothing newer than our own push', async () => {
@@ -624,29 +419,33 @@ describeWithDb('ZohoPullService', () => {
       const { invoice, contactId } = await localInvoicePushedToZoho(zohoInvoiceId, pushedAt);
 
       const zoho = new FakeZohoBooksAdapter();
-      zoho.invoices.set(
-        zohoInvoiceId,
-        // Exactly equal to the stored version — an unchanged record reports the
-        // timestamp of our own write, which is why the check is <= and not <.
-        zohoViewOfPushedInvoice(zohoInvoiceId, contactId, invoice.number, pushedAt.toISOString()),
-      );
+      const item: ZohoInvoiceListItem = {
+        invoice_id: zohoInvoiceId,
+        customer_id: contactId,
+        invoice_number: invoice.number,
+        status: 'sent',
+        date: '2026-08-01',
+        due_date: '2026-08-31',
+        currency_code: 'USD',
+        total: 111,
+        balance: 111,
+        // Exactly equal to the stored version — an unchanged record reports
+        // the timestamp of our own write, which is why the check is <= and
+        // not <.
+        last_modified_time: pushedAt.toISOString(),
+      };
 
-      const applied = await service(zoho).pullOneInvoice(scope, brandId, connection, zohoInvoiceId);
+      const applied = await service(zoho).pullOneInvoice(scope, brandId, connection, item);
       expect(applied).toBe(false);
 
       const after = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
-      // Every one of these was corrupted before the fix: subtotal absorbed the
-      // tax and the fee, tax was zeroed, and cardFeeMinor survived to be
-      // counted a second time.
+      // Untouched by the skipped update — still whatever was there before,
+      // not overwritten with the list item's (echoed) total/balance/status.
       expect(after.subtotalMinor).toBe(10000n);
       expect(after.taxMinor).toBe(800n);
-      expect(after.taxRateBpApplied).toBe(800);
       expect(after.cardFeeMinor).toBe(300n);
       expect(after.totalMinor).toBe(11100n);
-
-      const lines = await owner.lineItem.findMany({ where: { invoiceId: invoice.id } });
-      expect(lines).toHaveLength(1);
-      expect(lines[0]!.taxExempt).toBe(false);
+      expect(after.status).toBe('SENT');
     });
 
     it('still applies a genuine Zoho edit made after our push', async () => {
@@ -655,33 +454,33 @@ describeWithDb('ZohoPullService', () => {
       const { invoice, contactId } = await localInvoicePushedToZoho(zohoInvoiceId, pushedAt);
 
       const zoho = new FakeZohoBooksAdapter();
-      zoho.invoices.set(zohoInvoiceId, {
-        ...zohoViewOfPushedInvoice(
-          zohoInvoiceId,
-          contactId,
-          invoice.number,
-          // An hour later: somebody actually changed this in Zoho, so Zoho is
-          // authoritative and the pull must overwrite.
-          new Date(pushedAt.getTime() + 3_600_000).toISOString(),
-        ),
+      const item: ZohoInvoiceListItem = {
+        invoice_id: zohoInvoiceId,
+        customer_id: contactId,
+        invoice_number: invoice.number,
+        status: 'paid',
+        date: '2026-08-01',
+        due_date: '2026-08-31',
+        currency_code: 'USD',
         total: 250,
-        balance: 250,
-        sub_total: 200,
-        tax_total: 50,
-        line_items: [{ name: 'Revised consulting', rate: 200, quantity: 1 }],
-      });
+        balance: 0,
+        // An hour later: somebody actually changed this in Zoho, so Zoho is
+        // authoritative and the pull must overwrite.
+        last_modified_time: new Date(pushedAt.getTime() + 3_600_000).toISOString(),
+      };
 
-      const applied = await service(zoho).pullOneInvoice(scope, brandId, connection, zohoInvoiceId);
+      const applied = await service(zoho).pullOneInvoice(scope, brandId, connection, item);
       expect(applied).toBe(true);
 
       const after = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
-      expect(after.subtotalMinor).toBe(20000n);
-      expect(after.taxMinor).toBe(5000n);
       expect(after.totalMinor).toBe(25000n);
-
-      const lines = await owner.lineItem.findMany({ where: { invoiceId: invoice.id } });
-      expect(lines).toHaveLength(1);
-      expect(lines[0]!.itemName).toBe('Revised consulting');
+      expect(after.balanceMinor).toBe(0n);
+      expect(after.status).toBe('PAID');
+      // subtotalMinor/taxMinor/cardFeeMinor are not part of the list-only
+      // update data at all — a genuine remote edit does not touch them
+      // either, only total/balance/status/dates/customer/number do.
+      expect(after.subtotalMinor).toBe(10000n);
+      expect(after.taxMinor).toBe(800n);
     });
 
     it("preserves a customer's first and last name against an echo of our own push", async () => {
@@ -898,51 +697,12 @@ describeWithDb('ZohoPullService', () => {
     });
   });
 
-  /**
-   * G-08. The refusal itself was always correct — Payment.invoiceId is
-   * singular, so a Zoho payment spread across several invoices genuinely
-   * cannot be represented. What was wrong was the reporting: recordPull marked
-   * the job SUCCEEDED anyway, so the integrations panel showed a green
-   * "Success" row for a payment that had in fact been dropped. An audit trail
-   * that overstates what synced hides the limitation instead of surfacing it.
-   */
   describe('skipped work is not reported as success', () => {
-    it('records SKIPPED, not SUCCEEDED, for a payment spanning several invoices', async () => {
-      const paymentId = `multi-invoice-payment-${randomUUID()}`;
-      const zoho = new FakeZohoBooksAdapter();
-      zoho.payments.set(paymentId, {
-        payment_id: paymentId,
-        date: '2026-08-05',
-        payment_mode: 'banktransfer',
-        amount: 100,
-        customer_id: `some-contact-${randomUUID()}`,
-        invoices: [
-          { invoice_id: `inv-a-${randomUUID()}`, amount_applied: 60 },
-          { invoice_id: `inv-b-${randomUUID()}`, amount_applied: 40 },
-        ],
-      });
-
-      const applied = await service(zoho).pullOnePayment(scope, brandId, connection, paymentId);
-      expect(applied).toBe(false);
-
-      const job = await owner.syncJob.findFirst({
-        where: { brandId, provider: 'ZOHO_BOOKS', direction: 'PULL', objectId: paymentId },
-        orderBy: { createdAt: 'desc' },
-      });
-      expect(job?.status).toBe('SKIPPED');
-
-      // And no Payment row was invented to make the numbers work.
-      const payment = await owner.payment.findFirst({
-        where: { brandId, zohoPaymentId: paymentId },
-      });
-      expect(payment).toBeNull();
-    });
-
     it('still records SUCCEEDED when a pull genuinely applies a change', async () => {
-      // Guards the other direction: the predicate must not turn every pull into
-      // a skip. A list wrapper returning 0 for "nothing had changed" is a real
-      // success, not a refusal, which is why the check is an explicit predicate
-      // rather than any falsy result.
+      // The predicate must not turn every pull into a skip. A list wrapper
+      // returning 0 for "nothing had changed" is a real success, not a
+      // refusal, which is why the check is an explicit predicate rather than
+      // any falsy result.
       const contactId = `applied-contact-${randomUUID()}`;
       const zoho = new FakeZohoBooksAdapter();
       zoho.contacts.set(contactId, fakeContact(contactId, 'Applied Co'));
@@ -960,13 +720,12 @@ describeWithDb('ZohoPullService', () => {
   /**
    * Resilience of a phase to one unusable record.
    *
-   * mapWithConcurrency propagates the first rejection, so before
-   * pullRecordTolerantly a single bad record failed its phase, which failed
-   * pullBrand's Promise.all, which meant recordPullRun never ran and the
-   * brand's cursor never advanced — every subsequent pull then re-fetched the
-   * same window and failed identically. The brand stopped syncing entirely
-   * because of one row. The currency and invoice-number validations made that
-   * easy to trigger.
+   * A single bad record must not fail its whole phase — that would fail
+   * pullBrand's Promise.all, which would mean recordPullRun never runs and the
+   * brand's cursor never advances. The brand would stop syncing entirely
+   * because of one row, and every subsequent pull would re-fetch the same
+   * window and fail identically. The currency validation made that easy to
+   * trigger.
    */
   describe('one unusable record does not stall the phase', () => {
     it('pulls the good invoices and skips one in an unsupported currency', async () => {
@@ -977,16 +736,15 @@ describeWithDb('ZohoPullService', () => {
       const zoho = new FakeZohoBooksAdapter();
       zoho.contacts.set(contactId, fakeContact(contactId, 'Tolerant Co'));
       zoho.listedInvoices = [
-        { ...fakeInvoice(goodId, `TG-${randomUUID().slice(0, 8)}`, contactId) },
-        { ...fakeInvoice(badId, `TB-${randomUUID().slice(0, 8)}`, contactId) },
-      ] as never[];
-      zoho.invoices.set(goodId, fakeInvoice(goodId, `TG-${randomUUID().slice(0, 8)}`, contactId));
-      zoho.invoices.set(badId, {
-        // JPY is genuinely unrepresentable here — every amount would be 100x
-        // wrong — so this invoice must be refused. The other one must not be.
-        ...fakeInvoice(badId, `TB-${randomUUID().slice(0, 8)}`, contactId),
-        currency_code: 'JPY',
-      });
+        fakeInvoiceListItem(goodId, `TG-${randomUUID().slice(0, 8)}`, contactId),
+        {
+          // JPY is genuinely unrepresentable here — every amount would be
+          // 100x wrong — so this invoice must be refused. The other one must
+          // not be.
+          ...fakeInvoiceListItem(badId, `TB-${randomUUID().slice(0, 8)}`, contactId),
+          currency_code: 'JPY',
+        },
+      ];
 
       // Resolves rather than rejecting: that is the whole point.
       const touched = await service(zoho).pullInvoices(scope, brandId, connection, null);
@@ -1010,15 +768,18 @@ describeWithDb('ZohoPullService', () => {
     it('still aborts the phase on a systemic failure', async () => {
       // The other half of the rule. An expired credential or a rate limit will
       // fail every remaining record too, so grinding through hundreds more would
-      // hammer a rejected token or burn the rate limit for nothing.
+      // hammer a rejected token or burn the rate limit for nothing. Invoices no
+      // longer have their own detail fetch to fail, so this drives the failure
+      // through the one real network call an invoice pull can still trigger:
+      // the not-yet-seen customer cascade's getContact.
       const contactId = `systemic-contact-${randomUUID()}`;
       const invoiceId = `systemic-invoice-${randomUUID()}`;
 
       const zoho = new FakeZohoBooksAdapter();
       zoho.listedInvoices = [
-        { ...fakeInvoice(invoiceId, `SY-${randomUUID().slice(0, 8)}`, contactId) },
-      ] as never[];
-      zoho.getInvoiceImpl = () => {
+        fakeInvoiceListItem(invoiceId, `SY-${randomUUID().slice(0, 8)}`, contactId),
+      ];
+      zoho.getContactImpl = () => {
         throw new IntegrationError({
           message: 'invalid oauth token',
           errorClass: 'AUTHENTICATION',
@@ -1050,11 +811,11 @@ describeWithDb('ZohoPullService', () => {
 
       const zoho = new FakeZohoBooksAdapter();
       zoho.listedInvoices = [
-        { ...fakeInvoice(invoiceId, `IF-${randomUUID().slice(0, 8)}`, contactId) },
-      ] as never[];
+        fakeInvoiceListItem(invoiceId, `IF-${randomUUID().slice(0, 8)}`, contactId),
+      ];
       // Not an IntegrationError — the shape a Prisma/Redis outage or a
       // programming error actually takes.
-      zoho.getInvoiceImpl = () => {
+      zoho.getContactImpl = () => {
         throw new TypeError("Cannot read properties of undefined (reading 'connect')");
       };
 
@@ -1071,11 +832,11 @@ describeWithDb('ZohoPullService', () => {
 
       const zoho = new FakeZohoBooksAdapter();
       zoho.listedInvoices = [
-        { ...fakeInvoice(invoiceId, `SP-${randomUUID().slice(0, 8)}`, contactId) },
-      ] as never[];
-      zoho.getInvoiceImpl = () => {
+        fakeInvoiceListItem(invoiceId, `SP-${randomUUID().slice(0, 8)}`, contactId),
+      ];
+      zoho.getContactImpl = () => {
         throw new IntegrationError({
-          message: 'this particular invoice is malformed',
+          message: 'this particular contact is malformed',
           errorClass: 'VALIDATION',
           provider: 'zoho-books',
         });

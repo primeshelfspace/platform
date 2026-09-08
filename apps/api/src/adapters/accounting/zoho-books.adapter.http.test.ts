@@ -280,6 +280,73 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
     expect(zohoServer.requests[0]!.method).toBe('PUT');
   });
 
+  // --- status transition: moving an invoice out of draft --------------------
+
+  it('marks a newly-issued invoice as sent when Zoho left it as a draft', async () => {
+    // Create/update always leaves the invoice as a draft regardless of the
+    // payload — this is the bug that used to mean issuing an invoice locally
+    // never showed up as anything but a draft in Zoho.
+    zohoServer.on('POST /books/v3/invoices', () => ({
+      status: 200,
+      body: {
+        invoice: {
+          invoice_id: 'zoho-inv-sent',
+          status: 'draft',
+          last_modified_time: '2026-08-20T10:00:00+0000',
+        },
+      },
+    }));
+    zohoServer.on('POST /books/v3/invoices/zoho-inv-sent/status/sent', () => ({
+      status: 200,
+      body: {},
+    }));
+    zohoServer.on('GET /books/v3/invoices/zoho-inv-sent', () => ({
+      status: 200,
+      body: {
+        invoice: {
+          invoice_id: 'zoho-inv-sent',
+          customer_id: 'contact-1',
+          invoice_number: 'INV-0001',
+          status: 'sent',
+          date: '2026-08-01',
+          due_date: '2026-08-31',
+          currency_code: 'USD',
+          total: 111,
+          balance: 111,
+          sub_total: 111,
+          tax_total: 0,
+          line_items: [],
+          last_modified_time: '2026-08-20T12:00:00+0000',
+        },
+      },
+    }));
+
+    const ref = await adapter.pushInvoice(connection, INVOICE_PAYLOAD); // status: 'SENT'
+    expect(zohoServer.requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      'POST /books/v3/invoices',
+      'POST /books/v3/invoices/zoho-inv-sent/status/sent',
+      'GET /books/v3/invoices/zoho-inv-sent',
+    ]);
+    // The version stored is the post-transition readback, not the
+    // pre-transition draft snapshot from the create response.
+    expect(ref.updatedAt?.toISOString()).toBe('2026-08-20T12:00:00.000Z');
+  });
+
+  it('does not try to move a still-draft invoice out of draft', async () => {
+    zohoServer.on('POST /books/v3/invoices', () => ({
+      status: 200,
+      body: {
+        invoice: {
+          invoice_id: 'zoho-inv-draft',
+          status: 'draft',
+          last_modified_time: '2026-08-20T10:00:00+0000',
+        },
+      },
+    }));
+    await adapter.pushInvoice(connection, { ...INVOICE_PAYLOAD, status: 'DRAFT' });
+    expect(zohoServer.requests).toHaveLength(1);
+  });
+
   it('pushes tax and the card fee as their own line items', async () => {
     // Documents the asymmetry echo suppression exists to contain: what Zoho
     // ends up holding is not the shape we sent it conceptually.

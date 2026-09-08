@@ -15,28 +15,6 @@ import { ZohoBooksAdapter } from './zoho-books.adapter.js';
 // this), so an empty stub is enough — same reasoning as the {} as Env below.
 const adapter = new ZohoBooksAdapter({} as Env, {} as RedisService);
 
-describe('ZohoBooksAdapter.reverseMapPaymentMode', () => {
-  it('maps creditcard to CARD', () => {
-    expect(adapter.reverseMapPaymentMode('creditcard')).toBe('CARD');
-  });
-
-  it('maps banktransfer and bankremittance to ACH', () => {
-    expect(adapter.reverseMapPaymentMode('banktransfer')).toBe('ACH');
-    expect(adapter.reverseMapPaymentMode('bankremittance')).toBe('ACH');
-  });
-
-  it('maps check to CHECK', () => {
-    expect(adapter.reverseMapPaymentMode('check')).toBe('CHECK');
-  });
-
-  it('maps anything else (cash, paypal, stripe, ...) to MANUAL', () => {
-    expect(adapter.reverseMapPaymentMode('cash')).toBe('MANUAL');
-    expect(adapter.reverseMapPaymentMode('paypal')).toBe('MANUAL');
-    expect(adapter.reverseMapPaymentMode('stripe')).toBe('MANUAL');
-    expect(adapter.reverseMapPaymentMode('something_new_zoho_adds_later')).toBe('MANUAL');
-  });
-});
-
 describe('ZohoBooksAdapter.decimalToMinor', () => {
   it('converts whole and fractional amounts exactly', () => {
     expect(adapter.decimalToMinor(12.34, 'USD')).toBe(1234);

@@ -141,22 +141,6 @@ export interface ZohoInvoiceDetail extends ZohoInvoiceListItem {
   notes?: string;
 }
 
-/** Fields present on every item in GET /customerpayments' list response. */
-export interface ZohoPaymentListItem {
-  payment_id: string;
-  date: string;
-  payment_mode: string;
-  amount: number;
-}
-
-/** GET /customerpayments/{id} only — customer_id and invoices[] are absent
- * from the list response, per the confirmed Zoho Books API v3 docs. */
-export interface ZohoPaymentDetail extends ZohoPaymentListItem {
-  customer_id: string;
-  reference_number?: string;
-  invoices?: Array<{ invoice_id: string; amount_applied: number }>;
-}
-
 /**
  * ZohoBooksAdapter.
  *
@@ -536,28 +520,56 @@ export class ZohoBooksAdapter implements AccountingPort {
     };
 
     const body = invoice.remoteId
-      ? await this.request<{ invoice: { invoice_id: string; last_modified_time?: string } }>(
-          connection,
-          'PUT',
-          `/books/v3/invoices/${invoice.remoteId}`,
-          { body: payload },
-        )
-      : await this.request<{ invoice: { invoice_id: string; last_modified_time?: string } }>(
-          connection,
-          'POST',
-          '/books/v3/invoices',
-          { body: payload },
-        );
+      ? await this.request<{
+          invoice: { invoice_id: string; last_modified_time?: string; status?: string };
+        }>(connection, 'PUT', `/books/v3/invoices/${invoice.remoteId}`, { body: payload })
+      : await this.request<{
+          invoice: { invoice_id: string; last_modified_time?: string; status?: string };
+        }>(connection, 'POST', '/books/v3/invoices', { body: payload });
 
     const invoiceId = body.invoice.invoice_id;
+    let lastModifiedFromWrite = body.invoice.last_modified_time;
+
+    // Create/update never accepts a status field — Zoho always leaves the
+    // invoice as a draft regardless of what this platform's local status is,
+    // which used to mean issuing an invoice here had no visible effect in
+    // Zoho at all. VOID is excluded: there's no local cancel flow driving it
+    // yet (see voidInvoice), and PAID/PARTIALLY_PAID are left to Zoho's own
+    // computation from an applied customer payment (pushPayment) rather than
+    // forced here — this only ever needs to move a still-draft invoice to
+    // "sent".
+    if (
+      invoice.status !== 'DRAFT' &&
+      invoice.status !== 'VOID' &&
+      body.invoice.status === 'draft'
+    ) {
+      await this.markInvoiceSent(connection, invoiceId);
+      // The status transition is its own write and bumps last_modified_time
+      // again — forcing the readback below keeps zohoSyncedVersion matching
+      // what Zoho now actually holds, rather than the pre-transition draft
+      // snapshot, which would otherwise look like a fresh remote edit to the
+      // very next pull.
+      lastModifiedFromWrite = undefined;
+    }
+
     return {
       remoteId: invoiceId,
       updatedAt: await this.resolveWriteVersion(
-        body.invoice.last_modified_time,
+        lastModifiedFromWrite,
         async () => (await this.getInvoice(connection, invoiceId)).last_modified_time,
         `invoice ${invoiceId}`,
       ),
     };
+  }
+
+  /**
+   * The explicit action Zoho Books requires to move an invoice out of draft —
+   * confirmed against the real API: create/update alone cannot do this. Called
+   * from pushInvoice only when the local status needs the invoice to be
+   * non-draft and Zoho's own write response shows it is still one.
+   */
+  async markInvoiceSent(connection: AccountingConnection, invoiceId: string): Promise<void> {
+    await this.request(connection, 'POST', `/books/v3/invoices/${invoiceId}/status/sent`);
   }
 
   /**
@@ -747,19 +759,20 @@ export class ZohoBooksAdapter implements AccountingPort {
   // Verified against the real Zoho Books API v3 docs, not assumed:
   //  - Invoices supports a genuine server-side "last_modified_time" filter
   //    ("modified after" semantics) — the cheap, correct incremental path.
+  //    ZohoPullService pulls invoices list-only: no per-invoice detail fetch,
+  //    so line_items/sub_total/tax_total/notes (present only on the
+  //    single-record GET, not this list) are not pulled from Zoho at all.
   //  - Contacts has no modified-time *filter*, and — critically — no
   //    documented `sort_order` *input* parameter either (it only appears in
   //    the response), so a descending-sort-plus-early-stop scan cannot be
   //    relied on. This scans every page every run and filters client-side by
   //    last_modified_time instead: less efficient, but correct regardless of
-  //    whatever order Zoho actually returns.
-  //  - Customer Payments exposes no modified-time field anywhere, on the
-  //    list or the single-record response. There is no way to ask Zoho
-  //    "what changed" for payments at all — only a full scan, diffed
-  //    locally by payment_id, is possible with the documented API.
-  //  - line_items (Invoices) and customer_id/invoices[] (Customer Payments)
-  //    are absent from their respective list responses — only the
-  //    single-record GET returns them, hence the separate detail methods.
+  //    whatever order Zoho actually returns. Unlike invoices, contacts still
+  //    get a per-contact detail fetch (getContact) — address, business type
+  //    and contact persons are absent from the list response entirely.
+  //  - Customer payments are not pulled by this platform at all (outbound
+  //    push via pushPayment is the only direction); getInvoice below exists
+  //    solely as pushInvoice's readback fallback, not for the pull path.
 
   async listContactsPage(
     connection: AccountingConnection,
@@ -831,34 +844,6 @@ export class ZohoBooksAdapter implements AccountingPort {
     return body.invoice;
   }
 
-  async listPaymentsPage(
-    connection: AccountingConnection,
-    page: number,
-  ): Promise<{ payments: ZohoPaymentListItem[]; hasMorePage: boolean }> {
-    const body = await this.request<{
-      customerpayments?: ZohoPaymentListItem[];
-      page_context?: { has_more_page?: boolean };
-    }>(connection, 'GET', '/books/v3/customerpayments', {
-      query: { page: String(page), per_page: '200' },
-    });
-    return {
-      payments: body.customerpayments ?? [],
-      hasMorePage: Boolean(body.page_context?.has_more_page),
-    };
-  }
-
-  async getPayment(
-    connection: AccountingConnection,
-    paymentId: string,
-  ): Promise<ZohoPaymentDetail> {
-    const body = await this.request<{ payment: ZohoPaymentDetail }>(
-      connection,
-      'GET',
-      `/books/v3/customerpayments/${paymentId}`,
-    );
-    return body.payment;
-  }
-
   /**
    * Inverse of toZohoAddress — null when Zoho returned no address at all, so
    * a customer with genuinely no address on file stores null rather than an
@@ -891,24 +876,6 @@ export class ZohoBooksAdapter implements AccountingPort {
       postalCode: address.zip ?? null,
       country: null,
     };
-  }
-
-  /** Inverse of mapPaymentMode. Zoho's payment_mode vocabulary is wider than
-   * our PaymentMethod enum, so anything without a clear counterpart (cash,
-   * paypal, stripe, ...) reads as MANUAL — an offline/other record, which is
-   * exactly what those modes are from our domain's perspective. */
-  reverseMapPaymentMode(mode: string): 'CARD' | 'ACH' | 'CHECK' | 'MANUAL' {
-    switch (mode) {
-      case 'creditcard':
-        return 'CARD';
-      case 'banktransfer':
-      case 'bankremittance':
-        return 'ACH';
-      case 'check':
-        return 'CHECK';
-      default:
-        return 'MANUAL';
-    }
   }
 
   /** Inverse of minorToDecimal — the one place a Zoho decimal amount becomes

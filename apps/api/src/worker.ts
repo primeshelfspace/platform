@@ -62,12 +62,7 @@ async function bootstrap(): Promise<void> {
     // force is set only by the on-demand "pull now" endpoint
     // (zoho-connect.controller.ts) — it bypasses pullBrand's contacts
     // full-scan floor, which the scheduled tick below must never do.
-    // skipPayments is set only by the initial post-connect pull, so a fresh
-    // connection only calls Zoho for customers and invoices.
-    'zoho-pull-brand': (job) =>
-      zohoPull.pullBrand(job.data.brandId, job.data.force === true, {
-        skipPayments: job.data.skipPayments === true,
-      }),
+    'zoho-pull-brand': (job) => zohoPull.pullBrand(job.data.brandId, job.data.force === true),
   };
 
   // The 'scheduled-sync' repeatable job (queues.ts, registered by the API

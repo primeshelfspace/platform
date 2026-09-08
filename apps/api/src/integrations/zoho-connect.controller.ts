@@ -240,7 +240,7 @@ export class ZohoConnectController {
       // failure here is logged, not fatal to the connect itself, since the
       // cron will still pick it up on schedule regardless.
       try {
-        await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId, skipPayments: true });
+        await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId });
       } catch (pullError) {
         this.logger.warn(
           `initial pull enqueue failed for brand ${brandId}: ${pullError instanceof Error ? pullError.message : pullError}`,
