@@ -305,7 +305,9 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
     // value, and country is platform-only — never pushed.
     zohoServer.on('POST /books/v3/contacts', () => ({
       status: 200,
-      body: { contact: { contact_id: 'contact-1', last_modified_time: '2026-08-20T10:00:00+0000' } },
+      body: {
+        contact: { contact_id: 'contact-1', last_modified_time: '2026-08-20T10:00:00+0000' },
+      },
     }));
     await adapter.upsertCustomer(connection, {
       localId: 'local-1',

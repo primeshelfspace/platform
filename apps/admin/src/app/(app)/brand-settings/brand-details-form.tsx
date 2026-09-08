@@ -500,7 +500,6 @@ export function BrandDetailsForm({ brand }: { brand: Brand }) {
             </div>
           </div>
         </section>
-
       </fieldset>
       <SaveBar dirty={isDirty} pending={pending} onDiscard={handleDiscard} />
     </form>

@@ -218,7 +218,9 @@ export class ZohoWebhookService {
         }),
     );
     return rows
-      .filter((row) => (row.config as ZohoConnectionConfig | null)?.organizationId === organizationId)
+      .filter(
+        (row) => (row.config as ZohoConnectionConfig | null)?.organizationId === organizationId,
+      )
       .map((row) => ({ brandId: row.brandId, merchantId: row.brand.merchantId }));
   }
 
@@ -269,7 +271,11 @@ export class ZohoWebhookService {
           // (including the payload, in case a later delivery carries more
           // fields than the first) rather than creating a duplicate — see
           // the unique constraint's own comment in schema.prisma.
-          update: { reason, status: 'PENDING', payload: rawPayload as Prisma.InputJsonValue | undefined },
+          update: {
+            reason,
+            status: 'PENDING',
+            payload: rawPayload as Prisma.InputJsonValue | undefined,
+          },
         }),
     );
   }

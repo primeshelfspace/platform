@@ -118,7 +118,11 @@ describeWithDb('ZohoWebhookService', () => {
 
     // A deliberately wrong/unrelated organization_id — must not matter at all
     // for a record this platform has already tagged with a brand.
-    const result = await service.handleContactEvent('status_updated', 'org-that-does-not-own-it', contactId);
+    const result = await service.handleContactEvent(
+      'status_updated',
+      'org-that-does-not-own-it',
+      contactId,
+    );
 
     expect(result.status).toBe(200);
     expect(pull.pullOneCustomerNow).toHaveBeenCalledWith(brandA, contactId);
@@ -177,7 +181,12 @@ describeWithDb('ZohoWebhookService', () => {
     const service = new ZohoWebhookService(prisma, redis, pull);
     const rawPayload = { invoice: { invoice_id: invoiceId, invoice_number: 'INV-9' } };
 
-    const result = await service.handleInvoiceEvent('created', organizationId, invoiceId, rawPayload);
+    const result = await service.handleInvoiceEvent(
+      'created',
+      organizationId,
+      invoiceId,
+      rawPayload,
+    );
 
     expect(result.status).toBe(200);
     expect(pull.pullOneInvoiceNow).not.toHaveBeenCalled();

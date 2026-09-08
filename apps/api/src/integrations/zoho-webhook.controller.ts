@@ -134,7 +134,9 @@ export class ZohoWebhookController {
 
   private parseEvent(event: string | undefined): ZohoWebhookEvent {
     if (!event || !WEBHOOK_EVENTS.includes(event as ZohoWebhookEvent)) {
-      throw new BadRequestException(`unknown or missing event (expected one of ${WEBHOOK_EVENTS.join(', ')})`);
+      throw new BadRequestException(
+        `unknown or missing event (expected one of ${WEBHOOK_EVENTS.join(', ')})`,
+      );
     }
     return event as ZohoWebhookEvent;
   }

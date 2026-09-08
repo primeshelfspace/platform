@@ -679,8 +679,8 @@ export class ZohoBooksAdapter implements AccountingPort {
     postalCode: string | null;
     country: string | null;
   }): Record<string, string | undefined> {
-    const streetLines = [address.line1, address.line2].filter(
-      (line): line is string => Boolean(line?.trim()),
+    const streetLines = [address.line1, address.line2].filter((line): line is string =>
+      Boolean(line?.trim()),
     );
     return {
       address: streetLines.length > 0 ? streetLines.join('\n') : undefined,

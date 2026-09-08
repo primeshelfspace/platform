@@ -94,7 +94,7 @@ describe('ZohoWebhookController.contacts', () => {
     expect(result).toEqual({ received: true });
   });
 
-  it('surfaces the service\'s 404 (unresolvable organization) as a real 404, not a 200', async () => {
+  it("surfaces the service's 404 (unresolvable organization) as a real 404, not a 200", async () => {
     const { controller } = makeController({
       webhooks: { handleContactEvent: vi.fn().mockResolvedValue({ status: 404 }) },
     });
@@ -115,7 +115,7 @@ describe('ZohoWebhookController.invoices', () => {
     expect(webhooks.handleInvoiceEvent).toHaveBeenCalledWith('created', 'org-1', 'i1', body);
   });
 
-  it('surfaces the service\'s 404 as a real 404', async () => {
+  it("surfaces the service's 404 as a real 404", async () => {
     const { controller } = makeController({
       webhooks: { handleInvoiceEvent: vi.fn().mockResolvedValue({ status: 404 }) },
     });

@@ -7,9 +7,24 @@ const VARIANT: Record<
   ToastVariant,
   { Icon: typeof CheckCircleIcon; iconColor: string; iconBg: string; role: 'alert' | 'status' }
 > = {
-  success: { Icon: CheckCircleIcon, iconColor: 'text-success', iconBg: 'bg-success-surface', role: 'status' },
-  error: { Icon: XCircleIcon, iconColor: 'text-danger', iconBg: 'bg-danger-surface', role: 'alert' },
-  warning: { Icon: AlertTriangleIcon, iconColor: 'text-warning', iconBg: 'bg-warning-surface', role: 'status' },
+  success: {
+    Icon: CheckCircleIcon,
+    iconColor: 'text-success',
+    iconBg: 'bg-success-surface',
+    role: 'status',
+  },
+  error: {
+    Icon: XCircleIcon,
+    iconColor: 'text-danger',
+    iconBg: 'bg-danger-surface',
+    role: 'alert',
+  },
+  warning: {
+    Icon: AlertTriangleIcon,
+    iconColor: 'text-warning',
+    iconBg: 'bg-warning-surface',
+    role: 'status',
+  },
   info: { Icon: InfoIcon, iconColor: 'text-info', iconBg: 'bg-info-surface', role: 'status' },
 };
 

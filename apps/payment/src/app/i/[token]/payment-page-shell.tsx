@@ -155,9 +155,7 @@ function InvoiceSummary({
 
   return (
     <div className={`relative ${centered ? 'text-center' : ''}`}>
-      {!light && !centered && (
-        <div className="absolute right-0 top-0">{viewInvoiceButton}</div>
-      )}
+      {!light && !centered && <div className="absolute right-0 top-0">{viewInvoiceButton}</div>}
       {light ? (
         <p className="text-base font-bold leading-snug text-white">
           <span className="block">Invoice {invoice.number}</span>
