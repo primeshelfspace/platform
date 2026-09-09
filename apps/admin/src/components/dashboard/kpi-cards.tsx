@@ -1,38 +1,41 @@
-import { AlertCircle, ArrowDownToLine, Percent, Receipt } from 'lucide-react';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import type { DashboardSummary } from '@/lib/api';
 
 function Card({
-  icon: Icon,
   label,
   value,
   sublabel,
   tone = 'default',
 }: {
-  icon: typeof Receipt;
   label: string;
   value: string;
   sublabel: string;
-  tone?: 'default' | 'danger';
+  tone?: 'default' | 'success' | 'danger';
 }) {
   return (
     <div
-      className={`rounded-lg border p-5 shadow-sm ${
+      className={`rounded-[14px] border px-5 py-4 shadow-[0px_1px_3px_0px_#0000000A] ${
         tone === 'danger' ? 'border-danger/30 bg-danger-surface' : 'border-border bg-surface'
       }`}
     >
-      <div
-        className={`mb-2 flex items-center gap-2 ${tone === 'danger' ? 'text-danger' : 'text-ink-muted'}`}
-      >
-        <Icon className="h-4 w-4" aria-hidden />
-        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
-      </div>
+      <p className={`mb-0.5 text-sm ${tone === 'danger' ? 'text-danger' : 'text-ink-muted'}`}>
+        {label}
+      </p>
       <p
-        className={`text-2xl font-semibold ${tone === 'danger' ? 'text-danger' : 'text-ink-strong'}`}
+        className={
+          tone === 'danger' ? 'text-danger' : tone === 'success' ? 'text-success' : 'text-[#171717]'
+        }
+        style={{
+          fontFamily: 'var(--font-jakarta)',
+          fontWeight: 800,
+          fontSize: '26px',
+          lineHeight: '100%',
+          letterSpacing: '0px',
+        }}
       >
         {value}
       </p>
-      <p className={`mt-1 text-xs ${tone === 'danger' ? 'text-danger/80' : 'text-ink-subtle'}`}>
+      <p className={`mt-0.5 text-xs ${tone === 'danger' ? 'text-danger/80' : 'text-ink-subtle'}`}>
         {sublabel}
       </p>
     </div>
@@ -51,25 +54,22 @@ export function KpiCards({
   return (
     <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <Card
-        icon={Receipt}
         label="Invoiced"
         value={formatMinorForDisplay(summary.invoicedMinor, currency)}
         sublabel={rangeLabel}
       />
       <Card
-        icon={ArrowDownToLine}
         label="Collected"
         value={formatMinorForDisplay(summary.collectedMinor, currency)}
         sublabel={rangeLabel}
+        tone="success"
       />
       <Card
-        icon={Percent}
         label="Collection Rate"
         value={summary.invoicedMinor > 0 ? `${(summary.collectionRate * 100).toFixed(1)}%` : '—'}
         sublabel={rangeLabel}
       />
       <Card
-        icon={AlertCircle}
         label="Overdue"
         value={formatMinorForDisplay(summary.overdueMinor, currency)}
         sublabel="As of today"

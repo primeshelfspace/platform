@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CircleCheck, Link2 } from 'lucide-react';
+import { Link2 } from 'lucide-react';
 
 /**
  * Two states, not one dimmed-down version of the other: connected shows
@@ -21,8 +21,8 @@ export function IntegrationsStatusBanner({
 }) {
   if (!connected) {
     return (
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-info/30 bg-info-surface px-4 py-3 text-sm">
-        <span className="flex items-center gap-2 text-info">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-2.5 text-sm">
+        <span className="flex items-center gap-2 text-[#2563EB]">
           <Link2 className="h-4 w-4" aria-hidden />
           Connect Integrations and Payment Gateway to start tracking invoices and payments.
         </span>
@@ -37,10 +37,10 @@ export function IntegrationsStatusBanner({
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-4 py-2.5 text-sm">
-      <span className="flex items-center gap-2 text-ink-muted">
-        <CircleCheck className="h-4 w-4 text-success" aria-hidden />
-        Zoho Books &amp; Stripe: Connected
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#BBF7D0] bg-green-50 px-4 py-2 text-sm">
+      <span className="flex items-center gap-2 text-ink-strong">
+        <span className="h-2 w-2 shrink-0 rounded-full bg-success" aria-hidden />
+        <span className="font-medium text-success">Zoho Books &amp; Stripe: Connected</span>
         {lastSyncAt && (
           <span className="text-ink-subtle">
             · Last synced {new Date(lastSyncAt).toLocaleString()}

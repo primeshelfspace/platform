@@ -21,17 +21,17 @@ export function ByBrandCards({ brands }: { brands: BrandRollup[] }) {
             <Link
               key={brand.brandId}
               href={`/?brandId=${brand.brandId}`}
-              className="rounded-2xl border border-border bg-surface p-4 shadow-sm transition hover:border-brand-ink"
+              className="rounded-[14px] border border-[#E5E5E5] bg-white p-4 shadow-[0px_1px_3px_0px_#0000000A] transition hover:border-brand-ink"
             >
-              <div className="mb-3 flex items-center gap-2">
+              <div className="mb-2.5 flex items-center gap-2.5">
                 <span
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold text-white"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
                   style={{ backgroundColor: brand.themeColor }}
                   aria-hidden
                 >
                   {initialOf(brand.brandName)}
                 </span>
-                <span className="truncate text-sm font-semibold text-ink-strong">
+                <span className="truncate text-base font-semibold text-ink-strong">
                   {brand.brandName}
                 </span>
               </div>
@@ -54,9 +54,9 @@ export function ByBrandCards({ brands }: { brands: BrandRollup[] }) {
                     {(brand.collectionRate * 100).toFixed(1)}%
                   </dd>
                 </div>
-                <div className="flex items-center justify-between">
-                  <dt className="text-ink-subtle">Overdue</dt>
-                  <dd className="font-medium text-danger">
+                <div className="flex items-center justify-between border-t border-[#E5E5E5] pt-1.5">
+                  <dt className="font-medium text-danger">Overdue</dt>
+                  <dd className="font-semibold text-danger">
                     {formatMinorForDisplay(brand.overdueMinor, currency)}
                   </dd>
                 </div>

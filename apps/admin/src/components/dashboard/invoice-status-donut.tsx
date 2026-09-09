@@ -27,24 +27,24 @@ export function InvoiceStatusDonut({
   const hasData = buckets.some((b) => b.amountMinor > 0);
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-6 shadow-sm">
-      <h2 className="mb-6 text-lg font-semibold text-ink-strong">Invoice Status</h2>
+    <div className="rounded-[14px] border border-[#E5E5E5] bg-surface p-5 shadow-[0px_1px_3px_0px_#0000000A]">
+      <h2 className="mb-4 text-lg font-semibold text-ink-strong">Invoice Status</h2>
       {!hasData ? (
         <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
           <PieChartIcon className="h-8 w-8 text-ink-subtle" aria-hidden />
           <p className="text-sm text-ink-subtle">No invoices to break down yet.</p>
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-6">
-          <div className="h-[220px] w-[220px] shrink-0">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-[150px] w-[150px] shrink-0">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={buckets}
                   dataKey="amountMinor"
                   nameKey="bucket"
-                  innerRadius={68}
-                  outerRadius={104}
+                  innerRadius={46}
+                  outerRadius={72}
                   paddingAngle={2}
                   cornerRadius={4}
                   stroke={palette.surface}
@@ -65,7 +65,7 @@ export function InvoiceStatusDonut({
             </ResponsiveContainer>
           </div>
 
-          <ul className="w-full space-y-3">
+          <ul className="w-full space-y-2">
             {buckets.map((bucket) => (
               <li key={bucket.bucket} className="flex items-center gap-2.5 text-sm">
                 <span
@@ -74,7 +74,7 @@ export function InvoiceStatusDonut({
                   aria-hidden
                 />
                 <span className="flex-1 text-ink-muted">{bucket.bucket}</span>
-                <span className="text-base font-semibold text-ink-strong">
+                <span className="text-sm font-semibold text-ink-strong">
                   {formatMinorForDisplay(bucket.amountMinor, code)}
                 </span>
                 <span className="w-10 text-right text-sm text-ink-subtle">

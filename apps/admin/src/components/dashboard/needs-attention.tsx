@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useTransition } from 'react';
-import { AlertTriangle, CheckCircle2, FileClock, RefreshCw } from 'lucide-react';
+import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from '@fenwick/ui/toast';
 import { retrySyncJobAction } from '../../app/(app)/dashboard-actions';
 import type { NeedsAttentionItem, NeedsAttentionResult } from '@/lib/api';
@@ -13,10 +13,10 @@ const DETAIL_TONE: Record<NeedsAttentionItem['kind'], string> = {
   SYNC_FAILED: 'text-danger',
 };
 
-const ICON: Record<NeedsAttentionItem['kind'], typeof AlertTriangle> = {
-  STALE_DRAFT: FileClock,
-  DUE_SOON: FileClock,
-  SYNC_FAILED: AlertTriangle,
+const ICON_BADGE_TONE: Record<NeedsAttentionItem['kind'], string> = {
+  STALE_DRAFT: 'bg-surface-muted text-ink-muted',
+  DUE_SOON: 'bg-warning-surface text-warning',
+  SYNC_FAILED: 'bg-danger-surface text-danger',
 };
 
 function RetryButton({ syncJobId }: { syncJobId: string }) {
@@ -33,7 +33,7 @@ function RetryButton({ syncJobId }: { syncJobId: string }) {
             if (!result.ok) toast.error(result.error);
           })
         }
-        className="inline-flex items-center gap-1.5 rounded-md bg-ink-strong px-3 py-1.5 text-xs font-semibold text-ink-inverse hover:opacity-90 disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-full bg-ink-strong px-3.5 py-1.5 text-xs font-semibold text-ink-inverse hover:opacity-90 disabled:opacity-60"
       >
         <RefreshCw className={`h-3.5 w-3.5 ${pending ? 'animate-spin' : ''}`} aria-hidden />
         {pending ? 'Retrying…' : 'Retry'}
@@ -52,14 +52,14 @@ export function NeedsAttention({
   brandId: string | null;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="rounded-[14px] border border-[#E5E5E5] bg-white p-8 shadow-[0px_1px_3px_0px_#0000000A]">
+      <div className="mb-5 flex items-center justify-between border-b border-[#E5E5E5] pb-5">
         <div>
-          <h2 className="font-medium text-ink-strong">Needs Attention</h2>
-          <p className="text-xs text-ink-subtle">Drafts, upcoming dues, sync failures</p>
+          <h2 className="text-lg font-semibold text-ink-strong">Needs Attention</h2>
+          <p className="text-sm text-ink-subtle">Drafts, upcoming dues, sync failures</p>
         </div>
         {result.totalCount > 0 && (
-          <span className="text-xs font-semibold text-danger">
+          <span className="rounded-full bg-danger-surface px-3 py-1 text-sm font-semibold text-danger">
             {result.totalCount} item{result.totalCount === 1 ? '' : 's'}
           </span>
         )}
@@ -71,32 +71,31 @@ export function NeedsAttention({
           <p className="text-sm text-ink-subtle">Nothing needs attention right now.</p>
         </div>
       ) : (
-        <ul className="space-y-3">
+        <ul className="divide-y divide-[#E5E5E5]">
           {result.items.map((item, index) => {
-            const Icon = ICON[item.kind];
             const targetBrandId = brandId ?? item.brandId;
             return (
               <li
                 key={`${item.kind}-${item.syncJobId ?? item.invoiceId ?? index}`}
-                className="flex items-start gap-3"
+                className="flex items-center gap-3 py-5 first:pt-0 last:pb-0"
               >
                 <span
-                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-muted text-ink-muted"
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${ICON_BADGE_TONE[item.kind]}`}
                   aria-hidden
                 >
-                  <Icon className="h-4 w-4" aria-hidden />
+                  <AlertCircle className="h-4 w-4" aria-hidden />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-ink-strong">
-                    {item.invoiceNumber ? `${item.invoiceNumber}  ` : ''}
-                    {item.subject}
+                  <p className="truncate text-base">
+                    <span className="text-ink-subtle">{item.invoiceNumber}</span>
+                    <span className="ml-2 font-semibold text-ink-strong">{item.subject}</span>
                     {item.brandName && (
                       <span className="ml-2 text-xs font-normal text-ink-subtle">
                         {item.brandName}
                       </span>
                     )}
                   </p>
-                  <p className={`text-xs ${DETAIL_TONE[item.kind]}`}>{item.detail}</p>
+                  <p className={`text-sm ${DETAIL_TONE[item.kind]}`}>{item.detail}</p>
                 </div>
 
                 {item.kind === 'SYNC_FAILED' && item.syncJobId ? (
@@ -104,7 +103,7 @@ export function NeedsAttention({
                 ) : item.invoiceNumber ? (
                   <Link
                     href={`/invoices?brandId=${targetBrandId}&search=${encodeURIComponent(item.invoiceNumber)}`}
-                    className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-ink-strong hover:bg-surface-muted"
+                    className="shrink-0 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-ink-strong hover:bg-surface-muted"
                   >
                     View
                   </Link>
