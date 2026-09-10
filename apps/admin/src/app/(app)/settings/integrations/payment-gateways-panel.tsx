@@ -563,9 +563,7 @@ function PaymentMethodsSection({
           hint="Apple Pay or Google Pay — only shown if customer device supports it"
           checked={settings.applePayEnabled || settings.googlePayEnabled}
           disabled={savingField === 'digitalWallet'}
-          onChange={(v) =>
-            void save('digitalWallet', { applePayEnabled: v, googlePayEnabled: v })
-          }
+          onChange={(v) => void save('digitalWallet', { applePayEnabled: v, googlePayEnabled: v })}
         />
         <Toggle
           layout="row"
@@ -717,7 +715,9 @@ function TransactionLog({
 
       {transactions.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-ink-muted sm:px-6">
-          {initial.data.length === 0 ? 'No transactions yet.' : 'No transactions match these filters.'}
+          {initial.data.length === 0
+            ? 'No transactions yet.'
+            : 'No transactions match these filters.'}
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -760,7 +760,11 @@ function TransactionLog({
                       {formatDateTime(tx.createdAt)}
                     </td>
                     <td className="whitespace-nowrap px-5 py-3 font-medium">
-                      <AmountCell amountMinor={tx.amountMinor} currency={tx.currency} status={tx.status} />
+                      <AmountCell
+                        amountMinor={tx.amountMinor}
+                        currency={tx.currency}
+                        status={tx.status}
+                      />
                     </td>
                     <td className="px-5 py-3">
                       <Link
