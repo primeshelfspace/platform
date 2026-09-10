@@ -14,7 +14,6 @@ import {
   listInvoices,
   listPaymentGateways,
   listPaymentTransactions,
-  squareConnectUrl,
   stripeConnectUrl,
   type Brand,
   type CustomerAddress,
@@ -450,9 +449,9 @@ export default async function BrandSettingsPage({
               key={brand.id}
               brandId={brand.id}
               brandDisplayName={brand.displayName}
+              brandCurrency={brand.currency}
               basePath="/brand-settings?tab=payments"
               stripeConnectUrl={stripeConnectUrl(brand.id)}
-              squareConnectUrl={squareConnectUrl(brand.id)}
               initialGateways={gateways}
               selected={selectedGateway}
               initialMethodSettings={methodSettings}

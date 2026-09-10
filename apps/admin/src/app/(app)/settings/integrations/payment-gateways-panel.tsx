@@ -1,10 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronRight, Link2, Loader2, Unlink } from 'lucide-react';
+import {
+  ArrowLeft,
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  CreditCard,
+  Info,
+  Link2,
+  ShieldCheck,
+  Target,
+  Unlink,
+  X,
+} from 'lucide-react';
 import { toast } from '@fenwick/ui/toast';
 import type {
   PaymentGatewayProvider,
@@ -16,18 +29,12 @@ import type {
 import { Toggle } from '@/components/ui/toggle';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
 import { GatewayMark } from './gateway-mark';
-import {
-  connectAuthorizeNetAction,
-  connectPaymentGatewayAction,
-  disconnectPaymentGatewayAction,
-  updatePaymentMethodSettingsAction,
-} from './actions';
+import { disconnectPaymentGatewayAction, updatePaymentMethodSettingsAction } from './actions';
 
-/** Providers that link straight to their own OAuth consent screen rather
- * than calling connectPaymentGatewayAction. */
-type OAuthProvider = Extract<PaymentGatewayProvider, 'STRIPE' | 'SQUARE'>;
-function isOAuthProvider(provider: PaymentGatewayProvider): provider is OAuthProvider {
-  return provider === 'STRIPE' || provider === 'SQUARE';
+/** Only Stripe has a working connect flow right now — PayPal, Square and
+ * Authorize.net show "Coming soon" instead of a working Connect button. */
+function isConnectable(provider: PaymentGatewayProvider): provider is 'STRIPE' {
+  return provider === 'STRIPE';
 }
 
 const GATEWAY_DESCRIPTION: Record<PaymentGatewayProvider, string> = {
@@ -38,10 +45,10 @@ const GATEWAY_DESCRIPTION: Record<PaymentGatewayProvider, string> = {
 };
 
 const METHOD_LABEL: Record<PaymentTransaction['method'], string> = {
-  CARD: 'Credit/Debit Card',
+  CARD: 'Credit / Debit Card',
   WALLET: 'Digital Wallet',
   ACH: 'ACH Bank Transfer',
-  CHECK: 'Manual Check',
+  CHECK: 'Uploaded Check',
   MANUAL: 'Manual',
 };
 
@@ -50,13 +57,20 @@ const STATUS_STYLE: Record<
   { dot: string; text: string; label: string }
 > = {
   SETTLED: { dot: 'bg-success', text: 'text-success', label: 'Success' },
-  REFUNDED: { dot: 'bg-success', text: 'text-success', label: 'Refunded' },
+  REFUNDED: { dot: 'bg-ink-subtle', text: 'text-ink-muted', label: 'Refunded' },
   PARTIALLY_REFUNDED: { dot: 'bg-warning', text: 'text-warning', label: 'Partially refunded' },
   PROCESSING: { dot: 'bg-ink-subtle', text: 'text-ink-muted', label: 'Processing' },
-  INITIATED: { dot: 'bg-ink-subtle', text: 'text-ink-muted', label: 'Pending' },
+  INITIATED: { dot: 'bg-warning', text: 'text-warning', label: 'Pending' },
   FAILED: { dot: 'bg-danger', text: 'text-danger', label: 'Failed' },
   CANCELLED: { dot: 'bg-ink-subtle', text: 'text-ink-muted', label: 'Cancelled' },
 };
+
+const DATE_RANGE_OPTIONS = [
+  { value: '7', label: 'Last 7 days' },
+  { value: '30', label: 'Last 30 days' },
+  { value: '90', label: 'Last 90 days' },
+  { value: 'all', label: 'All time' },
+] as const;
 
 function formatMoney(amountMinor: number, currency: string): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amountMinor / 100);
@@ -73,23 +87,24 @@ function formatDateTime(iso: string): string {
 }
 
 /**
- * Brand Settings → Payment Gateways. A list of the four gateways this
- * platform can offer, and — once one is connected — a detail view for it:
- * its own Payment Methods toggles, a Disconnect confirmation, and the
- * brand's full Transaction Log underneath.
+ * Brand Settings → Payment Gateways. Once a gateway is connected, the list
+ * splits into "Connected" and "Available" sections (only one gateway can be
+ * active per brand, so Available exists to explain why the rest are
+ * inactive rather than to offer a real second Connect). Before anything is
+ * connected, it's a single flat list — there's nothing to split yet.
  *
- * The log is deliberately the same table regardless of which gateway's
- * detail is open (see PaymentsService.list on the API side) — connecting a
- * new gateway does not make the previous one's transaction history
- * disappear, because nothing here is actually scoped to "the currently
- * connected gateway" in the first place.
+ * "View Details" on the connected gateway opens its own page: a Disconnect
+ * confirmation, this brand's Payment Methods toggles, and its full
+ * Transaction Log underneath (the log is deliberately the same table
+ * regardless of which gateway is connected — see PaymentsService.list on the
+ * API side — so disconnecting one gateway does not erase its history).
  */
 export function PaymentGatewaysPanel({
   brandId,
   brandDisplayName,
+  brandCurrency,
   basePath,
   stripeConnectUrl,
-  squareConnectUrl,
   initialGateways,
   selected,
   initialMethodSettings,
@@ -97,178 +112,233 @@ export function PaymentGatewaysPanel({
 }: {
   brandId: string;
   brandDisplayName: string;
+  brandCurrency: string;
   /** Where this panel's own list/detail links point — the page embedding it
    * owns the tab query param(s) that get this panel rendered in the first
    * place, so the panel itself doesn't hardcode which page that is. */
   basePath: string;
   stripeConnectUrl: string;
-  squareConnectUrl: string;
   initialGateways: PaymentGatewaySummary[];
   selected: PaymentGatewayProvider | null;
   initialMethodSettings: PaymentMethodSettings | null;
   initialTransactions: PaymentTransactionListResponse | null;
 }) {
-  const router = useRouter();
   const [gateways, setGateways] = useState(initialGateways);
-  const [authorizeNetModalOpen, setAuthorizeNetModalOpen] = useState(false);
   const listHref = `${basePath}&brandId=${brandId}`;
-
-  const connectUrls: Record<OAuthProvider, string> = {
-    STRIPE: stripeConnectUrl,
-    SQUARE: squareConnectUrl,
-  };
-
-  function onAuthorizeNetConnected() {
-    setAuthorizeNetModalOpen(false);
-    setGateways((prev) =>
-      prev.map((g) => (g.provider === 'AUTHORIZE_NET' ? { ...g, connected: true } : g)),
-    );
-    router.push(`${listHref}&gateway=authorize_net`);
-  }
 
   const selectedGateway = selected ? gateways.find((g) => g.provider === selected) : null;
 
+  return !selected || !selectedGateway ? (
+    <GatewayList
+      brandDisplayName={brandDisplayName}
+      brandCurrency={brandCurrency}
+      listHref={listHref}
+      gateways={gateways}
+      stripeConnectUrl={stripeConnectUrl}
+    />
+  ) : (
+    <GatewayDetail
+      brandId={brandId}
+      brandDisplayName={brandDisplayName}
+      listHref={listHref}
+      gateway={selectedGateway}
+      initialMethodSettings={initialMethodSettings}
+      initialTransactions={initialTransactions}
+      onGatewaysChange={setGateways}
+    />
+  );
+}
+
+function SectionHeader({
+  label,
+  open,
+  onToggle,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+}) {
   return (
-    <>
-      {!selected || !selectedGateway ? (
-        <GatewayList
-          brandId={brandId}
-          listHref={listHref}
-          gateways={gateways}
-          connectUrls={connectUrls}
-          onConnected={(provider) =>
-            setGateways((prev) =>
-              prev.map((g) => (g.provider === provider ? { ...g, connected: true } : g)),
-            )
-          }
-          onConnectAuthorizeNet={() => setAuthorizeNetModalOpen(true)}
-        />
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="flex items-center gap-2"
+    >
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border text-ink-muted">
+        {open ? (
+          <ChevronUp className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+        )}
+      </span>
+      <span className="text-base font-bold text-ink-strong">{label}</span>
+    </button>
+  );
+}
+
+function ConnectedGatewayCard({
+  gateway,
+  brandDisplayName,
+  brandCurrency,
+  listHref,
+}: {
+  gateway: PaymentGatewaySummary;
+  brandDisplayName: string;
+  brandCurrency: string;
+  listHref: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-5">
+      <div className="flex items-center gap-4">
+        <GatewayMark provider={gateway.provider} />
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-bold text-ink-strong">{gateway.displayName}</p>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-success-surface px-2.5 py-0.5 text-xs font-medium text-success">
+              <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
+              Connected
+            </span>
+          </div>
+          <p className="mt-0.5 text-sm text-ink-muted">
+            {brandDisplayName} • {brandCurrency} — Standard account
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        <span className="inline-flex items-center gap-1.5 text-sm text-success">
+          <ShieldCheck className="h-4 w-4" aria-hidden />
+          Payouts go directly to your {gateway.displayName} account
+        </span>
+        <Link
+          href={`${listHref}&gateway=${gateway.provider.toLowerCase()}`}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted"
+        >
+          View Details
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function AvailableGatewayCard({
+  gateway,
+  stripeConnectUrl,
+}: {
+  gateway: PaymentGatewaySummary;
+  stripeConnectUrl: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-5">
+      <div className="flex items-center gap-4">
+        <GatewayMark provider={gateway.provider} />
+        <div>
+          <p className="font-bold text-ink-strong">{gateway.displayName}</p>
+          <p className="mt-0.5 text-sm text-ink-muted">{GATEWAY_DESCRIPTION[gateway.provider]}</p>
+        </div>
+      </div>
+
+      {isConnectable(gateway.provider) ? (
+        <a
+          href={stripeConnectUrl}
+          className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black"
+        >
+          <Link2 className="h-4 w-4" aria-hidden />
+          Connect
+        </a>
       ) : (
-        <GatewayDetail
-          brandId={brandId}
-          brandDisplayName={brandDisplayName}
-          listHref={listHref}
-          gateway={selectedGateway}
-          otherGateways={gateways.filter((g) => g.provider !== selectedGateway.provider)}
-          connectUrls={connectUrls}
-          initialMethodSettings={initialMethodSettings}
-          initialTransactions={initialTransactions}
-          onGatewaysChange={setGateways}
-          onConnectAuthorizeNet={() => setAuthorizeNetModalOpen(true)}
-        />
+        <button
+          type="button"
+          disabled
+          className="inline-flex shrink-0 cursor-not-allowed items-center gap-2 rounded-[10px] border border-border bg-surface-muted px-4 py-2 text-sm font-bold text-ink-muted"
+        >
+          Coming soon
+        </button>
       )}
-      {authorizeNetModalOpen && (
-        <AuthorizeNetConnectModal
-          brandId={brandId}
-          onClose={() => setAuthorizeNetModalOpen(false)}
-          onConnected={onAuthorizeNetConnected}
-        />
-      )}
-    </>
+    </div>
   );
 }
 
 function GatewayList({
-  brandId,
+  brandDisplayName,
+  brandCurrency,
   listHref,
   gateways,
-  connectUrls,
-  onConnected,
-  onConnectAuthorizeNet,
+  stripeConnectUrl,
 }: {
-  brandId: string;
+  brandDisplayName: string;
+  brandCurrency: string;
   listHref: string;
   gateways: PaymentGatewaySummary[];
-  connectUrls: Record<OAuthProvider, string>;
-  onConnected: (provider: PaymentGatewayProvider) => void;
-  onConnectAuthorizeNet: () => void;
+  stripeConnectUrl: string;
 }) {
-  const router = useRouter();
-  const [connecting, setConnecting] = useState<PaymentGatewayProvider | null>(null);
+  const [connectedOpen, setConnectedOpen] = useState(true);
+  const [availableOpen, setAvailableOpen] = useState(true);
 
-  async function connect(provider: Extract<PaymentGatewayProvider, 'PAYPAL'>) {
-    setConnecting(provider);
-    const result = await connectPaymentGatewayAction(brandId, provider);
-    setConnecting(null);
-    if (result.ok) {
-      onConnected(provider);
-      router.push(`${listHref}&gateway=${provider.toLowerCase()}`);
-    } else {
-      toast.error(result.error);
-    }
+  const connected = gateways.filter((g) => g.connected);
+  const available = gateways.filter((g) => !g.connected);
+
+  if (connected.length === 0) {
+    return (
+      <div className="mt-4 space-y-3">
+        {available.map((gateway) => (
+          <AvailableGatewayCard
+            key={gateway.provider}
+            gateway={gateway}
+            stripeConnectUrl={stripeConnectUrl}
+          />
+        ))}
+      </div>
+    );
   }
 
   return (
-    <div className="mt-4 space-y-3">
-      {gateways.map((gateway) => (
-        <div
-          key={gateway.provider}
-          className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-5"
-        >
-          <div className="flex items-center gap-4">
-            <GatewayMark provider={gateway.provider} />
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-bold text-ink-strong">{gateway.displayName}</p>
-                {gateway.connected && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-success-surface px-2.5 py-0.5 text-xs font-medium text-success">
-                    <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden />
-                    Connected
-                  </span>
-                )}
-              </div>
-              <p className="mt-0.5 text-sm text-ink-muted">
-                {gateway.connected && gateway.accountLabel
-                  ? gateway.accountLabel
-                  : GATEWAY_DESCRIPTION[gateway.provider]}
+    <div className="mt-4 space-y-6">
+      <section className="space-y-3">
+        <SectionHeader
+          label="Connected"
+          open={connectedOpen}
+          onToggle={() => setConnectedOpen((v) => !v)}
+        />
+        {connectedOpen &&
+          connected.map((gateway) => (
+            <ConnectedGatewayCard
+              key={gateway.provider}
+              gateway={gateway}
+              brandDisplayName={brandDisplayName}
+              brandCurrency={brandCurrency}
+              listHref={listHref}
+            />
+          ))}
+      </section>
+
+      <section className="space-y-3">
+        <SectionHeader
+          label="Available"
+          open={availableOpen}
+          onToggle={() => setAvailableOpen((v) => !v)}
+        />
+        {availableOpen && (
+          <>
+            <div className="flex items-start gap-2 rounded-lg bg-info-surface p-3 text-sm text-info">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <p>
+                Only one payment gateway can be active per brand. To connect a different gateway,
+                disconnect {connected[0]?.displayName} above first.
               </p>
             </div>
-          </div>
-
-          {gateway.connected ? (
-            <Link
-              href={`${listHref}&gateway=${gateway.provider.toLowerCase()}`}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted"
-            >
-              View Details
-              <ChevronRight className="h-4 w-4" aria-hidden />
-            </Link>
-          ) : isOAuthProvider(gateway.provider) ? (
-            <a
-              href={connectUrls[gateway.provider]}
-              className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black"
-            >
-              <Link2 className="h-4 w-4" aria-hidden />
-              Connect
-            </a>
-          ) : gateway.provider === 'AUTHORIZE_NET' ? (
-            <button
-              type="button"
-              onClick={onConnectAuthorizeNet}
-              className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black"
-            >
-              <Link2 className="h-4 w-4" aria-hidden />
-              Connect
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() =>
-                void connect(gateway.provider as Extract<PaymentGatewayProvider, 'PAYPAL'>)
-              }
-              disabled={connecting === gateway.provider}
-              className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black disabled:opacity-60"
-            >
-              {connecting === gateway.provider ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              ) : (
-                <Link2 className="h-4 w-4" aria-hidden />
-              )}
-              {connecting === gateway.provider ? 'Connecting…' : 'Connect'}
-            </button>
-          )}
-        </div>
-      ))}
+            {available.map((gateway) => (
+              <AvailableGatewayCard
+                key={gateway.provider}
+                gateway={gateway}
+                stripeConnectUrl={stripeConnectUrl}
+              />
+            ))}
+          </>
+        )}
+      </section>
     </div>
   );
 }
@@ -278,28 +348,21 @@ function GatewayDetail({
   brandDisplayName,
   listHref,
   gateway,
-  otherGateways,
-  connectUrls,
   initialMethodSettings,
   initialTransactions,
   onGatewaysChange,
-  onConnectAuthorizeNet,
 }: {
   brandId: string;
   brandDisplayName: string;
   listHref: string;
   gateway: PaymentGatewaySummary;
-  otherGateways: PaymentGatewaySummary[];
-  connectUrls: Record<OAuthProvider, string>;
   initialMethodSettings: PaymentMethodSettings | null;
   initialTransactions: PaymentTransactionListResponse | null;
   onGatewaysChange: (updater: (prev: PaymentGatewaySummary[]) => PaymentGatewaySummary[]) => void;
-  onConnectAuthorizeNet: () => void;
 }) {
   const router = useRouter();
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [connectingOther, setConnectingOther] = useState<PaymentGatewayProvider | null>(null);
 
   const dialogRef = useDismissablePanel<HTMLDivElement>(confirmingDisconnect, () =>
     setConfirmingDisconnect(false),
@@ -333,18 +396,6 @@ function GatewayDetail({
     }
   }
 
-  async function connectOther(provider: Extract<PaymentGatewayProvider, 'PAYPAL'>) {
-    setConnectingOther(provider);
-    const result = await connectPaymentGatewayAction(brandId, provider);
-    setConnectingOther(null);
-    if (result.ok) {
-      onGatewaysChange((prev) =>
-        prev.map((g) => (g.provider === provider ? { ...g, connected: true } : g)),
-      );
-      router.push(`${listHref}&gateway=${provider.toLowerCase()}`);
-    }
-  }
-
   return (
     <div className="mt-4">
       <Link
@@ -359,10 +410,8 @@ function GatewayDetail({
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-5 shadow-sm sm:p-6">
           <div className="flex flex-wrap gap-8">
             <div>
-              <p className="text-sm text-ink-muted">Account</p>
-              <p className="mt-1 text-base font-bold text-ink-strong">
-                {gateway.accountLabel ?? brandDisplayName}
-              </p>
+              <p className="text-sm text-ink-muted">Brand</p>
+              <p className="mt-1 text-base font-bold text-ink-strong">{brandDisplayName}</p>
             </div>
             <div className="border-l border-border pl-8">
               <p className="text-sm text-ink-muted">Status</p>
@@ -387,65 +436,7 @@ function GatewayDetail({
           <PaymentMethodsSection brandId={brandId} initial={initialMethodSettings} />
         )}
 
-        <section className="rounded-xl border border-border bg-surface p-5 shadow-sm sm:p-6">
-          <h3 className="text-base font-bold text-ink-strong">Available</h3>
-          <p className="mt-1 text-sm text-ink-muted">
-            Connect another gateway without leaving this brand&rsquo;s Payment Gateways.
-          </p>
-          <div className="mt-4 space-y-3">
-            {otherGateways.map((other) => (
-              <div
-                key={other.provider}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
-              >
-                <div className="flex items-center gap-3">
-                  <GatewayMark provider={other.provider} />
-                  <div>
-                    <p className="text-sm font-bold text-ink-strong">{other.displayName}</p>
-                    <p className="text-xs text-ink-muted">{GATEWAY_DESCRIPTION[other.provider]}</p>
-                  </div>
-                </div>
-                {other.connected ? (
-                  <Link
-                    href={`${listHref}&gateway=${other.provider.toLowerCase()}`}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-border bg-surface px-3 py-1.5 text-xs font-bold text-ink-strong hover:bg-surface-muted"
-                  >
-                    View Details
-                    <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-                  </Link>
-                ) : isOAuthProvider(other.provider) ? (
-                  <a
-                    href={connectUrls[other.provider]}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-ink-strong px-3 py-1.5 text-xs font-bold text-white hover:bg-black"
-                  >
-                    Connect
-                  </a>
-                ) : other.provider === 'AUTHORIZE_NET' ? (
-                  <button
-                    type="button"
-                    onClick={onConnectAuthorizeNet}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-ink-strong px-3 py-1.5 text-xs font-bold text-white hover:bg-black"
-                  >
-                    Connect
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void connectOther(other.provider as Extract<PaymentGatewayProvider, 'PAYPAL'>)
-                    }
-                    disabled={connectingOther === other.provider}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-ink-strong px-3 py-1.5 text-xs font-bold text-white hover:bg-black disabled:opacity-60"
-                  >
-                    {connectingOther === other.provider ? 'Connecting…' : 'Connect'}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {initialTransactions && <TransactionLog initial={initialTransactions} />}
+        {initialTransactions && <TransactionLog brandId={brandId} initial={initialTransactions} />}
       </div>
 
       {confirmingDisconnect &&
@@ -457,22 +448,35 @@ function GatewayDetail({
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           >
             <div ref={dialogRef} className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-lg">
-              <h2 id="disconnect-gateway-title" className="text-base font-bold text-ink-strong">
-                Disconnect {gateway.displayName}?
-              </h2>
-              <p className="mt-2 text-sm text-ink-muted">
-                {brandDisplayName} will stop accepting payments through {gateway.displayName}{' '}
-                immediately, and any recurring payments through it will be affected. Its transaction
-                history stays right where it is, and you can reconnect at any time.
+              <div className="flex items-start justify-between gap-4">
+                <h2 id="disconnect-gateway-title" className="text-base font-bold text-ink-strong">
+                  Disconnect {gateway.displayName}?
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDisconnect(false)}
+                  disabled={disconnecting}
+                  aria-label="Close"
+                  className="shrink-0 rounded-md p-0.5 text-ink-muted hover:text-ink-strong disabled:opacity-60"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              </div>
+              <p className="mt-3 text-sm text-ink-muted">
+                Your branded checkout won&rsquo;t be able to process payments until you reconnect a
+                gateway.
               </p>
-              <div className="mt-5 flex justify-end gap-3">
+              <p className="mt-2 text-sm text-ink-muted">
+                Existing invoices and customer records are not affected.
+              </p>
+              <div className="mt-5 flex justify-end gap-3 border-t border-border pt-5">
                 <button
                   type="button"
                   onClick={() => setConfirmingDisconnect(false)}
                   disabled={disconnecting}
                   className="rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted disabled:opacity-60"
                 >
-                  Cancel
+                  Keep connected
                 </button>
                 <button
                   type="button"
@@ -491,140 +495,15 @@ function GatewayDetail({
   );
 }
 
-/**
- * Authorize.net has no consent screen to redirect to, so "Connect" opens
- * this instead: the brand's own API Login ID and Transaction Key, verified
- * against Authorize.net (AuthorizeNetAccountService.connect) before anything
- * is stored — a wrong pair is refused right here with the provider's own
- * message, not discovered later at the first payment attempt.
- */
-function AuthorizeNetConnectModal({
-  brandId,
-  onClose,
-  onConnected,
-}: {
-  brandId: string;
-  onClose: () => void;
-  onConnected: () => void;
-}) {
-  const [apiLoginId, setApiLoginId] = useState('');
-  const [transactionKey, setTransactionKey] = useState('');
-  const [environment, setEnvironment] = useState<'sandbox' | 'production'>('sandbox');
-  const [submitting, setSubmitting] = useState(false);
-
-  const dialogRef = useDismissablePanel<HTMLFormElement>(true, onClose);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitting(true);
-    const result = await connectAuthorizeNetAction(brandId, {
-      apiLoginId: apiLoginId.trim(),
-      transactionKey: transactionKey.trim(),
-      environment,
-    });
-    setSubmitting(false);
-    if (result.ok) {
-      onConnected();
-    } else {
-      toast.error(result.error);
-    }
-  }
-
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="authorize-net-connect-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-    >
-      <form
-        ref={dialogRef}
-        onSubmit={(event) => void submit(event)}
-        className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-lg"
-      >
-        <h2 id="authorize-net-connect-title" className="text-base font-bold text-ink-strong">
-          Connect Authorize.net
-        </h2>
-        <p className="mt-2 text-sm text-ink-muted">
-          From your Authorize.net Merchant Interface: Account &rarr; Settings &rarr; Security
-          Settings &rarr; API Credentials &amp; Keys.
-        </p>
-
-        <div className="mt-4 space-y-3">
-          <label className="block">
-            <span className="text-sm font-medium text-ink-strong">API Login ID</span>
-            <input
-              type="text"
-              required
-              autoFocus
-              value={apiLoginId}
-              onChange={(e) => setApiLoginId(e.target.value)}
-              className="mt-1 w-full rounded-[10px] border border-border bg-surface px-3 py-2 text-sm text-ink-strong"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium text-ink-strong">Transaction Key</span>
-            <input
-              type="password"
-              required
-              value={transactionKey}
-              onChange={(e) => setTransactionKey(e.target.value)}
-              className="mt-1 w-full rounded-[10px] border border-border bg-surface px-3 py-2 text-sm text-ink-strong"
-            />
-          </label>
-          <fieldset className="flex gap-4">
-            <legend className="text-sm font-medium text-ink-strong">Environment</legend>
-            {(['sandbox', 'production'] as const).map((option) => (
-              <label key={option} className="flex items-center gap-1.5 text-sm text-ink-strong">
-                <input
-                  type="radio"
-                  name="environment"
-                  value={option}
-                  checked={environment === option}
-                  onChange={() => setEnvironment(option)}
-                />
-                {option === 'sandbox' ? 'Sandbox' : 'Production'}
-              </label>
-            ))}
-          </fieldset>
-        </div>
-
-        <div className="mt-5 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted disabled:opacity-60"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="inline-flex items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black disabled:opacity-60"
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-            {submitting ? 'Connecting…' : 'Connect'}
-          </button>
-        </div>
-      </form>
-    </div>,
-    document.body,
-  );
-}
-
 /** The same PaymentMethodSettings /settings/payment-methods reads and
  * writes, embedded here so a brand admin does not have to leave the gateway
  * they just connected to turn methods on. One source of truth either way —
- * see updatePaymentMethodSettingsAction. */
+ * see updatePaymentMethodSettingsAction.
+ *
+ * Apple Pay and Google Pay are two separate fields on the settings record,
+ * but a single "Digital Wallet" row here — the payment page already shows
+ * whichever of the two the customer's own device supports, so there is
+ * nothing for a brand admin to choose between them for. */
 function PaymentMethodsSection({
   brandId,
   initial,
@@ -633,12 +512,17 @@ function PaymentMethodsSection({
   initial: PaymentMethodSettings;
 }) {
   const [settings, setSettings] = useState(initial);
-  const [savingField, setSavingField] = useState<keyof PaymentMethodSettings | null>(null);
+  const [savingField, setSavingField] = useState<
+    keyof PaymentMethodSettings | 'digitalWallet' | null
+  >(null);
 
   const save = useCallback(
-    async (field: keyof PaymentMethodSettings, checked: boolean) => {
+    async (
+      field: keyof PaymentMethodSettings | 'digitalWallet',
+      patch: Partial<PaymentMethodSettings>,
+    ) => {
       const previous = settings;
-      const next = { ...settings, [field]: checked };
+      const next = { ...settings, ...patch };
       setSettings(next);
       setSavingField(field);
       const result = await updatePaymentMethodSettingsAction(brandId, next);
@@ -656,66 +540,185 @@ function PaymentMethodsSection({
   return (
     <section className="rounded-xl border border-border bg-surface p-5 shadow-sm sm:p-6">
       <h3 className="text-base font-bold text-ink-strong">Payment Methods</h3>
-      <p className="mt-1 text-sm text-ink-muted">
-        Which methods this brand&rsquo;s payment page offers customers.
-      </p>
       <div className="mt-2">
         <Toggle
           layout="row"
-          label="Credit/Debit Card"
+          label="Credit / Debit Card"
+          hint="Visa, Mastercard, Amex, and Discover — instant confirmation"
           checked={settings.cardEnabled}
           disabled={savingField === 'cardEnabled'}
-          onChange={(v) => void save('cardEnabled', v)}
+          onChange={(v) => void save('cardEnabled', { cardEnabled: v })}
         />
         <Toggle
           layout="row"
           label="ACH Bank Transfer"
+          hint="Pay directly from a US bank account — settles in 3–5 business days"
           checked={settings.achEnabled}
           disabled={savingField === 'achEnabled'}
-          onChange={(v) => void save('achEnabled', v)}
+          onChange={(v) => void save('achEnabled', { achEnabled: v })}
         />
         <Toggle
           layout="row"
-          label="Apple Pay"
-          checked={settings.applePayEnabled}
-          disabled={savingField === 'applePayEnabled'}
-          onChange={(v) => void save('applePayEnabled', v)}
-        />
-        <Toggle
-          layout="row"
-          label="Google Pay"
-          checked={settings.googlePayEnabled}
-          disabled={savingField === 'googlePayEnabled'}
-          onChange={(v) => void save('googlePayEnabled', v)}
+          label="Digital Wallet"
+          hint="Apple Pay or Google Pay — only shown if customer device supports it"
+          checked={settings.applePayEnabled || settings.googlePayEnabled}
+          disabled={savingField === 'digitalWallet'}
+          onChange={(v) =>
+            void save('digitalWallet', { applePayEnabled: v, googlePayEnabled: v })
+          }
         />
         <Toggle
           layout="row"
           divided={false}
-          label="Manual Check Upload"
+          label="Upload Check"
+          hint="Attach a photo of the check for manual review and approval"
           checked={settings.checkEnabled}
           disabled={savingField === 'checkEnabled'}
-          onChange={(v) => void save('checkEnabled', v)}
+          onChange={(v) => void save('checkEnabled', { checkEnabled: v })}
         />
       </div>
     </section>
   );
 }
 
-function TransactionLog({ initial }: { initial: PaymentTransactionListResponse }) {
-  const [transactions] = useState(initial.data);
+function FilterSelect({
+  icon: Icon,
+  value,
+  onChange,
+  options,
+  ariaLabel,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  value: string;
+  onChange: (value: string) => void;
+  options: readonly { value: string; label: string }[];
+  ariaLabel: string;
+}) {
+  return (
+    <div className="relative inline-flex items-center">
+      <Icon className="pointer-events-none absolute left-3 h-4 w-4 text-ink-muted" />
+      <select
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 appearance-none rounded-full border border-border bg-surface py-1.5 pl-9 pr-8 text-sm font-medium text-ink-strong hover:bg-surface-muted"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        className="pointer-events-none absolute right-2.5 h-3.5 w-3.5 text-ink-muted"
+        aria-hidden
+      />
+    </div>
+  );
+}
+
+function AmountCell({
+  amountMinor,
+  currency,
+  status,
+}: {
+  amountMinor: number;
+  currency: string;
+  status: PaymentTransaction['status'];
+}) {
+  const isRefund = status === 'REFUNDED' || status === 'PARTIALLY_REFUNDED' || amountMinor < 0;
+  const amount = formatMoney(Math.abs(amountMinor), currency);
+  return (
+    <span
+      className={
+        isRefund
+          ? 'text-danger'
+          : status === 'SETTLED'
+            ? 'text-success'
+            : 'font-medium text-ink-strong'
+      }
+    >
+      {isRefund ? `-${amount}` : amount}
+    </span>
+  );
+}
+
+function TransactionLog({
+  brandId,
+  initial,
+}: {
+  brandId: string;
+  initial: PaymentTransactionListResponse;
+}) {
+  const [dateRange, setDateRange] = useState<string>('30');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [methodFilter, setMethodFilter] = useState<string>('all');
+
+  const transactions = useMemo(() => {
+    const cutoff =
+      dateRange === 'all' ? null : Date.now() - Number(dateRange) * 24 * 60 * 60 * 1000;
+    return initial.data.filter((tx) => {
+      if (cutoff !== null && new Date(tx.createdAt).getTime() < cutoff) return false;
+      if (statusFilter !== 'all' && tx.status !== statusFilter) return false;
+      if (methodFilter !== 'all' && tx.method !== methodFilter) return false;
+      return true;
+    });
+  }, [initial.data, dateRange, statusFilter, methodFilter]);
+
+  const statusOptions = [
+    { value: 'all', label: 'All statuses' },
+    ...(Object.keys(STATUS_STYLE) as PaymentTransaction['status'][]).map((value) => ({
+      value,
+      label: STATUS_STYLE[value].label,
+    })),
+  ];
+  const methodOptions = [
+    { value: 'all', label: 'All payment methods' },
+    ...(Object.keys(METHOD_LABEL) as PaymentTransaction['method'][]).map((value) => ({
+      value,
+      label: METHOD_LABEL[value],
+    })),
+  ];
 
   return (
     <section className="rounded-xl border border-border bg-surface shadow-sm">
-      <div className="border-b border-border px-5 py-4 sm:px-6">
-        <h3 className="text-base font-bold text-ink-strong">Transaction Log</h3>
-        <p className="mt-1 text-sm text-ink-muted">
-          This brand&rsquo;s full payment history — it stays here no matter which gateway is
-          connected right now.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4 sm:px-6">
+        <div>
+          <h3 className="text-base font-bold text-ink-strong">Transaction Log</h3>
+          <p className="mt-1 text-sm text-ink-muted">
+            This brand&rsquo;s full payment history — it stays here no matter which gateway is
+            connected right now.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterSelect
+            icon={Calendar}
+            ariaLabel="Filter by date range"
+            value={dateRange}
+            onChange={setDateRange}
+            options={DATE_RANGE_OPTIONS}
+          />
+          <FilterSelect
+            icon={Target}
+            ariaLabel="Filter by status"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={statusOptions}
+          />
+          <FilterSelect
+            icon={CreditCard}
+            ariaLabel="Filter by payment method"
+            value={methodFilter}
+            onChange={setMethodFilter}
+            options={methodOptions}
+          />
+        </div>
       </div>
 
       {transactions.length === 0 ? (
-        <p className="px-5 py-8 text-center text-sm text-ink-muted sm:px-6">No transactions yet.</p>
+        <p className="px-5 py-8 text-center text-sm text-ink-muted sm:px-6">
+          {initial.data.length === 0 ? 'No transactions yet.' : 'No transactions match these filters.'}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -733,6 +736,9 @@ function TransactionLog({ initial }: { initial: PaymentTransactionListResponse }
                 </th>
                 <th scope="col" className="px-5 py-3">
                   Customer
+                </th>
+                <th scope="col" className="px-5 py-3">
+                  Invoice #
                 </th>
                 <th scope="col" className="px-5 py-3">
                   Payment Method
@@ -753,10 +759,25 @@ function TransactionLog({ initial }: { initial: PaymentTransactionListResponse }
                     <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                       {formatDateTime(tx.createdAt)}
                     </td>
-                    <td className="whitespace-nowrap px-5 py-3 font-medium text-ink-strong">
-                      {formatMoney(tx.amountMinor, tx.currency)}
+                    <td className="whitespace-nowrap px-5 py-3 font-medium">
+                      <AmountCell amountMinor={tx.amountMinor} currency={tx.currency} status={tx.status} />
                     </td>
-                    <td className="px-5 py-3 text-ink-strong">{tx.customerName}</td>
+                    <td className="px-5 py-3">
+                      <Link
+                        href={`/customers?brandId=${brandId}&search=${encodeURIComponent(tx.customerName)}`}
+                        className="font-medium text-[#2563EB] hover:underline"
+                      >
+                        {tx.customerName}
+                      </Link>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3">
+                      <Link
+                        href={`/invoices?brandId=${brandId}&search=${encodeURIComponent(tx.invoiceNumber)}`}
+                        className="font-medium text-[#2563EB] hover:underline"
+                      >
+                        {tx.invoiceNumber}
+                      </Link>
+                    </td>
                     <td className="whitespace-nowrap px-5 py-3 text-ink-muted">
                       {METHOD_LABEL[tx.method]}
                     </td>
