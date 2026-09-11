@@ -129,7 +129,7 @@ describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
         number: 'INV-0001',
         invoiceDate: new Date('2026-08-01'),
         dueDate: new Date('2026-08-31'),
-        currency: 'PKR',
+        currency: 'JPY',
         publicToken: randomUUID(),
         lineItems: {
           create: [
@@ -151,7 +151,7 @@ describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
 
     expect(pushInvoice).not.toHaveBeenCalled();
     const updated = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
-    expect(updated.zohoUnsyncedReason).toMatch(/PKR/);
+    expect(updated.zohoUnsyncedReason).toMatch(/JPY/);
   });
 
   it('writes the loop-prevention cache key before calling Zoho, and clears a prior unsynced reason on success', async () => {

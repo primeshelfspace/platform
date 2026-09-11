@@ -22,7 +22,7 @@ export type BasisPoints = number;
 export const BASIS_POINTS_SCALE = 10_000n;
 
 /** ISO 4217 codes the platform supports at MVP. */
-export const SUPPORTED_CURRENCIES = ['USD', 'CAD', 'EUR', 'GBP'] as const;
+export const SUPPORTED_CURRENCIES = ['USD', 'CAD', 'EUR', 'GBP', 'PKR'] as const;
 export type CurrencyCode = (typeof SUPPORTED_CURRENCIES)[number];
 
 /** Minor units per major unit, per currency. All MVP currencies are 2-decimal. */
@@ -31,6 +31,7 @@ const MINOR_UNIT_EXPONENT: Record<CurrencyCode, number> = {
   CAD: 2,
   EUR: 2,
   GBP: 2,
+  PKR: 2,
 };
 
 /**
