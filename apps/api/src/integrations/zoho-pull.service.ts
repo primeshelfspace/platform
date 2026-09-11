@@ -275,13 +275,8 @@ export class ZohoPullService {
   }
 
   /**
-   * @param forceFullScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS and
-   * PAYMENTS_FULL_SCAN_FLOOR_SECONDS — set by the on-demand "pull now"
-   * endpoint, never by the scheduled tick.
-   * @param opts.skipPayments Set only by the initial post-connect pull
-   * (FR-ZHO-001's callback) so a fresh connection only calls Zoho for
-   * customers and invoices — the scheduled tick and a manual "pull now"
-   * never set this, and still pull payments as usual.
+   * @param forceFullScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS — set by
+   * the on-demand "pull now" endpoint, never by the scheduled tick.
    */
   async pullBrand(brandId: string, forceFullScan = false): Promise<PullCounts> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-pull');
