@@ -440,6 +440,29 @@ export class ZohoBooksAdapter implements AccountingPort {
       shipping_address: customer.shippingAddress
         ? this.toZohoAddress(customer.shippingAddress)
         : undefined,
+      // The top-level email/phone fields above are not reliably what Zoho
+      // actually updates once a contact already has a primary contact
+      // person — its own UI (and, per real-world reports against this
+      // endpoint, its own API) shows and edits that person's email/phone,
+      // not the contact's flat fields, so a PUT carrying only the flat
+      // fields silently leaves the displayed value unchanged. Pushing the
+      // primary contact person alongside them (Zoho creates one from
+      // contact_name/email/phone on a brand-new contact regardless) is what
+      // actually lands the edit. first_name is required and must be
+      // non-empty, hence the displayName fallback for a business contact
+      // with no person name on file.
+      contact_persons:
+        customer.email || customer.phone
+          ? [
+              {
+                first_name: customer.firstName ?? customer.displayName,
+                last_name: customer.lastName ?? undefined,
+                email: customer.email ?? undefined,
+                phone: customer.phone ?? undefined,
+                is_primary_contact: true,
+              },
+            ]
+          : undefined,
     };
 
     const body = customer.remoteId

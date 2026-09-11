@@ -406,6 +406,76 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
     expect(body.billing_address['country']).toBeUndefined();
   });
 
+  it('pushes email/phone via a primary contact person, not just the flat fields', async () => {
+    // Zoho's own UI (and API, per real-world reports) shows and edits a
+    // contact's email/phone from its primary contact person, not the flat
+    // top-level fields — a payload carrying only those flat fields silently
+    // fails to update what a merchant actually sees change in Zoho.
+    zohoServer.on('PUT /books/v3/contacts/contact-9', () => ({
+      status: 200,
+      body: {
+        contact: { contact_id: 'contact-9', last_modified_time: '2026-08-20T10:00:00+0000' },
+      },
+    }));
+    await adapter.upsertCustomer(connection, {
+      localId: 'local-1',
+      remoteId: 'contact-9',
+      type: 'BUSINESS',
+      displayName: 'Acme Co',
+      companyName: null,
+      firstName: 'Dana',
+      lastName: 'Whitfield',
+      email: 'dana@acme.test',
+      phone: '+1 555 0100',
+      billingAddress: null,
+      shippingAddress: null,
+      currency: 'USD',
+    });
+
+    const body = zohoServer.requests[0]!.body as {
+      email: string;
+      phone: string;
+      contact_persons: Array<Record<string, unknown>>;
+    };
+    expect(body.email).toBe('dana@acme.test');
+    expect(body.phone).toBe('+1 555 0100');
+    expect(body.contact_persons).toEqual([
+      {
+        first_name: 'Dana',
+        last_name: 'Whitfield',
+        email: 'dana@acme.test',
+        phone: '+1 555 0100',
+        is_primary_contact: true,
+      },
+    ]);
+  });
+
+  it('omits contact_persons when the customer has no email or phone on file', async () => {
+    zohoServer.on('POST /books/v3/contacts', () => ({
+      status: 200,
+      body: {
+        contact: { contact_id: 'contact-10', last_modified_time: '2026-08-20T10:00:00+0000' },
+      },
+    }));
+    await adapter.upsertCustomer(connection, {
+      localId: 'local-1',
+      remoteId: null,
+      type: 'BUSINESS',
+      displayName: 'No Contact Co',
+      companyName: null,
+      firstName: null,
+      lastName: null,
+      email: null,
+      phone: null,
+      billingAddress: null,
+      shippingAddress: null,
+      currency: 'USD',
+    });
+
+    const body = zohoServer.requests[0]!.body as { contact_persons?: unknown };
+    expect(body.contact_persons).toBeUndefined();
+  });
+
   // --- error classification -------------------------------------------------
 
   it('classifies a 429 as transient and carries Retry-After through', async () => {
