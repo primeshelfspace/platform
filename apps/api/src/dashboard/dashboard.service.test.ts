@@ -292,7 +292,10 @@ describeWithDb('DashboardService', () => {
       // one, rather than replacing it or going unreported.
       const afterEdit = await dashboard.getRecentActivity(ownerScope, brandId);
       const entriesForProbe = afterEdit.filter((i) => i.message.includes('Recent Activity Probe'));
-      expect(entriesForProbe.map((i) => i.kind).sort()).toEqual(['CUSTOMER_ADDED', 'CUSTOMER_UPDATED']);
+      expect(entriesForProbe.map((i) => i.kind).sort()).toEqual([
+        'CUSTOMER_ADDED',
+        'CUSTOMER_UPDATED',
+      ]);
       expect(entriesForProbe).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

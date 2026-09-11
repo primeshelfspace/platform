@@ -92,10 +92,7 @@ export interface NeedsAttentionResult {
 }
 
 export type RecentActivityKind =
-  | 'PAYMENT_RECEIVED'
-  | 'INVOICE_SENT'
-  | 'CUSTOMER_ADDED'
-  | 'CUSTOMER_UPDATED';
+  'PAYMENT_RECEIVED' | 'INVOICE_SENT' | 'CUSTOMER_ADDED' | 'CUSTOMER_UPDATED';
 
 export interface RecentActivityItem {
   readonly kind: RecentActivityKind;
