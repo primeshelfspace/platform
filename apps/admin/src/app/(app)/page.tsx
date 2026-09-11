@@ -136,6 +136,20 @@ export default async function DashboardPage({
       });
       integrationsConnected = integrationsStatus.connected;
       integrationsLastSyncAt = integrationsStatus.lastSyncAt;
+
+      // Without a live integration there's nothing trustworthy to report —
+      // show the same zero/empty state a brand new, never-synced brand gets,
+      // rather than stale numbers from before the connection dropped.
+      if (!integrationsConnected) {
+        summary = summary
+          ? { ...summary, invoicedMinor: 0, collectedMinor: 0, collectionRate: 0, overdueMinor: 0 }
+          : summary;
+        trend = [];
+        statusBreakdown = [];
+        topOverdueCustomers = [];
+        needsAttention = { items: [], totalCount: 0 };
+        recentActivity = [];
+      }
     } catch (cause) {
       dataError = cause instanceof ApiError ? cause.message : String(cause);
     }
@@ -145,7 +159,7 @@ export default async function DashboardPage({
 
   return (
     <BrandTheme brandColour={activeBrand?.themeColor ?? FALLBACK_THEME_COLOUR}>
-      <PageContainer>
+      <PageContainer compact>
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold text-ink-strong">Dashboard</h1>
@@ -200,8 +214,10 @@ export default async function DashboardPage({
 
             {scopeBrandId === null && <ByBrandCards brands={byBrand} />}
 
-            <div className="mb-6 grid gap-4 lg:grid-cols-2">
-              <CollectionRateTrendChart trend={trend} />
+            <div className="mb-6 grid gap-4 lg:grid-cols-3">
+              <div className="h-full lg:col-span-2">
+                <CollectionRateTrendChart trend={trend} />
+              </div>
               <InvoiceStatusDonut buckets={statusBreakdown} currency={currency} />
             </div>
 

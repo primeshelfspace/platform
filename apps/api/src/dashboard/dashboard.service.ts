@@ -91,7 +91,8 @@ export interface NeedsAttentionResult {
   readonly totalCount: number;
 }
 
-export type RecentActivityKind = 'PAYMENT_RECEIVED' | 'INVOICE_SENT' | 'CUSTOMER_ADDED';
+export type RecentActivityKind =
+  'PAYMENT_RECEIVED' | 'INVOICE_SENT' | 'CUSTOMER_ADDED' | 'CUSTOMER_UPDATED';
 
 export interface RecentActivityItem {
   readonly kind: RecentActivityKind;
@@ -514,7 +515,7 @@ export class DashboardService {
 
   async getRecentActivity(scope: Scope, brandId: string | null): Promise<RecentActivityItem[]> {
     return this.prisma.withScope(scope, async (tx) => {
-      const [payments, issued, customers] = await Promise.all([
+      const [payments, issued, customersCreated, customersUpdated] = await Promise.all([
         tx.payment.findMany({
           where: { status: 'SETTLED', ...(brandId ? { brandId } : {}) },
           orderBy: { settledAt: 'desc' },
@@ -555,6 +556,22 @@ export class DashboardService {
             brand: { select: { displayName: true } },
           },
         }),
+        // A row this method's own CUSTOMER_ADDED branch already reported as
+        // "created" must never also surface here as "updated" — Prisma sets
+        // updatedAt equal to createdAt on insert, so `updatedAt > createdAt`
+        // is exactly "has been edited at least once since it was created."
+        tx.customer.findMany({
+          where: { ...(brandId ? { brandId } : {}) },
+          orderBy: { updatedAt: 'desc' },
+          take: 10,
+          select: {
+            displayName: true,
+            createdAt: true,
+            updatedAt: true,
+            brandId: true,
+            brand: { select: { displayName: true } },
+          },
+        }),
       ]);
 
       const items: RecentActivityItem[] = [
@@ -574,13 +591,22 @@ export class DashboardService {
           message: `Invoice ${e.invoice.number} sent to ${e.invoice.customer.displayName}`,
           occurredAt: e.occurredAt,
         })),
-        ...customers.map((c): RecentActivityItem => ({
+        ...customersCreated.map((c): RecentActivityItem => ({
           kind: 'CUSTOMER_ADDED',
           brandId: c.brandId,
           brandName: brandId ? null : c.brand.displayName,
           message: `New customer ${c.displayName} added`,
           occurredAt: c.createdAt,
         })),
+        ...customersUpdated
+          .filter((c) => c.updatedAt.getTime() > c.createdAt.getTime())
+          .map((c): RecentActivityItem => ({
+            kind: 'CUSTOMER_UPDATED',
+            brandId: c.brandId,
+            brandName: brandId ? null : c.brand.displayName,
+            message: `Customer ${c.displayName} updated`,
+            occurredAt: c.updatedAt,
+          })),
       ];
 
       items.sort((a, b) => b.occurredAt.getTime() - a.occurredAt.getTime());

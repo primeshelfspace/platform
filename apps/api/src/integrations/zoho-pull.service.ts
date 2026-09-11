@@ -255,8 +255,33 @@ export class ZohoPullService {
   }
 
   /**
-   * @param forceFullScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS — set by
-   * the on-demand "pull now" endpoint, never by the scheduled tick.
+   * Parses a Zoho `last_modified_time` into what gets stored in
+   * zohoSyncedVersion once a pull actually applies it — not just after a push
+   * (see pullOneCustomer/pullOneInvoice). Without this, a record pulled once
+   * (via the webhook's targeted pullOneCustomerNow/pullOneInvoiceNow, or by
+   * an ordinary scheduled pass) stays "due" — its last_modified_time is still
+   * newer than the brand's own lastPulledAt cursor, which only advances at
+   * the end of a full pullBrand run — so the very next scheduled or manual
+   * pull re-fetches and re-applies the identical record, logging a second
+   * SyncJob for a change that was already reflected. Stamping the version
+   * here closes that regardless of which path pulled it first: isOwnPushEcho
+   * then correctly recognises the record as already up to date and skips it,
+   * the same way it already does for a push echoing back.
+   */
+  private parseZohoTimestamp(value: string | undefined): Date | null {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  /**
+   * @param forceFullScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS and
+   * PAYMENTS_FULL_SCAN_FLOOR_SECONDS — set by the on-demand "pull now"
+   * endpoint, never by the scheduled tick.
+   * @param opts.skipPayments Set only by the initial post-connect pull
+   * (FR-ZHO-001's callback) so a fresh connection only calls Zoho for
+   * customers and invoices — the scheduled tick and a manual "pull now"
+   * never set this, and still pull payments as usual.
    */
   async pullBrand(brandId: string, forceFullScan = false): Promise<PullCounts> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-pull');
@@ -466,6 +491,7 @@ export class ZohoPullService {
         email: contact.email ?? null,
         phone: contact.phone ?? null,
         status: mapContactStatus(contact.status),
+        zohoSyncedVersion: this.parseZohoTimestamp(contact.last_modified_time),
         billingAddress: (this.preserveLocalCountry(
           this.zoho.fromZohoAddress(contact.billing_address),
           existing?.billingAddress,
@@ -886,6 +912,7 @@ export class ZohoPullService {
           currency,
           totalMinor,
           balanceMinor,
+          zohoSyncedVersion: this.parseZohoTimestamp(item.last_modified_time),
         };
 
         // Upserting on brandId_zohoInvoiceId — the same idea as pullOneCustomer's:

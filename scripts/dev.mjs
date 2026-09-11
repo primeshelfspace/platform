@@ -188,7 +188,9 @@ function pnpm(args, { inherit = true } = {}) {
     stdio: inherit ? 'inherit' : 'pipe',
     // The filter patterns below are pnpm's own globs, not the shell's, so they
     // are passed through literally — no shell, nothing to re-expand them.
-    shell: false,
+    // On Windows, pnpm resolves to a .cmd shim that spawn() can only launch
+    // through the shell (shell: false throws ENOENT there), so it's on there.
+    shell: process.platform === 'win32',
   });
 }
 

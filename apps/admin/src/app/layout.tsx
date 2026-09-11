@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Plus_Jakarta_Sans } from 'next/font/google';
 import { Toaster } from '@fenwick/ui/toast';
 import './globals.css';
 
@@ -6,6 +7,12 @@ export const metadata: Metadata = {
   title: 'Prime Shelf Space Inc.',
   description: 'Multi-brand invoicing and payment administration.',
 };
+
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['800'],
+  variable: '--font-jakarta',
+});
 
 /**
  * Document shell only. The admin chrome — sidebar, brand switcher, sign-out —
@@ -28,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
        * inside the app is still reported. That narrowness is why this is the
        * right tool here rather than a blanket silencing.
        */}
-      <body className="min-h-full" suppressHydrationWarning>
+      <body className={`min-h-full ${plusJakartaSans.variable}`} suppressHydrationWarning>
         {children}
         <Toaster />
       </body>
