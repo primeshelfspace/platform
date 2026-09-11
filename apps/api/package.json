@@ -16,7 +16,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "node ../../scripts/with-env.mjs prisma migrate deploy && prisma generate",
     "db:migrate:dev": "node ../../scripts/with-env.mjs prisma migrate dev",
-    "db:reset": "node ../../scripts/with-env.mjs prisma migrate reset --force",
+    "db:reset": "node ../../scripts/guard-destructive-db.mjs && node ../../scripts/with-env.mjs prisma migrate reset --force",
     "db:seed": "node ../../scripts/with-env.mjs tsx prisma/seed.ts",
     "db:studio": "node ../../scripts/with-env.mjs prisma studio"
   },
