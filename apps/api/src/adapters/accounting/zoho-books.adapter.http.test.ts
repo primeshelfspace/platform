@@ -450,7 +450,40 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
     ]);
   });
 
-  it('omits contact_persons when the customer has no email or phone on file', async () => {
+  it('pushes a primary contact person for name alone, with no email or phone on file', async () => {
+    // The other half of "every control syncs": a customer with neither email
+    // nor phone still has a person name that must reach the same record, not
+    // just the top-level contact_name.
+    zohoServer.on('POST /books/v3/contacts', () => ({
+      status: 200,
+      body: {
+        contact: { contact_id: 'contact-11', last_modified_time: '2026-08-20T10:00:00+0000' },
+      },
+    }));
+    await adapter.upsertCustomer(connection, {
+      localId: 'local-1',
+      remoteId: null,
+      type: 'INDIVIDUAL',
+      displayName: 'Priya Nair',
+      companyName: null,
+      firstName: 'Priya',
+      lastName: 'Nair',
+      email: null,
+      phone: null,
+      billingAddress: null,
+      shippingAddress: null,
+      currency: 'USD',
+    });
+
+    const body = zohoServer.requests[0]!.body as {
+      contact_persons?: Array<Record<string, unknown>>;
+    };
+    expect(body.contact_persons).toEqual([
+      { first_name: 'Priya', last_name: 'Nair', is_primary_contact: true },
+    ]);
+  });
+
+  it('omits contact_persons when the customer has no name, email or phone on file', async () => {
     zohoServer.on('POST /books/v3/contacts', () => ({
       status: 200,
       body: {

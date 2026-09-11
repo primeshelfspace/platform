@@ -448,11 +448,13 @@ export class ZohoBooksAdapter implements AccountingPort {
       // fields silently leaves the displayed value unchanged. Pushing the
       // primary contact person alongside them (Zoho creates one from
       // contact_name/email/phone on a brand-new contact regardless) is what
-      // actually lands the edit. first_name is required and must be
-      // non-empty, hence the displayName fallback for a business contact
-      // with no person name on file.
+      // actually lands the edit. Triggered by name too, not just email/phone
+      // — a customer with neither on file still has a person name that must
+      // stay in sync. first_name is required and must be non-empty, hence
+      // the displayName fallback for a business contact with no person name
+      // on file.
       contact_persons:
-        customer.email || customer.phone
+        customer.firstName || customer.lastName || customer.email || customer.phone
           ? [
               {
                 first_name: customer.firstName ?? customer.displayName,
