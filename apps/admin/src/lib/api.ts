@@ -1193,7 +1193,11 @@ export function getDashboardNeedsAttention(brandId: string | null): Promise<Need
   return apiFetch<NeedsAttentionResult>(`/dashboard/needs-attention${dashboardQuery(brandId)}`);
 }
 
-export type RecentActivityKind = 'PAYMENT_RECEIVED' | 'INVOICE_SENT' | 'CUSTOMER_ADDED';
+export type RecentActivityKind =
+  | 'PAYMENT_RECEIVED'
+  | 'INVOICE_SENT'
+  | 'CUSTOMER_ADDED'
+  | 'CUSTOMER_UPDATED';
 
 export interface RecentActivityItem {
   kind: RecentActivityKind;

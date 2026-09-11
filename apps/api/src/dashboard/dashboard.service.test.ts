@@ -258,4 +258,51 @@ describeWithDb('DashboardService', () => {
     await expect(dashboard.retrySyncJob(ownerScope, job.id)).rejects.toThrow(BadRequestException);
     await owner.syncJob.delete({ where: { id: job.id } });
   });
+
+  describe('getRecentActivity', () => {
+    it('reports a newly created customer as CUSTOMER_ADDED only, then as CUSTOMER_UPDATED once edited — never both at once', async () => {
+      const created = await owner.customer.create({
+        data: {
+          brandId,
+          type: 'BUSINESS',
+          displayName: 'Recent Activity Probe',
+          email: 'recent-activity-probe@dashboard-test.example',
+        },
+      });
+
+      const afterCreate = await dashboard.getRecentActivity(ownerScope, brandId);
+      const forThisCustomer = (items: typeof afterCreate) =>
+        items.filter((i) => i.message.includes('Recent Activity Probe'));
+
+      expect(forThisCustomer(afterCreate)).toEqual([
+        expect.objectContaining({ kind: 'CUSTOMER_ADDED' }),
+      ]);
+
+      // Prisma's @updatedAt has second-level precision in Postgres timestamps
+      // in practice here; without a real gap updatedAt could tie createdAt.
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await owner.customer.update({
+        where: { id: created.id },
+        data: { displayName: 'Recent Activity Probe (edited)' },
+      });
+
+      // Customers aren't versioned, so both entries read the row's current
+      // (post-edit) displayName — the point under test is that the edit adds
+      // its own CUSTOMER_UPDATED entry alongside the original CUSTOMER_ADDED
+      // one, rather than replacing it or going unreported.
+      const afterEdit = await dashboard.getRecentActivity(ownerScope, brandId);
+      const entriesForProbe = afterEdit.filter((i) => i.message.includes('Recent Activity Probe'));
+      expect(entriesForProbe.map((i) => i.kind).sort()).toEqual(['CUSTOMER_ADDED', 'CUSTOMER_UPDATED']);
+      expect(entriesForProbe).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: 'CUSTOMER_UPDATED',
+            message: 'Customer Recent Activity Probe (edited) updated',
+          }),
+        ]),
+      );
+
+      await owner.customer.delete({ where: { id: created.id } });
+    });
+  });
 });

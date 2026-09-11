@@ -1,10 +1,11 @@
-import { Activity, CreditCard, ScrollText, UserPlus } from 'lucide-react';
+import { Activity, CreditCard, ScrollText, UserPen, UserPlus } from 'lucide-react';
 import type { RecentActivityItem } from '@/lib/api';
 
 const ICON: Record<RecentActivityItem['kind'], typeof ScrollText> = {
   PAYMENT_RECEIVED: CreditCard,
   INVOICE_SENT: ScrollText,
   CUSTOMER_ADDED: UserPlus,
+  CUSTOMER_UPDATED: UserPen,
 };
 
 function relativeTime(iso: string): string {
