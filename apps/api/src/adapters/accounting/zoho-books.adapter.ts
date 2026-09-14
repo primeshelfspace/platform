@@ -538,28 +538,31 @@ export class ZohoBooksAdapter implements AccountingPort {
     const payload = {
       customer_id: invoice.customerRemoteId,
       invoice_number: invoice.number,
-      // Zoho's own documented escape hatch for exactly this: an organisation
-      // with auto-numbering on otherwise rejects any invoice_number that
-      // does not match what it would have generated itself, which is every
-      // number this platform sends (they come from this platform's own
-      // per-brand sequence, never Zoho's). This tells Zoho to accept the
-      // supplied number as-is instead of validating it against its own
-      // counter — without touching that organisation's own numbering setting
-      // for invoices created directly in Zoho.
-      ignore_auto_number_generation: true,
       date: this.toZohoDate(invoice.invoiceDate),
       due_date: this.toZohoDate(invoice.dueDate),
       line_items: lineItems,
       notes: invoice.notes ?? undefined,
     };
 
+    // Zoho's own documented escape hatch for exactly this: an organisation
+    // with auto-numbering on otherwise rejects any invoice_number that does
+    // not match what it would have generated itself, which is every number
+    // this platform sends (they come from this platform's own per-brand
+    // sequence, never Zoho's). This is a QUERY parameter, not a body field —
+    // Zoho's docs are explicit on that point, and a first attempt at this fix
+    // put it in the body, where Zoho silently ignores it and still rejects
+    // the invoice_number. Query-only lets Zoho accept the supplied number as
+    // given, without touching that organisation's own numbering setting for
+    // invoices created directly in Zoho.
+    const query = { ignore_auto_number_generation: 'true' };
+
     const body = invoice.remoteId
       ? await this.request<{
           invoice: { invoice_id: string; last_modified_time?: string; status?: string };
-        }>(connection, 'PUT', `/books/v3/invoices/${invoice.remoteId}`, { body: payload })
+        }>(connection, 'PUT', `/books/v3/invoices/${invoice.remoteId}`, { body: payload, query })
       : await this.request<{
           invoice: { invoice_id: string; last_modified_time?: string; status?: string };
-        }>(connection, 'POST', '/books/v3/invoices', { body: payload });
+        }>(connection, 'POST', '/books/v3/invoices', { body: payload, query });
 
     const invoiceId = body.invoice.invoice_id;
     let lastModifiedFromWrite = body.invoice.last_modified_time;
