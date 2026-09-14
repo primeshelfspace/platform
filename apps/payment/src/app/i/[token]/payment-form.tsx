@@ -9,7 +9,7 @@ import {
 } from '@fenwick/shared/money';
 import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
-import { StripeCardForm } from './stripe-card-form';
+import { StripeCardForm, type CreateIntentResult } from './stripe-card-form';
 import { CreditCardIcon, FileCheckIcon, LandmarkIcon, WalletIcon } from './icons';
 
 /** The API's PaymentMethod values this page can attempt. MANUAL is the
@@ -53,14 +53,15 @@ function randomNonce(): string {
  *    confirmed straight against Stripe from the browser; this app never sees
  *    a card number, which is what keeps PCI scope at SAQ A (TDD-001 §3.3).
  *
- * That second difference is also why the card fields appear after "Pay"
- * rather than beside the method grid the way the preview draws them. The
- * PaymentElement needs a client_secret, which only exists once an intent has
- * been created — and creating one is not free: PaymentsService.createIntent
- * runs the INITIATE_PAYMENT transition and writes a Payment row, so opening
- * the intent on selection would move every merely-opened invoice to
- * PENDING_PAYMENT and leave an abandoned attempt behind it. The intent is
- * therefore opened when the customer commits, not when they browse.
+ * The card fields mount immediately under the method grid the moment Card is
+ * selected, matching the preview — StripeCardForm uses Stripe's
+ * deferred-intent pattern (Elements with `mode: 'payment'`, no client_secret
+ * yet) to make that safe: PaymentsService.createIntent still only runs once
+ * the customer actually submits that form, not the moment they select the
+ * tile, so opening the real intent (INITIATE_PAYMENT, a Payment row) never
+ * happens just because someone was browsing options. ACH/Wallet/Check have
+ * no such split-second confirmation step, so they still go through the
+ * single outer "Pay" button below the grid.
  */
 export function PaymentForm({
   invoice,
@@ -95,7 +96,7 @@ export function PaymentForm({
     );
   }
 
-  if (step.kind !== 'select' && step.kind !== 'card-confirm') {
+  if (step.kind !== 'select') {
     return <Outcome step={step} onRetry={() => setStep({ kind: 'select' })} />;
   }
 
@@ -122,38 +123,37 @@ export function PaymentForm({
     }
   }
 
-  /** Asks the API to open an attempt for `method`. CARD comes back as
-   * REQUIRES_ACTION with a client secret to confirm in the browser; the other
-   * methods settle (or fail, or stay pending) server-side. */
-  async function submit(method: Method) {
+  /** The one place either flow actually calls the API to open an attempt.
+   * CARD comes back as REQUIRES_ACTION with a client secret StripeCardForm
+   * confirms in the browser; the other methods settle (or fail, or stay
+   * pending) server-side, with nothing left for the client to do. */
+  async function createIntent(method: Method): Promise<CreateIntentResult> {
+    const response = await fetch(`${API_URL}/public/invoices/${token}/payment-intents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        method,
+        // Client-generated: a double click collapses to one charge
+        // (TDD-001 §8.3), since the server derives its idempotency key
+        // from this value.
+        attemptNonce: randomNonce(),
+      }),
+    });
+    const body = (await response.json()) as CreateIntentResult;
+    if (!response.ok) throw new Error(body.message ?? 'Something went wrong.');
+    return body;
+  }
+
+  /** Backs the outer "Pay" button — every method except CARD, which mounts
+   * StripeCardForm instead and drives createIntent from inside its own
+   * submit handler. */
+  async function submitNonCard(method: Method) {
     setStep({ kind: 'processing' });
     try {
-      const response = await fetch(`${API_URL}/public/invoices/${token}/payment-intents`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          method,
-          // Client-generated: a double click collapses to one charge
-          // (TDD-001 §8.3), since the server derives its idempotency key
-          // from this value.
-          attemptNonce: randomNonce(),
-        }),
-      });
-      const body = (await response.json()) as {
-        gatewayStatus?: string;
-        declineReason?: string | null;
-        clientToken?: string | null;
-        message?: string;
-      };
-      if (!response.ok) {
-        setStep({ kind: 'error', message: body.message ?? 'Something went wrong.' });
-        return;
-      }
+      const body = await createIntent(method);
       if (body.gatewayStatus === 'SUCCEEDED') setStep({ kind: 'success' });
       else if (body.gatewayStatus === 'FAILED') {
         setStep({ kind: 'failure', reason: body.declineReason ?? null });
-      } else if (body.gatewayStatus === 'REQUIRES_ACTION' && body.clientToken) {
-        setStep({ kind: 'card-confirm', clientSecret: body.clientToken });
       } else setStep({ kind: 'pending' });
     } catch (error) {
       setStep({
@@ -196,27 +196,30 @@ export function PaymentForm({
         })}
       </div>
 
-      {step.kind === 'card-confirm' ? (
+      {chosen?.key === 'CARD' ? (
         <StripeCardForm
           publishableKey={invoice.stripePublishableKey}
           stripeAccount={invoice.stripeAccountId}
-          clientSecret={step.clientSecret}
+          amountMinor={chosen.quotedTotalMinor ?? invoice.balanceMinor}
+          currency={currency}
           accentColor={invoice.accentColor}
           amountLabel={amountLabel}
           returnUrl={typeof window !== 'undefined' ? window.location.href : ''}
-          onSucceeded={() => {
-            void reconcile(step.clientSecret);
+          onCreateIntent={() => createIntent('CARD')}
+          onSucceeded={(clientSecret) => {
+            if (clientSecret) void reconcile(clientSecret);
             setStep({ kind: 'success' });
           }}
-          onFailed={(reason) => {
-            void reconcile(step.clientSecret);
+          onFailed={(clientSecret, reason) => {
+            if (clientSecret) void reconcile(clientSecret);
             setStep({ kind: 'failure', reason });
           }}
-          onCancel={() => setStep({ kind: 'select' })}
+          onPending={() => setStep({ kind: 'pending' })}
+          onError={(message) => setStep({ kind: 'error', message })}
         />
       ) : (
         <>
-          {chosen && chosen.key !== 'CARD' && (
+          {chosen && (
             <p className="mt-5 rounded-lg border border-dashed border-[#E5E7EB] bg-surface-muted px-4 py-6 text-center text-sm text-ink-muted">
               You will be redirected to complete payment via {chosen.label}.
             </p>
@@ -224,17 +227,12 @@ export function PaymentForm({
           <button
             type="button"
             disabled={!chosen}
-            onClick={() => chosen && submit(chosen.key)}
+            onClick={() => chosen && submitNonCard(chosen.key)}
             style={{ backgroundColor: invoice.accentColor }}
             className="mt-5 w-full rounded-lg py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
           >
             Pay {amountLabel}
           </button>
-          {chosen?.key === 'CARD' && (
-            <p className="mt-2 text-center text-xs text-ink-subtle">
-              Card details are entered on the next step, in Stripe&rsquo;s secure form.
-            </p>
-          )}
         </>
       )}
     </div>
@@ -244,7 +242,6 @@ export function PaymentForm({
 type Step =
   | { kind: 'select' }
   | { kind: 'processing' }
-  | { kind: 'card-confirm'; clientSecret: string }
   | { kind: 'success' }
   | { kind: 'pending' }
   | { kind: 'failure'; reason: string | null }
