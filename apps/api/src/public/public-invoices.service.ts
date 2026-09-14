@@ -240,7 +240,12 @@ export class PublicInvoicesService {
         cardFeeRateBp: invoice.cardFeeRateBpApplied,
         partialPaymentEnabled: invoice.brand.settings?.partialPaymentEnabled ?? false,
         enabledMethods: {
-          card: invoice.brand.settings?.cardEnabled ?? false,
+          // Toggled on is necessary but not sufficient: without a completed
+          // Stripe Connect flow there is no account to charge against, and
+          // offering the tile anyway just walks a customer into a payment
+          // that fails after they've entered their card (see stripeAccountId
+          // below, which is exactly the fact this checks).
+          card: Boolean(invoice.brand.settings?.cardEnabled) && Boolean(stripeAccountId),
           applePay: invoice.brand.settings?.applePayEnabled ?? false,
           googlePay: invoice.brand.settings?.googlePayEnabled ?? false,
           ach: invoice.brand.settings?.achEnabled ?? false,
