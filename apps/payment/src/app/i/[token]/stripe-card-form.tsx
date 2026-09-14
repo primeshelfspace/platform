@@ -88,7 +88,17 @@ export function StripeCardForm({
   return (
     <Elements
       stripe={stripePromise}
-      options={{ mode: 'payment', amount: amountMinor, currency: currency.toLowerCase() }}
+      options={{
+        mode: 'payment',
+        amount: amountMinor,
+        currency: currency.toLowerCase(),
+        // Card only: with nothing else in this list, Stripe never shows the
+        // method-tab row, Link's "Secure, fast checkout" banner, or the
+        // Link save-my-info fields — all of those are Stripe surfacing
+        // *other* ways to pay, which this brand has not enabled (only
+        // enabledMethods.card ever gets this component mounted at all).
+        paymentMethodTypes: ['card'],
+      }}
     >
       <CardFormInner
         returnUrl={returnUrl}
@@ -202,7 +212,14 @@ function CardFormInner({
     <form onSubmit={(e) => void handleSubmit(e)} className="mt-5">
       <p className="text-sm font-bold text-ink-strong">Card details</p>
       <div className="mt-3">
-        <PaymentElement />
+        <PaymentElement
+          options={{
+            // No address/country field — this app never collects or sends a
+            // billing address today (confirmPayment above passes none), so
+            // asking for one here would just be collected and discarded.
+            fields: { billingDetails: { address: 'never' } },
+          }}
+        />
       </div>
       {error && <p className="mt-3 text-xs text-danger">{error}</p>}
       <button
