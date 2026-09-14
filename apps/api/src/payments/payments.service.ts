@@ -414,11 +414,17 @@ export class PaymentsService {
         };
       }
 
+      // retrieve() reflects the gateway's current state, not a discrete event —
+      // unlike a webhook delivery, there is no earlier-or-later to compare it
+      // against, and intent.occurredAt is only ever the intent's original
+      // creation time (the gateway does not hand back a "status changed at"),
+      // so it must not be reused as the event ordering key applySettlement's
+      // webhook caller relies on. The status check above already established
+      // this payment has nothing settled yet, so whatever the gateway reports
+      // right now is by definition the newest information available.
       const intent = await this.gateway.retrieve(gatewayReference, payment.brandId);
-      const alreadyNewer =
-        payment.lastEventAt && intent.occurredAt.getTime() <= payment.lastEventAt.getTime();
 
-      if (!alreadyNewer && (intent.status === 'SUCCEEDED' || intent.status === 'FAILED')) {
+      if (intent.status === 'SUCCEEDED' || intent.status === 'FAILED') {
         await this.applySettlement(tx, {
           invoiceId: payment.invoiceId,
           paymentId: payment.id,
@@ -426,7 +432,7 @@ export class PaymentsService {
           invoiceStatusBeforeAttempt: payment.invoice.previousStatus ?? payment.invoice.status,
           currentInvoiceStatus: payment.invoice.status,
           gatewayStatus: intent.status,
-          occurredAt: intent.occurredAt,
+          occurredAt: new Date(),
           declineReason: intent.declineReason ?? null,
         });
         if (intent.status === 'SUCCEEDED') {
