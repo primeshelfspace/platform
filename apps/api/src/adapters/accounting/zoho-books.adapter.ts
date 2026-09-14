@@ -538,6 +538,15 @@ export class ZohoBooksAdapter implements AccountingPort {
     const payload = {
       customer_id: invoice.customerRemoteId,
       invoice_number: invoice.number,
+      // Zoho's own documented escape hatch for exactly this: an organisation
+      // with auto-numbering on otherwise rejects any invoice_number that
+      // does not match what it would have generated itself, which is every
+      // number this platform sends (they come from this platform's own
+      // per-brand sequence, never Zoho's). This tells Zoho to accept the
+      // supplied number as-is instead of validating it against its own
+      // counter — without touching that organisation's own numbering setting
+      // for invoices created directly in Zoho.
+      ignore_auto_number_generation: true,
       date: this.toZohoDate(invoice.invoiceDate),
       due_date: this.toZohoDate(invoice.dueDate),
       line_items: lineItems,
