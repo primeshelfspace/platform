@@ -176,6 +176,9 @@ export function SendInvoiceModal({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [attachPdf, setAttachPdf] = useState(false);
+  const [preferredMethod, setPreferredMethod] = useState<'' | 'CARD' | 'WALLET' | 'ACH' | 'CHECK'>(
+    '',
+  );
   // What this brand has saved in Brand Settings > Branding — governs the
   // real send (see InvoicesService.sendEmail), so the preview below must
   // read from the same place rather than assuming a fixed look.
@@ -195,6 +198,7 @@ export function SendInvoiceModal({
     setComposeError(null);
     setCc('');
     setAttachPdf(false);
+    setPreferredMethod('');
     getInvoiceEmailDraftAction(brand.id, invoice.id)
       .then((result) => {
         if (result.ok) {
@@ -260,6 +264,7 @@ export function SendInvoiceModal({
       subject,
       body,
       attachPdf,
+      preferredMethod: preferredMethod || undefined,
     });
     setSending(false);
     if (result.ok) {
@@ -417,6 +422,31 @@ export function SendInvoiceModal({
                   className="h-4 w-4 rounded border-[#D4D4D4] accent-black"
                 />
                 Attach Invoice PDF
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-ink-strong">
+                  Preferred payment method (optional)
+                </span>
+                <select
+                  value={preferredMethod}
+                  onChange={(event) =>
+                    setPreferredMethod(event.target.value as typeof preferredMethod)
+                  }
+                  className="h-10 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
+                             shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
+                             focus-visible:ring-slate-900 focus-visible:ring-offset-1"
+                >
+                  <option value="">No preference</option>
+                  <option value="CARD">Credit / Debit Card</option>
+                  <option value="ACH">ACH Bank Transfer</option>
+                  <option value="WALLET">Digital Wallet</option>
+                  <option value="CHECK">Upload Check</option>
+                </select>
+                <span className="mt-1 block text-xs text-ink-subtle">
+                  Opens the payment page with this method already selected. Only applies if this
+                  brand actually offers it.
+                </span>
               </label>
             </div>
           )}

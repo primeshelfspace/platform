@@ -62,9 +62,22 @@ function randomNonce(): string {
  * PENDING_PAYMENT and leave an abandoned attempt behind it. The intent is
  * therefore opened when the customer commits, not when they browse.
  */
-export function PaymentForm({ invoice, token }: { invoice: PublicInvoice; token: string }) {
+export function PaymentForm({
+  invoice,
+  token,
+  preferredMethod,
+}: {
+  invoice: PublicInvoice;
+  token: string;
+  /** From ?method= on the emailed link (InvoicesService.sendEmail). Only
+   * honoured when this brand actually offers that method — a link built
+   * before a brand disabled it, or one somebody hand-edited, must not
+   * preselect something that was never really available. */
+  preferredMethod?: string;
+}) {
   const methods = availableMethods(invoice);
-  const [selected, setSelected] = useState<Method | null>(methods[0]?.key ?? null);
+  const preselected = methods.find((m) => m.key === preferredMethod)?.key;
+  const [selected, setSelected] = useState<Method | null>(preselected ?? methods[0]?.key ?? null);
   const [step, setStep] = useState<Step>({ kind: 'select' });
 
   const currency = toCurrencyCode(invoice.currency);

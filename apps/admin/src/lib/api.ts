@@ -640,6 +640,10 @@ export interface InvoiceEmailSendInput {
   cc: string;
   /** The compose modal's "Attach Invoice PDF" checkbox. */
   attachPdf?: boolean;
+  /** The compose modal's optional "Preferred payment method" — carried as
+   * ?method= on the emailed link so the payment page opens with that tile
+   * already selected. */
+  preferredMethod?: 'CARD' | 'WALLET' | 'ACH' | 'CHECK';
 }
 
 /** The Send/Resend compose modal's actual submit — sends exactly what's on

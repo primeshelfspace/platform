@@ -291,6 +291,13 @@ export const sendInvoiceEmailSchema = z.object({
    * attaches it. Optional/omittable rather than defaulted false in the
    * schema so older clients that don't send it at all keep working. */
   attachPdf: z.boolean().optional(),
+  /** The compose modal's optional "Preferred payment method" — carried as
+   * ?method= on the emailed link so the payment page opens with that tile
+   * already selected. MANUAL is deliberately excluded: it is the internal
+   * recording of an offline payment, never a customer-facing choice. Purely
+   * a UI convenience — PaymentsService.createIntent enforces the brand's
+   * actual enabled methods regardless of what a link happens to preselect. */
+  preferredMethod: z.enum(['CARD', 'WALLET', 'ACH', 'CHECK']).optional(),
 });
 export type SendInvoiceEmailInput = z.infer<typeof sendInvoiceEmailSchema>;
 

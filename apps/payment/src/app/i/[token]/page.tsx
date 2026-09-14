@@ -19,8 +19,18 @@ export const dynamic = 'force-dynamic';
  * level down at /i/{token}/invoice, behind this page's "Download invoice"
  * action.
  */
-export default async function PaymentPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function PaymentPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  /** ?method=CARD|WALLET|ACH|CHECK — set when the sender picked a preferred
+   * method in the Send Invoice compose modal. Advisory only: PaymentForm
+   * ignores it for any method this brand has not actually enabled. */
+  searchParams: Promise<{ method?: string }>;
+}) {
   const { token } = await params;
+  const { method } = await searchParams;
   const result = await lookupInvoice(token);
 
   if (result.state === 'not-found') return <Terminal />;
@@ -42,7 +52,7 @@ export default async function PaymentPage({ params }: { params: Promise<{ token:
         {settledLabel ? (
           <Notice>{settledLabel}</Notice>
         ) : isPayable(invoice.status) ? (
-          <PaymentForm invoice={invoice} token={token} />
+          <PaymentForm invoice={invoice} token={token} preferredMethod={method} />
         ) : (
           <Notice>This invoice is not open for payment yet.</Notice>
         )}

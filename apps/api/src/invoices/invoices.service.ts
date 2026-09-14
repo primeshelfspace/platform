@@ -313,7 +313,14 @@ export class InvoicesService {
     scope: Scope,
     brandId: string,
     id: string,
-    input: { to: string; cc?: string; subject: string; body: string; attachPdf?: boolean },
+    input: {
+      to: string;
+      cc?: string;
+      subject: string;
+      body: string;
+      attachPdf?: boolean;
+      preferredMethod?: 'CARD' | 'WALLET' | 'ACH' | 'CHECK';
+    },
   ): Promise<void> {
     const invoice = await this.prisma.withScope(scope, (tx) =>
       tx.invoice.findFirst({
@@ -350,7 +357,12 @@ export class InvoicesService {
       customerName: invoice.customer.displayName,
       brandName: invoice.brand.displayName,
     };
-    const linkUrl = `${this.env.PAYMENT_PUBLIC_URL}/i/${invoice.publicToken}`;
+    // The payment page ignores ?method= for any method this brand has not
+    // actually enabled (PaymentForm.availableMethods) — this only ever saves
+    // a customer who was already going to pay by, say, ACH one extra click.
+    const linkUrl = input.preferredMethod
+      ? `${this.env.PAYMENT_PUBLIC_URL}/i/${invoice.publicToken}?method=${input.preferredMethod}`
+      : `${this.env.PAYMENT_PUBLIC_URL}/i/${invoice.publicToken}`;
 
     // The "Attach Invoice PDF" checkbox — same renderer and settings the
     // Invoices detail drawer's own Download PDF button uses (invoice-pdf-html.ts

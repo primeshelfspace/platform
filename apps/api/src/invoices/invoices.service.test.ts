@@ -295,4 +295,40 @@ describeWithDb('InvoicesService', () => {
       expect(html).toContain('Please pay.');
     });
   });
+
+  describe('sendEmail preferredMethod', () => {
+    it('carries ?method= on the payment link when a preferred method is given', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      const invoice = await invoices.issue(ownerScope, solsticeId, created.id);
+
+      mail.outbox.length = 0;
+      await invoices.sendEmail(ownerScope, solsticeId, invoice.id, {
+        to: 'ap@example.com',
+        subject: 'Your invoice',
+        body: 'Please pay.',
+        preferredMethod: 'ACH',
+      });
+
+      const sent = mail.outbox.at(-1);
+      if (!sent) throw new Error('nothing was sent');
+      expect(sent.html).toContain(`/i/${invoice.publicToken}?method=ACH`);
+    });
+
+    it('omits ?method= entirely when no preference is given', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      const invoice = await invoices.issue(ownerScope, solsticeId, created.id);
+
+      mail.outbox.length = 0;
+      await invoices.sendEmail(ownerScope, solsticeId, invoice.id, {
+        to: 'ap@example.com',
+        subject: 'Your invoice',
+        body: 'Please pay.',
+      });
+
+      const sent = mail.outbox.at(-1);
+      if (!sent) throw new Error('nothing was sent');
+      expect(sent.html).toContain(`/i/${invoice.publicToken}"`);
+      expect(sent.html).not.toContain('?method=');
+    });
+  });
 });
