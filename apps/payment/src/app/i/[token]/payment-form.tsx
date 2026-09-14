@@ -17,6 +17,25 @@ import { CreditCardIcon, FileCheckIcon, LandmarkIcon, WalletIcon } from './icons
 type Method = 'CARD' | 'WALLET' | 'ACH' | 'CHECK';
 
 /**
+ * crypto.randomUUID() is Web Crypto's convenience method, and per spec it —
+ * unlike getRandomValues() — only exists in a secure context (HTTPS, or
+ * localhost). This page is reachable over plain HTTP (PAYMENT_PUBLIC_URL has
+ * no TLS in front of it yet), where `crypto.randomUUID` is simply undefined,
+ * so calling it throws "crypto.randomUUID is not a function" the moment a
+ * customer hits Pay. getRandomValues has no such restriction, so build the
+ * same v4 UUID shape from that instead of depending on the convenience method.
+ */
+function randomNonce(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
  * The live payment form, laid out as the admin's Payment Page editor previews
  * it (PreviewBody/MethodGrid/CardDetailsForm/PayButton in
  * apps/admin/.../brand-settings/payment-page-editor.tsx): "Choose how to pay"
@@ -81,7 +100,7 @@ export function PaymentForm({ invoice, token }: { invoice: PublicInvoice; token:
           // Client-generated: a double click collapses to one charge
           // (TDD-001 §8.3), since the server derives its idempotency key
           // from this value.
-          attemptNonce: crypto.randomUUID(),
+          attemptNonce: randomNonce(),
         }),
       });
       const body = (await response.json()) as {
