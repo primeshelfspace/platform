@@ -17,6 +17,7 @@ import {
   formatDateForDisplay,
   formatMinorForDisplay,
   idSchema,
+  paymentIntentReconcileSchema,
   paymentIntentRequestSchema,
   publicTokenSchema,
   renderInvoicePdfHtml,
@@ -33,6 +34,7 @@ const createIntentBodySchema = paymentIntentRequestSchema.pick({
   attemptNonce: true,
 });
 type CreateIntentBody = z.infer<typeof createIntentBodySchema>;
+type ReconcileBody = z.infer<typeof paymentIntentReconcileSchema>;
 
 /**
  * The anonymous payment path (TDD-001 §12.1). Every route here is @Public();
@@ -121,6 +123,25 @@ export class PublicInvoicesController {
     if (!scope) throw new NotFoundException('this payment link is no longer valid');
 
     return this.payments.createIntent(scope, body.method, body.attemptNonce);
+  }
+
+  /**
+   * Called by the payment page right after Stripe.js itself confirms a
+   * result in the browser (FR-PAY, gateway-webhook fallback) — a safety net
+   * for a deployment whose webhook endpoint the gateway cannot reach yet.
+   * Nothing here is taken on faith: PaymentsService re-fetches this exact
+   * attempt's status from the gateway before touching anything.
+   */
+  @Post('invoices/:token/payment-intents/reconcile')
+  @Public()
+  async reconcileIntent(
+    @Param('token', zodPipe(publicTokenSchema)) token: string,
+    @Body(zodPipe(paymentIntentReconcileSchema)) body: ReconcileBody,
+  ): Promise<PaymentAttemptResult> {
+    const scope = await this.publicInvoices.resolveScope(token);
+    if (!scope) throw new NotFoundException('this payment link is no longer valid');
+
+    return this.payments.confirmClientResult(scope, body.gatewayReference);
   }
 
   @Post('webhooks/fake-gateway')

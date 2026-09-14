@@ -505,6 +505,20 @@ export const paymentIntentRequestSchema = z.object({
 });
 export type PaymentIntentRequest = z.infer<typeof paymentIntentRequestSchema>;
 
+/**
+ * Fallback for when the gateway's webhook cannot reach this platform (no
+ * public HTTPS endpoint registered yet) but the customer's own browser
+ * already holds the gateway's confirmation that the charge succeeded or
+ * failed. `gatewayReference` is the same id the client already has from the
+ * intent it created (Stripe's client_secret is `{id}_secret_{...}`) — the
+ * server re-fetches this id's real status from the gateway itself before
+ * acting on it, never trusting the client's own claim.
+ */
+export const paymentIntentReconcileSchema = z.object({
+  gatewayReference: z.string().min(1).max(200),
+});
+export type PaymentIntentReconcileRequest = z.infer<typeof paymentIntentReconcileSchema>;
+
 // --- Dashboard -------------------------------------------------------------
 
 export const dashboardQuerySchema = z.object({

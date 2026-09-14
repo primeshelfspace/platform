@@ -86,6 +86,29 @@ export function PaymentForm({ invoice, token }: { invoice: PublicInvoice; token:
     return <Outcome step={step} onRetry={() => setStep({ kind: 'select' })} />;
   }
 
+  /**
+   * Tells the API what the gateway itself just told the browser, so this
+   * invoice does not sit unsettled waiting on a webhook this deployment may
+   * not have a reachable HTTPS endpoint for yet. Best-effort: the server
+   * re-verifies with the gateway before changing anything, so a failure here
+   * just leaves the eventual webhook (or the next page load) to catch it up
+   * instead — the customer already has the gateway's own confirmation on
+   * screen either way.
+   */
+  async function reconcile(clientSecret: string) {
+    const gatewayReference = clientSecret.split('_secret_')[0];
+    if (!gatewayReference) return;
+    try {
+      await fetch(`${API_URL}/public/invoices/${token}/payment-intents/reconcile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gatewayReference }),
+      });
+    } catch {
+      // See comment above — non-fatal.
+    }
+  }
+
   /** Asks the API to open an attempt for `method`. CARD comes back as
    * REQUIRES_ACTION with a client secret to confirm in the browser; the other
    * methods settle (or fail, or stay pending) server-side. */
@@ -168,8 +191,14 @@ export function PaymentForm({ invoice, token }: { invoice: PublicInvoice; token:
           accentColor={invoice.accentColor}
           amountLabel={amountLabel}
           returnUrl={typeof window !== 'undefined' ? window.location.href : ''}
-          onSucceeded={() => setStep({ kind: 'success' })}
-          onFailed={(reason) => setStep({ kind: 'failure', reason })}
+          onSucceeded={() => {
+            void reconcile(step.clientSecret);
+            setStep({ kind: 'success' });
+          }}
+          onFailed={(reason) => {
+            void reconcile(step.clientSecret);
+            setStep({ kind: 'failure', reason });
+          }}
           onCancel={() => setStep({ kind: 'select' })}
         />
       ) : (

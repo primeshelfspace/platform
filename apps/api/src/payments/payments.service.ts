@@ -383,9 +383,78 @@ export class PaymentsService {
   }
 
   /**
+   * Fallback for when the gateway's webhook cannot reach this platform (no
+   * public HTTPS endpoint registered for it yet) but the customer's own
+   * browser already holds the gateway's confirmation that the attempt
+   * succeeded or failed. This never settles anything on the client's say-so:
+   * it re-fetches gatewayReference's real status from the gateway itself
+   * (server to server) and only applies that — the client's role is limited
+   * to telling this platform which attempt to go check, exactly as if a
+   * webhook for it had simply arrived late.
+   */
+  async confirmClientResult(
+    scope: PublicScope,
+    gatewayReference: string,
+  ): Promise<PaymentAttemptResult> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const payment = await tx.payment.findFirst({
+        where: { invoiceId: scope.invoiceId, gatewayReference },
+        include: { invoice: true },
+      });
+      if (!payment) throw new BadRequestException('no matching payment attempt for this invoice');
+
+      // Already resolved — by the webhook catching up in the meantime, or by
+      // an earlier call here. Idempotent: report it, do not re-apply it.
+      if (payment.status !== 'INITIATED' && payment.status !== 'PROCESSING') {
+        return {
+          gatewayStatus: this.paymentStatusToIntentStatus(payment.status),
+          invoiceStatus: payment.invoice.status,
+          declineReason: payment.declineReason,
+          clientToken: null,
+        };
+      }
+
+      const intent = await this.gateway.retrieve(gatewayReference, payment.brandId);
+      const alreadyNewer =
+        payment.lastEventAt && intent.occurredAt.getTime() <= payment.lastEventAt.getTime();
+
+      if (!alreadyNewer && (intent.status === 'SUCCEEDED' || intent.status === 'FAILED')) {
+        await this.applySettlement(tx, {
+          invoiceId: payment.invoiceId,
+          paymentId: payment.id,
+          invoiceTotalMinor: Number(payment.invoice.totalMinor),
+          invoiceStatusBeforeAttempt: payment.invoice.previousStatus ?? payment.invoice.status,
+          currentInvoiceStatus: payment.invoice.status,
+          gatewayStatus: intent.status,
+          occurredAt: intent.occurredAt,
+          declineReason: intent.declineReason ?? null,
+        });
+        if (intent.status === 'SUCCEEDED') {
+          await this.queue.enqueue('sync', 'zoho-push-payment', {
+            brandId: payment.brandId,
+            paymentId: payment.id,
+          });
+        }
+      }
+
+      const refreshed = await tx.payment.findUniqueOrThrow({
+        where: { id: payment.id },
+        include: { invoice: true },
+      });
+      return {
+        gatewayStatus: this.paymentStatusToIntentStatus(refreshed.status),
+        invoiceStatus: refreshed.invoice.status,
+        declineReason: refreshed.declineReason,
+        clientToken: null,
+      };
+    });
+  }
+
+  /**
    * The one place a gateway result becomes an invoice/payment state change.
-   * Called from both the synchronous path and the webhook path so they
-   * cannot disagree about what "settled" means (NFR-INT-010..012).
+   * Called from the synchronous path, the webhook path, and the client-side
+   * confirmation fallback above, so none of the three can disagree about
+   * what "settled" means (NFR-INT-010..012).
    */
   private async applySettlement(
     tx: ScopedClient,
