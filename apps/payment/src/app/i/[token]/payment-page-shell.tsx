@@ -38,7 +38,7 @@ export function PaymentPageShell({
   if (layout === 'SPLIT') {
     return (
       <main className="mx-auto flex min-h-full max-w-3xl flex-col justify-center px-6 py-16">
-        <div className="grid overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm sm:grid-cols-2">
+        <div className="grid overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0px_10px_15px_-3px_#0000001A] sm:grid-cols-2">
           <div style={{ backgroundColor: themeColor }} className="flex flex-col gap-6 p-6">
             <div className="flex items-center gap-3 border-b border-white/20 pb-5">
               <Avatar brand={invoice.brand} size="sm" fallbackBackground="rgba(255,255,255,0.2)" />
@@ -53,8 +53,8 @@ export function PaymentPageShell({
   }
 
   return (
-    <main className="mx-auto flex min-h-full max-w-md flex-col justify-center px-6 py-16">
-      <div className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
+    <main className="mx-auto flex min-h-full w-full max-w-[640px] flex-col justify-center px-6 py-16">
+      <div className="overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-[0px_10px_15px_-3px_#0000001A]">
         {layout === 'BANNER' ? (
           <div
             style={{ backgroundColor: themeColor }}
