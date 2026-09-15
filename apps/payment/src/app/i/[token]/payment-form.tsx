@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   applyBasisPoints,
   formatMinorForDisplay,
@@ -9,6 +9,7 @@ import {
 } from '@fenwick/shared/money';
 import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
+import { useAmountDue } from './amount-due-context';
 import { StripeCardForm, type CreateIntentResult } from './stripe-card-form';
 import { CreditCardIcon, FileCheckIcon, LandmarkIcon, WalletIcon } from './icons';
 
@@ -42,26 +43,29 @@ function randomNonce(): string {
  * above a two-column method grid, the chosen method's detail block below it,
  * and one full-width accent-coloured "Pay {amount}" button.
  *
- * Two things differ from that preview by necessity, both in the same
- * direction — the preview draws a mockup, this moves money:
+ * One thing differs from that preview by necessity: the grid lists only what
+ * this brand actually has enabled (invoice.enabledMethods). PaymentsService
+ * enforces the same list server-side regardless of what renders here
+ * (FR-PAY-005).
  *
- *  - The grid lists only what this brand actually has enabled
- *    (invoice.enabledMethods). PaymentsService enforces the same list
- *    server-side regardless of what renders here (FR-PAY-005).
- *  - "Card details" is Stripe's own PaymentElement, not the plain inputs the
- *    preview draws. Card data is entered into an iframe served by Stripe and
- *    confirmed straight against Stripe from the browser; this app never sees
- *    a card number, which is what keeps PCI scope at SAQ A (TDD-001 §3.3).
+ * "Card details" itself is styled to look exactly like the preview's plain
+ * inputs, but each field (card number, expiry, CVC) is really a separate
+ * Stripe Element — StripeCardForm mounts CardNumberElement/CardExpiryElement/
+ * CardCvcElement inside identically-styled wrapper boxes rather than the
+ * single stock PaymentElement, precisely so this can be styled pixel-for-
+ * pixel to the branding preview while every keystroke still lands in an
+ * iframe Stripe serves; this app never sees a card number, which is what
+ * keeps PCI scope at SAQ A (TDD-001 §3.3).
  *
  * The card fields mount immediately under the method grid the moment Card is
- * selected, matching the preview — StripeCardForm uses Stripe's
- * deferred-intent pattern (Elements with `mode: 'payment'`, no client_secret
- * yet) to make that safe: PaymentsService.createIntent still only runs once
- * the customer actually submits that form, not the moment they select the
- * tile, so opening the real intent (INITIATE_PAYMENT, a Payment row) never
- * happens just because someone was browsing options. ACH/Wallet/Check have
- * no such split-second confirmation step, so they still go through the
- * single outer "Pay" button below the grid.
+ * selected, matching the preview — StripeCardForm uses Stripe's deferred-
+ * intent pattern (no client_secret until submit) to make that safe:
+ * PaymentsService.createIntent still only runs once the customer actually
+ * submits that form, not the moment they select the tile, so opening the
+ * real intent (INITIATE_PAYMENT, a Payment row) never happens just because
+ * someone was browsing options. ACH/Wallet/Check have no such split-second
+ * confirmation step, so they still go through the single outer "Pay" button
+ * below the grid.
  */
 export function PaymentForm({
   invoice,
@@ -83,10 +87,17 @@ export function PaymentForm({
 
   const currency = toCurrencyCode(invoice.currency);
   const chosen = methods.find((m) => m.key === selected) ?? null;
-  const amountLabel = formatMinorForDisplay(
-    chosen?.quotedTotalMinor ?? invoice.balanceMinor,
-    currency,
-  );
+  const dueMinor = chosen?.quotedTotalMinor ?? invoice.balanceMinor;
+  const amountLabel = formatMinorForDisplay(dueMinor, currency);
+
+  // Keeps PaymentPageShell's headline amount matching this button exactly —
+  // a method that carries a card fee quotes more than the invoice's plain
+  // balance, and the summary above must reflect whatever is actually about
+  // to be charged, not the invoice's face value.
+  const setAmountMinor = useAmountDue()?.setAmountMinor;
+  useEffect(() => {
+    setAmountMinor?.(dueMinor);
+  }, [setAmountMinor, dueMinor]);
 
   if (methods.length === 0) {
     return (
@@ -183,9 +194,9 @@ export function PaymentForm({
                 setStep({ kind: 'select' });
               }}
               style={isSelected ? { borderColor: invoice.accentColor } : undefined}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+              className={`flex h-[42px] items-center gap-[10px] rounded-md border-2 px-4 py-3 text-left text-sm font-medium transition-colors ${
                 isSelected
-                  ? 'border-2 text-ink-strong'
+                  ? 'text-ink-strong'
                   : 'border-[#E5E7EB] text-ink-muted hover:border-[#D1D5DB]'
               }`}
             >
@@ -200,8 +211,6 @@ export function PaymentForm({
         <StripeCardForm
           publishableKey={invoice.stripePublishableKey}
           stripeAccount={invoice.stripeAccountId}
-          amountMinor={chosen.quotedTotalMinor ?? invoice.balanceMinor}
-          currency={currency}
           accentColor={invoice.accentColor}
           amountLabel={amountLabel}
           returnUrl={typeof window !== 'undefined' ? window.location.href : ''}

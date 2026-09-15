@@ -276,9 +276,9 @@ function MethodGrid({
               aria-checked={isSelected}
               onClick={() => onSelect(key)}
               style={isSelected ? { borderColor: accentColor } : undefined}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-colors ${
+              className={`flex h-[42px] items-center gap-[10px] rounded-md border-2 px-4 py-3 text-left text-sm font-medium transition-colors ${
                 isSelected
-                  ? 'border-2 text-ink-strong'
+                  ? 'text-ink-strong'
                   : 'border-[#E5E7EB] text-ink-muted hover:border-[#D1D5DB]'
               }`}
             >

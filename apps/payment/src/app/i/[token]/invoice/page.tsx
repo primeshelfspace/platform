@@ -31,7 +31,7 @@ export default async function InvoiceDocumentPage({
   const theme = brandThemeVariables(invoice.brand.themeColor);
 
   return (
-    <div className="min-h-full" style={theme as React.CSSProperties}>
+    <div className="h-full" style={theme as React.CSSProperties}>
       <InvoiceDocument invoice={invoice} actions={<DocumentActions token={token} />} />
     </div>
   );

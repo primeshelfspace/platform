@@ -1,7 +1,10 @@
+'use client';
+
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
+import { useAmountDue } from './amount-due-context';
 import { ExternalLinkIcon } from './icons';
 
 /**
@@ -137,7 +140,15 @@ function InvoiceSummary({
   centered?: boolean;
   light?: boolean;
 }) {
-  const amountLabel = formatMinorForDisplay(invoice.balanceMinor, toCurrencyCode(invoice.currency));
+  // Falls back to the invoice's own balance outside a provider (the
+  // settled/non-payable states render no PaymentForm to publish an update)
+  // and before PaymentForm's first effect runs — both cases where no
+  // fee-adjusted total applies yet anyway.
+  const due = useAmountDue();
+  const amountLabel = formatMinorForDisplay(
+    due?.amountMinor ?? invoice.balanceMinor,
+    toCurrencyCode(invoice.currency),
+  );
 
   const viewInvoiceButton = (
     <a

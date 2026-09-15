@@ -1,6 +1,7 @@
 import { isPayable, terminalStatusLabel } from '@fenwick/shared';
 import { brandThemeVariables } from '@fenwick/shared/tokens';
 import { lookupInvoice } from '@/lib/invoice';
+import { AmountDueProvider } from './amount-due-context';
 import { PaymentPageShell } from './payment-page-shell';
 import { PaymentForm } from './payment-form';
 import { Terminal, Unavailable } from './states';
@@ -47,16 +48,18 @@ export default async function PaymentPage({
   const settledLabel = terminalStatusLabel(invoice.status);
 
   return (
-    <div className="min-h-full" style={theme as React.CSSProperties}>
-      <PaymentPageShell invoice={invoice} token={token}>
-        {settledLabel ? (
-          <Notice>{settledLabel}</Notice>
-        ) : isPayable(invoice.status) ? (
-          <PaymentForm invoice={invoice} token={token} preferredMethod={method} />
-        ) : (
-          <Notice>This invoice is not open for payment yet.</Notice>
-        )}
-      </PaymentPageShell>
+    <div className="h-full" style={theme as React.CSSProperties}>
+      <AmountDueProvider initialMinor={invoice.balanceMinor}>
+        <PaymentPageShell invoice={invoice} token={token}>
+          {settledLabel ? (
+            <Notice>{settledLabel}</Notice>
+          ) : isPayable(invoice.status) ? (
+            <PaymentForm invoice={invoice} token={token} preferredMethod={method} />
+          ) : (
+            <Notice>This invoice is not open for payment yet.</Notice>
+          )}
+        </PaymentPageShell>
+      </AmountDueProvider>
     </div>
   );
 }
