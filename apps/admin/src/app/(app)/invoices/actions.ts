@@ -2,12 +2,14 @@
 
 import { revalidatePath } from 'next/cache';
 import {
+  bulkSendInvoices,
   getInvoice,
   getInvoiceEmailPreview,
   getInvoiceEvents,
   getInvoicePdfSettings,
   issueInvoice,
   sendInvoiceEmail,
+  type BulkSendResult,
   type Invoice,
   type InvoiceActivityEntry,
   type InvoiceDetail,
@@ -109,5 +111,21 @@ export async function sendInvoiceEmailAction(
     return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: describeActionError(error, 'Could not send this invoice.') };
+  }
+}
+
+/** The invoices list's "Bulk Send Invoices" button — one real send per
+ * selected id, each with that invoice's own default Email Receipt content
+ * (no per-invoice compose step, unlike the single-invoice modal above). */
+export async function bulkSendInvoicesAction(
+  brandId: string,
+  ids: string[],
+): Promise<ActionResult<BulkSendResult>> {
+  try {
+    const result = await bulkSendInvoices(brandId, ids);
+    revalidatePath('/invoices');
+    return { ok: true, data: result };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not send these invoices.') };
   }
 }

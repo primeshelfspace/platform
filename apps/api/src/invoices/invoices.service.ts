@@ -69,6 +69,14 @@ export interface InvoiceSummary {
   readonly openCount: number;
 }
 
+/** The Invoices list's "Bulk Send Invoices" outcome — one id per bucket,
+ * never thrown as a single all-or-nothing error (see InvoicesService.bulkSend). */
+export interface BulkSendResult {
+  readonly sent: string[];
+  readonly skipped: { id: string; reason: string }[];
+  readonly failed: { id: string; reason: string }[];
+}
+
 /** One row of the Invoice Details "Activity" tab — InvoiceEvent verbatim,
  * not reinterpreted; the timeline is exactly what actually happened. */
 export interface InvoiceActivityEntry {
@@ -577,6 +585,65 @@ export class InvoicesService {
         throw error;
       }
     });
+  }
+
+  /**
+   * The Invoices list's "Bulk Send Invoices" — one real send per id, using
+   * that invoice's own default Email Receipt content (see prepareEmail); a
+   * DRAFT is issued first, exactly like a first send from the drawer, before
+   * its email goes out. Sequential rather than Promise.all: each send
+   * dispatches real mail and (for a draft) allocates its Sent transition, so
+   * running 100 of them concurrently against the mail server and the
+   * brand_settings sequence lock buys nothing but contention. One invoice's
+   * failure never aborts the rest — the caller gets a per-id outcome instead
+   * of an all-or-nothing batch, since "3 of 5 went out" is what actually
+   * happened and is more useful than losing that in a thrown error.
+   */
+  async bulkSend(scope: Scope, brandId: string, ids: string[]): Promise<BulkSendResult> {
+    const sent: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    const failed: { id: string; reason: string }[] = [];
+
+    for (const id of ids) {
+      const invoice = await this.prisma.withScope(scope, (tx) =>
+        tx.invoice.findFirst({
+          where: { id, brandId },
+          include: { customer: { select: { email: true } } },
+        }),
+      );
+      if (!invoice) {
+        failed.push({ id, reason: 'Invoice not found.' });
+        continue;
+      }
+      if (invoice.status === 'PAID' || invoice.status === 'CANCELLED') {
+        skipped.push({ id, reason: `Already ${invoice.status.toLowerCase()}.` });
+        continue;
+      }
+      if (!invoice.customer.email) {
+        skipped.push({ id, reason: 'Customer has no email on file.' });
+        continue;
+      }
+
+      try {
+        if (invoice.status === 'DRAFT') {
+          await this.issue(scope, brandId, id);
+        }
+        const draft = await this.prepareEmail(scope, brandId, id);
+        await this.sendEmail(scope, brandId, id, {
+          to: draft.to,
+          subject: draft.subject,
+          body: draft.body,
+        });
+        sent.push(id);
+      } catch (error) {
+        failed.push({
+          id,
+          reason: error instanceof Error ? error.message : 'Could not send this invoice.',
+        });
+      }
+    }
+
+    return { sent, skipped, failed };
   }
 
   /** FR-INV-014: Draft → Sent. Financial fields become immutable from here. */

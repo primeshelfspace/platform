@@ -65,11 +65,9 @@ function DotBadge({ tone, label }: { tone: 'success' | 'subtle'; label: string }
   );
 }
 
-/** This tab's own status, distinct from the main Invoices list's grouping
- * (invoice-presentation.ts's invoiceListStatus folds PARTIALLY_PAID into
- * "Unpaid" for that page's tab counts) — here a partial payment is worth
- * calling out on its own, the way a person skimming a customer's balance
- * would want to see it. */
+/** This tab's own status — duplicates invoice-presentation.ts's
+ * invoiceListStatus rather than importing it because this drawer has no tab
+ * counts to key off InvoiceListStatus, just a label per row. */
 function drawerInvoiceStatus(invoice: Invoice): { label: string; dot: string; text: string } {
   if (invoice.status === 'PAID') return { label: 'Paid', dot: 'bg-success', text: 'text-success' };
   if (invoice.status === 'CANCELLED') {

@@ -331,4 +331,82 @@ describeWithDb('InvoicesService', () => {
       expect(sent.html).not.toContain('?method=');
     });
   });
+
+  describe('bulkSend', () => {
+    // Each invoice chains issue + prepareEmail + sendEmail — several times
+    // more DB round trips than this file's usual single-call tests, and this
+    // suite's own vitest.config already notes a cold Neon connection can take
+    // up to 4.5s on its own; two invoices sequentially can outrun the 30s
+    // default, hence the raised timeout below.
+    it('issues each draft and sends it, returning every id in `sent`', async () => {
+      const a = await invoices.create(ownerScope, solsticeId, draft());
+      const b = await invoices.create(ownerScope, solsticeId, draft());
+
+      mail.outbox.length = 0;
+      const result = await invoices.bulkSend(ownerScope, solsticeId, [a.id, b.id]);
+
+      expect(result.sent.sort()).toEqual([a.id, b.id].sort());
+      expect(result.skipped).toEqual([]);
+      expect(result.failed).toEqual([]);
+      expect(mail.outbox).toHaveLength(2);
+
+      const rowA = await owner.invoice.findUniqueOrThrow({ where: { id: a.id } });
+      expect(rowA.status).toBe('SENT'); // draft -> sent, same as a first send from the drawer
+    }, 90_000);
+
+    it('resends an already-issued invoice without re-issuing it', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      const issued = await invoices.issue(ownerScope, solsticeId, created.id);
+
+      mail.outbox.length = 0;
+      const result = await invoices.bulkSend(ownerScope, solsticeId, [issued.id]);
+
+      expect(result.sent).toEqual([issued.id]);
+      expect(mail.outbox).toHaveLength(1);
+    }, 60_000);
+
+    it('skips a customer with no email on file, rather than failing the batch', async () => {
+      const sendable = await invoices.create(ownerScope, solsticeId, draft());
+      const noEmail = await invoices.create(
+        ownerScope,
+        solsticeId,
+        draft({ customerId: customerWithoutEmailId }),
+      );
+
+      mail.outbox.length = 0;
+      const result = await invoices.bulkSend(ownerScope, solsticeId, [sendable.id, noEmail.id]);
+
+      expect(result.sent).toEqual([sendable.id]);
+      expect(result.skipped).toEqual([
+        { id: noEmail.id, reason: 'Customer has no email on file.' },
+      ]);
+      expect(mail.outbox).toHaveLength(1);
+    }, 60_000);
+
+    it('skips an already-paid or cancelled invoice', async () => {
+      const paid = await invoices.create(ownerScope, solsticeId, draft());
+      await invoices.issue(ownerScope, solsticeId, paid.id);
+      await owner.invoice.update({ where: { id: paid.id }, data: { status: 'PAID' } });
+
+      const cancelled = await invoices.create(ownerScope, solsticeId, draft());
+      await owner.invoice.update({ where: { id: cancelled.id }, data: { status: 'CANCELLED' } });
+
+      mail.outbox.length = 0;
+      const result = await invoices.bulkSend(ownerScope, solsticeId, [paid.id, cancelled.id]);
+
+      expect(result.sent).toEqual([]);
+      expect(result.skipped.map((s) => s.id).sort()).toEqual([cancelled.id, paid.id].sort());
+      expect(mail.outbox).toHaveLength(0);
+    });
+
+    it('reports a missing id as failed rather than throwing', async () => {
+      const result = await invoices.bulkSend(ownerScope, solsticeId, [
+        '00000000-0000-0000-0000-000000000000',
+      ]);
+      expect(result.sent).toEqual([]);
+      expect(result.failed).toEqual([
+        { id: '00000000-0000-0000-0000-000000000000', reason: 'Invoice not found.' },
+      ]);
+    });
+  });
 });

@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Calendar, ChevronDown, Plus, ScrollText, Search } from 'lucide-react';
+import { Calendar, ChevronDown, Info, Plus, ScrollText, Search, Send, X } from 'lucide-react';
 import { toast } from '@fenwick/ui/toast';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
@@ -16,7 +17,8 @@ import {
   type InvoiceListStatus,
 } from '@/lib/invoice-presentation';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
-import { getInvoiceDetailAction } from './actions';
+import { bulkSendInvoicesAction, getInvoiceDetailAction } from './actions';
+import { BulkSendConfirmModal, BulkSendProgressModal } from './bulk-send-confirm-modal';
 import { InvoiceDetailDrawer } from './invoice-detail-drawer';
 
 /** How long the search box waits after the last keystroke before pushing a
@@ -34,8 +36,16 @@ const TABS: ReadonlyArray<{
   { key: 'draft', label: 'Drafts', statuses: ['DRAFT'] },
   { key: 'unpaid', label: 'Unpaid', statuses: ['UNPAID'] },
   { key: 'paid', label: 'Paid', statuses: ['PAID'] },
+  { key: 'partial', label: 'Partial', statuses: ['PARTIAL'] },
   { key: 'overdue', label: 'Overdue', statuses: ['OVERDUE'] },
 ];
+
+/** A row can be bulk-sent (or resent) unless it's already settled — same
+ * exclusion InvoicesService.bulkSend applies server-side; disabling its
+ * checkbox here just saves a round trip to learn that. */
+function isBulkSendable(status: InvoiceListStatus): boolean {
+  return status !== 'PAID' && status !== 'CANCELLED';
+}
 
 const RANGE_OPTIONS = [
   { key: '7', label: 'Last 7 days' },
@@ -183,15 +193,24 @@ export function InvoicesPageClient({
     let draft = 0;
     let unpaid = 0;
     let paid = 0;
+    let partial = 0;
     let overdue = 0;
     for (const { status } of rangeFiltered) {
       if (status === 'DRAFT') draft++;
       else if (status === 'UNPAID') unpaid++;
       else if (status === 'PAID') paid++;
+      else if (status === 'PARTIAL') partial++;
       else if (status === 'OVERDUE') overdue++;
       // CANCELLED counts toward "All" only — it has no tab of its own.
     }
-    return { all: rangeFiltered.length, draft, unpaid, paid, overdue } as Record<string, number>;
+    return {
+      all: rangeFiltered.length,
+      draft,
+      unpaid,
+      paid,
+      partial,
+      overdue,
+    } as Record<string, number>;
   }, [rangeFiltered]);
 
   const visible = useMemo(() => {
@@ -207,6 +226,165 @@ export function InvoicesPageClient({
 
   const currency = toCurrencyCode(brand?.currency);
   const activeRangeLabel = RANGE_OPTIONS.find((r) => r.key === range)?.label ?? 'Last 90 days';
+
+  // "Bulk Send Invoices" row selection — sendable rows only (see
+  // isBulkSendable); pruned to whatever the current tab/range still covers,
+  // so a row that drops out under a filter change can't stay silently
+  // selected and surprise someone with an extra send later. The checkbox
+  // column and its floating action bar only exist in `bulkMode`, entered
+  // from the toolbar button and left either by its own cancel (X) or once a
+  // send completes.
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkSending, setBulkSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState<{ done: number; total: number } | null>(null);
+  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
+  const [selectAllMenuOpen, setSelectAllMenuOpen] = useState(false);
+
+  const selectAllMenuRef = useDismissablePanel<HTMLDivElement>(selectAllMenuOpen, () =>
+    setSelectAllMenuOpen(false),
+  );
+
+  const selectableVisible = useMemo(
+    () => visible.filter(({ status }) => isBulkSendable(status)),
+    [visible],
+  );
+
+  // The broader scope "Select all invoices" reaches — this tab's sendable
+  // rows regardless of the search box, unlike selectableVisible above (which
+  // "Select page" uses, and which the search term does narrow). Pruning
+  // against this rather than selectableVisible means clearing/editing the
+  // search term never silently drops a "select all" selection that a search
+  // filter was merely hiding, not invalidating.
+  const selectableAllInTab = useMemo(() => {
+    const activeStatuses = TABS.find((t) => t.key === tab)?.statuses ?? null;
+    return rangeFiltered.filter(
+      ({ status }) =>
+        (!activeStatuses || activeStatuses.includes(status)) && isBulkSendable(status),
+    );
+  }, [rangeFiltered, tab]);
+
+  useEffect(() => {
+    const selectableIds = new Set(selectableAllInTab.map(({ inv }) => inv.id));
+    setSelectedIds((prev) => {
+      const next = new Set([...prev].filter((id) => selectableIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [selectableAllInTab]);
+
+  // Reflects what's actually rendered under the header checkbox right now
+  // (selectableVisible), not the broader "select all invoices" scope — a
+  // search-narrowed view showing every one of its own rows selected should
+  // read as fully checked even if a wider, hidden selection exists alongside it.
+  const allSelected =
+    selectableVisible.length > 0 && selectableVisible.every(({ inv }) => selectedIds.has(inv.id));
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
+  // Derived from the actual selection, not from which control was clicked —
+  // ticking every box by hand, using the header checkbox on a tab small
+  // enough that "page" and "all" coincide, or using "Select all invoices"
+  // from the menu all land here the same way. The banner is about what's
+  // true right now, not about how it got that way.
+  const allInTabSelected =
+    selectableAllInTab.length > 0 && selectedIds.size === selectableAllInTab.length;
+
+  // Distinct customers among the current selection — a bulk send can hit the
+  // same customer more than once (several invoices, one inbox), so this is
+  // never just selectedIds.size.
+  const selectedRecipientCount = useMemo(() => {
+    const customerIds = new Set(
+      selectableAllInTab
+        .filter(({ inv }) => selectedIds.has(inv.id))
+        .map(({ inv }) => inv.customerId),
+    );
+    return customerIds.size;
+  }, [selectableAllInTab, selectedIds]);
+
+  function toggleSelectAll() {
+    setSelectedIds(allSelected ? new Set() : new Set(selectableVisible.map(({ inv }) => inv.id)));
+  }
+
+  function selectPage() {
+    setSelectedIds(new Set(selectableVisible.map(({ inv }) => inv.id)));
+    setSelectAllMenuOpen(false);
+  }
+
+  function selectAllInvoices() {
+    setSelectedIds(new Set(selectableAllInTab.map(({ inv }) => inv.id)));
+    setSelectAllMenuOpen(false);
+  }
+
+  function toggleRow(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  function exitBulkMode() {
+    setBulkMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkSend() {
+    if (!brand || selectedIds.size === 0) return;
+
+    const ids = Array.from(selectedIds);
+    setBulkSending(true);
+    setSendProgress({ done: 0, total: ids.length });
+
+    // One request per invoice rather than a single batch call, so the
+    // progress dialog can report "N of M sent so far" against something
+    // real rather than an animation timed to guess how long the batch
+    // takes. The server already sends sequentially either way (see
+    // InvoicesService.bulkSend); this just moves the loop up a level so
+    // there's a checkpoint to report between invoices.
+    const sent: string[] = [];
+    const skipped: { id: string; reason: string }[] = [];
+    const failed: { id: string; reason: string }[] = [];
+
+    for (const id of ids) {
+      const result = await bulkSendInvoicesAction(brand.id, [id]);
+      if (result.ok) {
+        sent.push(...result.data.sent);
+        skipped.push(...result.data.skipped);
+        failed.push(...result.data.failed);
+      } else {
+        failed.push({ id, reason: result.error });
+      }
+      setSendProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev));
+    }
+
+    setBulkSending(false);
+    setSendProgress(null);
+    setConfirmSendOpen(false);
+
+    const notSent = skipped.length + failed.length;
+    if (sent.length > 0 && notSent === 0) {
+      toast.success('All invoices sent', { description: `${sent.length} sent` });
+    } else if (sent.length > 0) {
+      toast.warning('Bulk send complete', {
+        description: (
+          <>
+            <span className="font-medium text-success">{sent.length} sent</span>
+            {' · '}
+            <span className="font-medium text-danger">{notSent} failed</span>
+          </>
+        ),
+      });
+    } else {
+      toast.error('No invoices were sent.', {
+        description: failed[0]?.reason ?? skipped[0]?.reason,
+      });
+    }
+    exitBulkMode();
+  }
 
   return (
     <div>
@@ -330,7 +508,41 @@ export function InvoicesPageClient({
                 </div>
               )}
             </div>
+
+            {brand && !bulkMode && (
+              <button
+                type="button"
+                onClick={() => setBulkMode(true)}
+                className="ml-auto inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border
+                           border-[#D4D4D4] bg-white px-4 text-sm font-bold text-[#0F172A]
+                           shadow-[0_1px_1px_rgba(0,0,0,0.05)] transition-colors hover:bg-surface-muted"
+              >
+                <Send className="h-4 w-4" aria-hidden />
+                Bulk Send Invoices
+              </button>
+            )}
           </div>
+
+          {allInTabSelected && (
+            <div
+              className="mb-3 flex h-[42px] items-center justify-between rounded-[10px] border
+                         border-[#BFDBFE] bg-[#EFF6FF] py-1.5 pl-4 pr-2.5 text-sm text-[#1D4ED8]"
+            >
+              <span className="flex items-center gap-2">
+                <Info className="h-4 w-4 shrink-0" aria-hidden />
+                All <strong>{selectableAllInTab.length}</strong> invoices are selected.
+              </span>
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="inline-flex h-7 w-[113px] shrink-0 items-center justify-center gap-1.5
+                           rounded-md border border-[#D4D4D4] bg-white text-xs font-bold text-[#0F172A]
+                           transition-colors hover:bg-surface-muted"
+              >
+                Clear Selection
+              </button>
+            </div>
+          )}
 
           <section className="overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white shadow-sm">
             {invoicesError ? (
@@ -355,20 +567,107 @@ export function InvoicesPageClient({
                     className="border-b border-[#E5E7EB] bg-[#F5F5F6] text-left text-xs font-semibold uppercase
                                   tracking-wide text-[#8C919B]"
                   >
-                    <th className="px-5 py-2">Invoice</th>
+                    {bulkMode && (
+                      <th className="w-16 px-5 py-2">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            aria-label="Select all sendable invoices"
+                            checked={allSelected}
+                            // `indeterminate` is a DOM-only property with no JSX
+                            // prop — it has to be set imperatively on the node,
+                            // which a callback ref (re-run every render) does.
+                            ref={(el) => {
+                              if (el) el.indeterminate = someSelected;
+                            }}
+                            onChange={toggleSelectAll}
+                            disabled={selectableVisible.length === 0}
+                            className="h-4 w-4 rounded border-[#D4D4D4] accent-black"
+                          />
+                          <div className="relative" ref={selectAllMenuRef}>
+                            <button
+                              type="button"
+                              aria-haspopup="menu"
+                              aria-expanded={selectAllMenuOpen}
+                              aria-label="Selection options"
+                              onClick={() => setSelectAllMenuOpen((open) => !open)}
+                              disabled={selectableAllInTab.length === 0}
+                              className="flex h-5 w-5 items-center justify-center rounded text-[#8C919B]
+                                         transition-colors hover:bg-[#E5E7EB] hover:text-[#0F172A]
+                                         disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+
+                            {selectAllMenuOpen && (
+                              <div
+                                role="menu"
+                                aria-label="Selection options"
+                                className="absolute left-0 z-20 mt-1 w-40 overflow-hidden rounded-2xl
+                                           border border-[#E5E5E5] bg-white py-1 normal-case
+                                           shadow-[0px_4px_6px_-2px_rgba(0,0,0,0.03),0px_12px_16px_-4px_rgba(0,0,0,0.08)]"
+                              >
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={selectPage}
+                                  className="block w-full px-3 py-2 text-left transition-colors hover:bg-[#F5F5F6]"
+                                >
+                                  <span className="block text-sm font-semibold text-[#0F172A]">
+                                    Select page
+                                  </span>
+                                  <span className="block text-xs text-[#8C919B]">
+                                    {selectableVisible.length} invoice
+                                    {selectableVisible.length === 1 ? '' : 's'}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={selectAllInvoices}
+                                  className="block w-full px-3 py-2 text-left transition-colors hover:bg-[#F5F5F6]"
+                                >
+                                  <span className="block text-sm font-semibold text-[#0F172A]">
+                                    Select all invoices
+                                  </span>
+                                  <span className="block text-xs text-[#8C919B]">
+                                    {selectableAllInTab.length} total invoice
+                                    {selectableAllInTab.length === 1 ? '' : 's'}
+                                  </span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </th>
+                    )}
+                    <th className="px-3 py-2">Invoice</th>
                     <th className="px-3 py-2">Customer</th>
                     <th className="px-3 py-2">Brand</th>
-                    <th className="px-3 py-2">Issue Date</th>
+                    <th className="px-3 py-2">Invoice Date</th>
                     <th className="px-3 py-2">Due Date</th>
                     <th className="px-3 py-2">Amount</th>
+                    <th className="px-3 py-2">Balance Due</th>
                     <th className="px-3 py-2">Status</th>
-                    <th className="px-5 py-2" />
+                    {!bulkMode && <th className="px-5 py-2" />}
                   </tr>
                 </thead>
                 <tbody>
                   {visible.map(({ inv, status }) => (
                     <tr key={inv.id} className="border-b border-[#E5E7EB] last:border-0">
-                      <td className="px-5 py-2 font-semibold text-[#0F172A]">{inv.number}</td>
+                      {bulkMode && (
+                        <td className="px-5 py-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select invoice ${inv.number}`}
+                            checked={selectedIds.has(inv.id)}
+                            onChange={() => toggleRow(inv.id)}
+                            disabled={!isBulkSendable(status)}
+                            className="h-4 w-4 rounded border-[#D4D4D4] accent-black"
+                          />
+                        </td>
+                      )}
+                      <td className="px-3 py-2 font-semibold text-[#0F172A]">{inv.number}</td>
                       <td className="px-3 py-2 text-[#0F172A]">
                         {inv.customer?.displayName ?? '—'}
                       </td>
@@ -396,6 +695,9 @@ export function InvoicesPageClient({
                       <td className="px-3 py-2 font-medium text-[#0F172A]">
                         {formatMinorForDisplay(inv.totalMinor, currency)}
                       </td>
+                      <td className="px-3 py-2 font-medium text-[#0F172A]">
+                        {formatMinorForDisplay(inv.balanceMinor, currency)}
+                      </td>
                       <td className="px-3 py-2">
                         <span
                           className={`inline-flex items-center gap-1.5 text-sm font-medium ${invoiceListStatusTone(status)}`}
@@ -407,22 +709,93 @@ export function InvoicesPageClient({
                           {invoiceListStatusLabel(status)}
                         </span>
                       </td>
-                      <td className="px-5 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openInvoiceDetail(inv.id)}
-                          className="inline-flex h-8 items-center rounded-md border border-[#0F172A] bg-white px-3
-                                     text-xs font-bold text-[#0F172A] transition-colors hover:bg-slate-50"
-                        >
-                          View
-                        </button>
-                      </td>
+                      {!bulkMode && (
+                        <td className="px-5 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => openInvoiceDetail(inv.id)}
+                            className="inline-flex h-8 items-center rounded-md border border-[#0F172A] bg-white px-3
+                                       text-xs font-bold text-[#0F172A] transition-colors hover:bg-slate-50"
+                          >
+                            View
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
           </section>
+        </>
+      )}
+
+      {bulkMode &&
+        createPortal(
+          // Portalled to <body>, not rendered in place — the (app) layout's
+          // `.page-transition` wrapper (admin-shell.tsx) keeps a `transform`
+          // applied after its enter animation finishes, which makes it the
+          // containing block for any `position: fixed` descendant instead of
+          // the viewport (same fix as Modal and the detail drawers; see
+          // ui/modal.tsx's comment). Without this the bar was fixed to that
+          // wrapper's own box, not the screen — it could show up anywhere
+          // from the middle of the page to off the top, not flush at bottom.
+          <div className="fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
+            <div
+              role="toolbar"
+              aria-label="Bulk send selection"
+              className="flex items-center gap-3 rounded-2xl bg-[#171717] py-3 pl-4 pr-4 text-white
+                         shadow-[0px_12px_24px_-12px_rgba(0,0,0,0.24)]"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15 text-sm font-bold">
+                {selectedIds.size}
+              </span>
+              <span className="text-sm font-medium">
+                {selectedIds.size} invoice{selectedIds.size === 1 ? '' : 's'} selected
+              </span>
+              <span className="h-6 w-px bg-white/20" aria-hidden />
+              <button
+                type="button"
+                onClick={() => setConfirmSendOpen(true)}
+                disabled={selectedIds.size === 0 || bulkSending}
+                className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold
+                           text-[#0F172A] transition-opacity hover:opacity-90 disabled:cursor-not-allowed
+                           disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" aria-hidden />
+                {bulkSending ? 'Sending…' : 'Bulk Send'}
+              </button>
+              <button
+                type="button"
+                onClick={exitBulkMode}
+                disabled={bulkSending}
+                aria-label="Cancel bulk send"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/70
+                           transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed"
+              >
+                <X className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {brand && (
+        <>
+          <BulkSendConfirmModal
+            open={confirmSendOpen && !bulkSending}
+            onClose={() => setConfirmSendOpen(false)}
+            brand={brand}
+            invoiceCount={selectedIds.size}
+            recipientCount={selectedRecipientCount}
+            sending={bulkSending}
+            onConfirm={() => void handleBulkSend()}
+          />
+          <BulkSendProgressModal
+            open={bulkSending}
+            done={sendProgress?.done ?? 0}
+            total={sendProgress?.total ?? selectedIds.size}
+          />
         </>
       )}
 

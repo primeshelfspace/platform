@@ -24,13 +24,15 @@ export function invoiceStatusLabel(status: string): string {
 }
 
 /**
- * The four-way grouping the invoices list's tabs and status column use:
- * every open, non-overdue status (SENT/VIEWED/PENDING_PAYMENT/PARTIALLY_PAID)
- * reads as "Unpaid"; the `overdue` overlay flag (see OPEN_INVOICE_STATUSES
- * above and invoice-status.ts) promotes that same row to "Overdue" rather
- * than adding a status of its own.
+ * The grouping the invoices list's tabs and status column use: every open,
+ * non-overdue status (SENT/VIEWED/PENDING_PAYMENT) reads as "Unpaid",
+ * PARTIALLY_PAID gets its own "Partial" bucket (a customer who has already
+ * paid something is a different situation from one who has paid nothing),
+ * and the `overdue` overlay flag (see OPEN_INVOICE_STATUSES above and
+ * invoice-status.ts) promotes either of those to "Overdue" rather than
+ * adding a status of its own.
  */
-export type InvoiceListStatus = 'DRAFT' | 'UNPAID' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+export type InvoiceListStatus = 'DRAFT' | 'UNPAID' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 
 export function invoiceListStatus(invoice: {
   status: string;
@@ -39,7 +41,8 @@ export function invoiceListStatus(invoice: {
   if (invoice.status === 'DRAFT') return 'DRAFT';
   if (invoice.status === 'PAID') return 'PAID';
   if (invoice.status === 'CANCELLED') return 'CANCELLED';
-  return invoice.overdue ? 'OVERDUE' : 'UNPAID';
+  if (invoice.overdue) return 'OVERDUE';
+  return invoice.status === 'PARTIALLY_PAID' ? 'PARTIAL' : 'UNPAID';
 }
 
 /** DRAFT -> "Draft". Title case for a person, not the shouted wire format. */
@@ -51,7 +54,7 @@ export function invoiceListStatusLabel(status: InvoiceListStatus): string {
 export function invoiceListStatusTone(status: InvoiceListStatus): string {
   if (status === 'PAID') return 'text-success';
   if (status === 'OVERDUE') return 'text-danger';
-  if (status === 'UNPAID') return 'text-warning';
+  if (status === 'UNPAID' || status === 'PARTIAL') return 'text-warning';
   return 'text-ink-subtle';
 }
 
@@ -60,7 +63,7 @@ export function invoiceListStatusTone(status: InvoiceListStatus): string {
 export function invoiceListStatusDot(status: InvoiceListStatus): string {
   if (status === 'PAID') return 'bg-success';
   if (status === 'OVERDUE') return 'bg-danger';
-  if (status === 'UNPAID') return 'bg-warning';
+  if (status === 'UNPAID' || status === 'PARTIAL') return 'bg-warning';
   return 'bg-ink-subtle';
 }
 

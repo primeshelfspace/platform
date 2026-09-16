@@ -660,6 +660,22 @@ export function sendInvoiceEmail(
   });
 }
 
+/** The Invoices list's "Bulk Send Invoices" outcome — one id per bucket
+ * rather than a single all-or-nothing result, since a batch send genuinely
+ * can be partial (see InvoicesService.bulkSend). */
+export interface BulkSendResult {
+  sent: string[];
+  skipped: { id: string; reason: string }[];
+  failed: { id: string; reason: string }[];
+}
+
+export function bulkSendInvoices(brandId: string, ids: string[]): Promise<BulkSendResult> {
+  return apiFetch<BulkSendResult>(`/brands/${brandId}/invoices/bulk-send`, {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  });
+}
+
 // --- Payment method settings (FR-PAY-005) -------------------------------------
 
 export interface PaymentMethodSettings {

@@ -301,6 +301,19 @@ export const sendInvoiceEmailSchema = z.object({
 });
 export type SendInvoiceEmailInput = z.infer<typeof sendInvoiceEmailSchema>;
 
+/** The Invoices list's "Bulk Send Invoices" — a batch of ids selected on
+ * screen, each sent (or resent) with that invoice's own default Email
+ * Receipt content; unlike sendInvoiceEmailSchema there is no per-invoice
+ * compose step, so no to/subject/body travels here. Capped at 100 to keep
+ * one request from running an unbounded number of real sends. */
+export const bulkSendInvoicesSchema = z.object({
+  ids: z
+    .array(idSchema)
+    .min(1, 'select at least one invoice')
+    .max(100, 'select at most 100 invoices at a time'),
+});
+export type BulkSendInvoicesInput = z.infer<typeof bulkSendInvoicesSchema>;
+
 /** Brand Settings > Branding > Invoice PDF: layout and which optional
  * sections appear on the invoice PDF a customer receives/downloads.
  * companyName/companyAddress are nullable — null means "use the brand's own

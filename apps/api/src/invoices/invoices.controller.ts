@@ -1,9 +1,11 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import {
+  bulkSendInvoicesSchema,
   idSchema,
   invoiceDraftSchema,
   invoiceListQuerySchema,
   sendInvoiceEmailSchema,
+  type BulkSendInvoicesInput,
   type EmailReceiptLayout,
   type InvoiceDraftInput,
   type InvoiceListQuery,
@@ -14,6 +16,7 @@ import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import {
   InvoicesService,
+  type BulkSendResult,
   type InvoiceActivityEntry,
   type InvoiceDetail,
   type InvoiceListResult,
@@ -77,6 +80,20 @@ export class InvoicesController {
     @Body(zodPipe(invoiceDraftSchema)) body: InvoiceDraftInput,
   ): Promise<InvoiceWithLines> {
     return this.invoices.create(scope, brandId, body);
+  }
+
+  /** The Invoices list's "Bulk Send Invoices" — sends (or resends) each
+   * selected invoice with its own default Email Receipt content; a draft
+   * among them is issued first, same as a first send from the drawer. */
+  @Post('bulk-send')
+  @HttpCode(200)
+  @RequirePermission('INVOICE_SEND', 'WRITE')
+  bulkSend(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Body(zodPipe(bulkSendInvoicesSchema)) body: BulkSendInvoicesInput,
+  ): Promise<BulkSendResult> {
+    return this.invoices.bulkSend(scope, brandId, body.ids);
   }
 
   @Post(':id/issue')
