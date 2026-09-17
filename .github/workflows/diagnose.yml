@@ -1,0 +1,39 @@
+name: Diagnose staging
+
+# Manual, on-demand troubleshooting — reuses the same SSH connection
+# deploy.yml already has to the staging box, just to read state instead of
+# deploying. Never runs on its own; only when someone triggers it by hand
+# from the Actions tab.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    name: Pull pm2 status + recent logs from staging EC2
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH in and report
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ubuntu
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -x
+            echo "===== pm2 status ====="
+            pm2 status
+            echo "===== pm2 describe admin ====="
+            pm2 describe admin
+            echo "===== admin logs (last 200 lines) ====="
+            pm2 logs admin --lines 200 --nostream
+            echo "===== api logs (last 100 lines) ====="
+            pm2 logs api --lines 100 --nostream
+            echo "===== admin .env (public vars only, no secrets) ====="
+            grep -E '^(NEXT_PUBLIC_|API_PUBLIC_URL|ADMIN_PUBLIC_URL|PAYMENT_PUBLIC_URL|NODE_ENV|APP_ENV)=' ~/Multi-Brand-Invoicing/.env || true
+            echo "===== disk / memory ====="
+            df -h /
+            free -h
