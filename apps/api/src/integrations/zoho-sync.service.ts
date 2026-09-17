@@ -206,7 +206,7 @@ export class ZohoSyncService {
   ): Promise<void> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-sync');
     if (!scope) return;
-    const connection = await this.connections.buildAccountingConnection(scope, brandId);
+    const connection = await this.resolveConnection(scope, brandId, 'CUSTOMER', customerId);
     if (!connection) return;
     if (!opts?.viaCascade) {
       const flags = await this.connections.getSyncFlags(scope, brandId);
@@ -270,7 +270,7 @@ export class ZohoSyncService {
   async pushInvoice(brandId: string, invoiceId: string): Promise<void> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-sync');
     if (!scope) return;
-    const connection = await this.connections.buildAccountingConnection(scope, brandId);
+    const connection = await this.resolveConnection(scope, brandId, 'INVOICE', invoiceId);
     if (!connection) return;
     const flags = await this.connections.getSyncFlags(scope, brandId);
     if (flags && !flags.invoiceSyncEnabled) return;
@@ -365,7 +365,7 @@ export class ZohoSyncService {
   async pushPayment(brandId: string, paymentId: string): Promise<void> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-sync');
     if (!scope) return;
-    const connection = await this.connections.buildAccountingConnection(scope, brandId);
+    const connection = await this.resolveConnection(scope, brandId, 'PAYMENT', paymentId);
     if (!connection) return;
     const flags = await this.connections.getSyncFlags(scope, brandId);
     if (flags && !flags.invoiceSyncEnabled) return;
@@ -502,6 +502,124 @@ export class ZohoSyncService {
   }
 
   /**
+   * Resolves the brand's Zoho connection for a push. Null means "never
+   * connected" — a legitimate no-op the caller already knows how to handle.
+   * A thrown error means the brand *is* connected but the OAuth refresh
+   * token Zoho gave us no longer works (expired, revoked, app
+   * de-authorized) — previously this threw before any SyncJob row existed,
+   * so it was invisible everywhere sync health is surfaced (Needs
+   * Attention, the integrations panel's health field, the connection's
+   * activity log) and simply vanished into the worker process's raw logs.
+   * Recording it here, with the same RUNNING→FAILED SyncJob row runJob
+   * writes for an in-flight push, closes that gap.
+   */
+  private async resolveConnection(
+    scope: Scope,
+    brandId: string,
+    objectType: 'CUSTOMER' | 'INVOICE' | 'PAYMENT',
+    objectId: string,
+  ): Promise<AccountingConnection | null> {
+    try {
+      return await this.connections.buildAccountingConnection(scope, brandId);
+    } catch (error) {
+      const job = await this.prisma.withoutScope(
+        `recording sync job start for brand ${brandId}`,
+        (client) =>
+          client.syncJob.create({
+            data: {
+              brandId,
+              provider: 'ZOHO_BOOKS',
+              direction: 'PUSH',
+              objectType,
+              objectId,
+              status: 'RUNNING',
+              attemptCount: 1,
+            },
+          }),
+      );
+      return this.recordFailure(scope, brandId, objectType, objectId, job.id, error);
+    }
+  }
+
+  /**
+   * Shared tail of a failed push, used both when the push's own work throws
+   * (runJob) and when resolving the connection itself throws (
+   * resolveConnection): records the SyncJob row as FAILED with the
+   * classified error, flags the connection unhealthy on an AUTHENTICATION
+   * failure so the integrations panel stops reporting "Healthy" underneath
+   * a run of failures, and rethrows — as UnrecoverableError for an error
+   * class BullMQ's retries can never fix, otherwise the original error so
+   * the queue's retry policy (TDD-001 §11.1) still applies. Return type is
+   * `never`: every path out of this function throws.
+   */
+  private async recordFailure(
+    scope: Scope,
+    brandId: string,
+    objectType: 'CUSTOMER' | 'INVOICE' | 'PAYMENT',
+    objectId: string,
+    jobId: string,
+    error: unknown,
+  ): Promise<never> {
+    const integrationError = error instanceof IntegrationError ? error : null;
+    // Guarded for the same reason as below: recording why we failed must
+    // never replace the error itself, which the queue's retry policy reads
+    // to decide whether to try again.
+    try {
+      await this.prisma.withoutScope(
+        `recording sync job failure for brand ${brandId}`,
+        (client) =>
+          client.syncJob.update({
+            where: { id: jobId },
+            data: {
+              status: 'FAILED',
+              errorClass: integrationError?.errorClass ?? 'PERMANENT',
+              lastError:
+                integrationError?.providerMessage ??
+                (error instanceof Error ? error.message : String(error)),
+            },
+          }),
+      );
+    } catch (auditError) {
+      this.logger.warn(
+        `could not record push failure for brand ${brandId}: ` +
+          `${auditError instanceof Error ? auditError.message : String(auditError)}`,
+      );
+    }
+    this.logger.warn(
+      `Zoho push failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`,
+    );
+
+    // A revoked or rejected credential is the one failure an operator has to
+    // act on themselves, and it was previously invisible: the panel kept
+    // reporting "Healthy" while every job failed behind it. markUnhealthy
+    // deliberately leaves `status` alone — see its own comment for why
+    // halting here would be worse than surfacing it.
+    if (integrationError?.errorClass === 'AUTHENTICATION') {
+      try {
+        await this.connections.markUnhealthy(
+          scope,
+          brandId,
+          integrationError.providerMessage ?? integrationError.message,
+        );
+      } catch (healthError) {
+        this.logger.warn(
+          `could not record unhealthy state for brand ${brandId}: ` +
+            `${healthError instanceof Error ? healthError.message : String(healthError)}`,
+        );
+      }
+    }
+
+    // A non-retryable class (e.g. VALIDATION — "this customer already
+    // exists") will never succeed no matter how many times BullMQ retries
+    // it. UnrecoverableError tells BullMQ to stop immediately instead of
+    // consulting attempts/backoff at all.
+    if (integrationError && !integrationError.retryable) {
+      throw new UnrecoverableError(integrationError.message);
+    }
+    throw error;
+  }
+
+  /**
    * Wraps a push in a SyncJob row (FR-ZHO-020/021): RUNNING, then SUCCEEDED
    * or FAILED with the classified error and Zoho's verbatim message. Rethrown
    * on failure so BullMQ's own retry policy (TDD-001 §11.1) still applies —
@@ -567,70 +685,7 @@ export class ZohoSyncService {
         );
       }
     } catch (error) {
-      const integrationError = error instanceof IntegrationError ? error : null;
-      // Guarded: if the database is the unwell thing, recording why we failed
-      // fails too, and an unguarded write would surface that instead of the
-      // Zoho error the retry policy reads to decide whether to try again.
-      try {
-        await this.prisma.withoutScope(
-          `recording sync job failure for brand ${brandId}`,
-          (client) =>
-            client.syncJob.update({
-              where: { id: job.id },
-              data: {
-                status: 'FAILED',
-                errorClass: integrationError?.errorClass ?? 'PERMANENT',
-                lastError:
-                  integrationError?.providerMessage ??
-                  (error instanceof Error ? error.message : String(error)),
-              },
-            }),
-        );
-      } catch (auditError) {
-        this.logger.warn(
-          `could not record push failure for brand ${brandId}: ` +
-            `${auditError instanceof Error ? auditError.message : String(auditError)}`,
-        );
-      }
-      this.logger.warn(
-        `Zoho push failed — brand ${brandId}, ${objectType} ${objectId}: ${error instanceof Error ? error.message : error}`,
-      );
-
-      // A revoked or rejected credential is the one failure an operator has to
-      // act on themselves, and it was previously invisible: the panel kept
-      // reporting "Healthy" while every job failed behind it. Recorded against
-      // the connection so the reason is visible where the connection is, not
-      // only in a per-object activity row. markUnhealthy deliberately leaves
-      // `status` alone — see its own comment for why halting here would be
-      // worse than surfacing it.
-      // Guarded for the same reason as the pull path's copy: recording why we
-      // failed must never replace the error itself, which is what the queue's
-      // retry policy reads to decide whether to try again.
-      if (integrationError?.errorClass === 'AUTHENTICATION') {
-        try {
-          await this.connections.markUnhealthy(
-            scope,
-            brandId,
-            integrationError.providerMessage ?? integrationError.message,
-          );
-        } catch (healthError) {
-          this.logger.warn(
-            `could not record unhealthy state for brand ${brandId}: ` +
-              `${healthError instanceof Error ? healthError.message : String(healthError)}`,
-          );
-        }
-      }
-
-      // A non-retryable class (e.g. VALIDATION — "this customer already
-      // exists") will never succeed no matter how many times BullMQ retries
-      // it. Without this, the queue's default attempts:5 blindly retries
-      // every failure regardless of class, multiplying one permanent
-      // failure into five recorded ones. UnrecoverableError tells BullMQ to
-      // stop immediately instead of consulting attempts/backoff at all.
-      if (integrationError && !integrationError.retryable) {
-        throw new UnrecoverableError(integrationError.message);
-      }
-      throw error;
+      await this.recordFailure(scope, brandId, objectType, objectId, job.id, error);
     }
   }
 }
