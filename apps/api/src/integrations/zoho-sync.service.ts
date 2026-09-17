@@ -565,19 +565,17 @@ export class ZohoSyncService {
     // never replace the error itself, which the queue's retry policy reads
     // to decide whether to try again.
     try {
-      await this.prisma.withoutScope(
-        `recording sync job failure for brand ${brandId}`,
-        (client) =>
-          client.syncJob.update({
-            where: { id: jobId },
-            data: {
-              status: 'FAILED',
-              errorClass: integrationError?.errorClass ?? 'PERMANENT',
-              lastError:
-                integrationError?.providerMessage ??
-                (error instanceof Error ? error.message : String(error)),
-            },
-          }),
+      await this.prisma.withoutScope(`recording sync job failure for brand ${brandId}`, (client) =>
+        client.syncJob.update({
+          where: { id: jobId },
+          data: {
+            status: 'FAILED',
+            errorClass: integrationError?.errorClass ?? 'PERMANENT',
+            lastError:
+              integrationError?.providerMessage ??
+              (error instanceof Error ? error.message : String(error)),
+          },
+        }),
       );
     } catch (auditError) {
       this.logger.warn(
