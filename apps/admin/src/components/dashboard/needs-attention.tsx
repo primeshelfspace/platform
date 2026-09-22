@@ -56,9 +56,7 @@ export function NeedsAttention({
       <div className="mb-5">
         <div className="flex items-center justify-between pb-5">
           <div>
-            <h2 className="text-lg font-semibold leading-none text-ink-strong">
-              Needs Attention
-            </h2>
+            <h2 className="text-lg font-semibold leading-none text-ink-strong">Needs Attention</h2>
             <p
               className="mt-1 text-[12px] font-medium leading-none tracking-normal text-ink-subtle"
               style={{ fontFamily: 'var(--font-jakarta)' }}
