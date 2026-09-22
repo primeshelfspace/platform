@@ -212,8 +212,6 @@ export default async function DashboardPage({
 
             <KpiCards summary={summary} rangeLabel={rangeLabel} />
 
-            {scopeBrandId === null && <ByBrandCards brands={byBrand} />}
-
             <div className="mb-6 grid gap-4 lg:grid-cols-3">
               <div className="h-full lg:col-span-2">
                 <CollectionRateTrendChart trend={trend} />
@@ -235,6 +233,8 @@ export default async function DashboardPage({
             <div className="mb-6">
               <RecentActivity items={recentActivity} />
             </div>
+
+            {scopeBrandId === null && <ByBrandCards brands={byBrand} />}
 
             {scopeBrandId === null && (
               <CrossBrandCustomersTable result={crossBrandCustomers} brands={brands} />

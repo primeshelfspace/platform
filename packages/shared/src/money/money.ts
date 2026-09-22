@@ -232,6 +232,30 @@ export function formatMinorForDisplay(
 }
 
 /**
+ * Locale-aware presentation, compacted for dense UI (KPI tiles, chart axes):
+ * thousands as "1.5k", millions as "2.5m". Below 1,000 this is identical to
+ * `formatMinorForDisplay` — the suffix only kicks in once one would help.
+ * Display only — never feed the result back in.
+ */
+export function formatMinorCompact(
+  amount: Minor,
+  currency: CurrencyCode = 'USD',
+  locale = 'en-US',
+): string {
+  assertMinor(amount);
+  const exponent = MINOR_UNIT_EXPONENT[currency];
+  const formatted = new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(amount / 10 ** exponent);
+  // Intl's compact notation renders the suffix as "K"/"M"/"B"/"T" — lower-cased
+  // here since that's the house style ("1.5k", "2.5m"), not a locale option.
+  return formatted.replace(/([KMBT])(?=\D*$)/, (letter) => letter.toLowerCase());
+}
+
+/**
  * Parses a major-unit decimal string ("1234.56") into minor units.
  * String in, integer out — a `number` argument is refused precisely because
  * the caller would already have lost precision producing it.

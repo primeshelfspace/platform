@@ -1220,6 +1220,8 @@ export interface RecentActivityItem {
   kind: RecentActivityKind;
   brandId: string;
   brandName: string | null;
+  brandThemeColor: string;
+  brandInitial: string;
   message: string;
   occurredAt: string;
 }

@@ -30,16 +30,16 @@ export const palette = {
   inkInverse: '#FFFFFF',
 
   // Status. Also used for invoice state chips.
-  success: '#1F8B5C',
-  successSurface: '#E6F4ED',
-  warning: '#C97A2B',
-  warningSurface: '#FBF0DF',
-  danger: '#C0473D',
-  dangerSurface: '#F9E7E5',
-  info: '#3A6FA8',
-  infoSurface: '#E7EEF6',
-  accent: '#2D6A6A',
-  accentSurface: '#E1E7E2',
+  success: '#16A34A',
+  successSurface: '#DCFCE7',
+  warning: '#F59E0B',
+  warningSurface: '#FEF3C7',
+  danger: '#EF4444',
+  dangerSurface: '#FEE2E2',
+  info: '#3B82F6',
+  infoSurface: '#DBEAFE',
+  accent: '#10B981',
+  accentSurface: '#D1FAE5',
 } as const;
 
 export type PaletteToken = keyof typeof palette;

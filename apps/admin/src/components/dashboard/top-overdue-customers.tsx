@@ -7,10 +7,10 @@ function initials(name: string): string {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
 }
 
-/** A small, deterministic palette for avatar backgrounds — cosmetic only, not
- * a data encoding, so it does not need to follow the categorical-hue rules a
- * real series colour would. */
-const AVATAR_TONES = ['bg-info', 'bg-accent', 'bg-warning', 'bg-danger', 'bg-success'];
+/** A single solid tone for every avatar — cosmetic only, not a data
+ * encoding, so all five customers read as one consistent list rather than a
+ * cycling rainbow. */
+const AVATAR_TONE = 'bg-ink-strong';
 
 export function TopOverdueCustomers({
   customers,
@@ -21,15 +21,29 @@ export function TopOverdueCustomers({
 }) {
   const code = toCurrencyCode(currency);
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="font-medium text-ink-strong">Top Overdue Customers</h2>
-          <p className="text-xs text-ink-subtle">Sorted by amount</p>
+    <div className="rounded-[14px] border border-[#E5E5E5] bg-surface p-8 shadow-[0px_1px_3px_0px_#0000000A]">
+      <div className="mb-5">
+        <div className="flex items-center justify-between pb-5">
+          <div>
+            <h2 className="text-lg font-semibold leading-none text-ink-strong">
+              Top Overdue Customers
+            </h2>
+            <p
+              className="mt-1 text-[12px] font-medium leading-none tracking-normal text-ink-subtle"
+              style={{ fontFamily: 'var(--font-jakarta)' }}
+            >
+              Sorted by amount — click row for detail
+            </p>
+          </div>
+          {customers.length > 0 && (
+            <span className="rounded-full bg-surface-muted px-3 py-1 text-sm font-semibold text-ink-muted">
+              {customers.length} customer{customers.length === 1 ? '' : 's'}
+            </span>
+          )}
         </div>
-        {customers.length > 0 && (
-          <span className="text-xs text-ink-subtle">{customers.length} customers</span>
-        )}
+        {/* Full-bleed to the card's own edge — cancels the card's p-8 so the
+            line reaches both sides, rather than stopping at the padding. */}
+        <div className="-mx-8 border-b border-[#E5E5E5]" />
       </div>
 
       {customers.length === 0 ? (
@@ -38,20 +52,20 @@ export function TopOverdueCustomers({
           <p className="text-sm text-ink-subtle">No overdue customers.</p>
         </div>
       ) : (
-        <ul className="space-y-1">
-          {customers.map((customer, index) => (
+        <ul className="-mx-8 divide-y divide-[#E5E5E5]">
+          {customers.map((customer) => (
             <li
               key={customer.customerId}
-              className="flex items-center gap-3 rounded-lg px-1 py-2 hover:bg-surface-muted"
+              className="flex items-center gap-3 px-8 py-5 first:pt-0 last:pb-0"
             >
               <span
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${AVATAR_TONES[index % AVATAR_TONES.length]}`}
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${AVATAR_TONE}`}
                 aria-hidden
               >
                 {initials(customer.displayName)}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-ink-strong">
+                <p className="truncate text-base font-semibold text-ink-strong">
                   {customer.displayName}
                   {customer.brandName && (
                     <span className="ml-2 text-xs font-normal text-ink-subtle">
@@ -59,11 +73,11 @@ export function TopOverdueCustomers({
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-ink-subtle">
+                <p className="text-sm text-ink-subtle">
                   {customer.daysOverdue} day{customer.daysOverdue === 1 ? '' : 's'} overdue
                 </p>
               </div>
-              <span className="shrink-0 text-sm font-semibold text-danger">
+              <span className="shrink-0 text-lg font-bold text-danger">
                 {formatMinorForDisplay(customer.balanceMinor, code)}
               </span>
             </li>

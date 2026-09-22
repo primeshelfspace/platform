@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { InvoiceStatus } from '@prisma/client';
+import type { InvoiceStatus, SyncErrorClass } from '@prisma/client';
 import {
   PAYABLE_STATUSES,
   formatMinorForDisplay,
@@ -13,6 +13,22 @@ import { QueueService } from '../infra/queue/queue.service.js';
 const DRAFT_UNSENT_ATTENTION_DAYS = 3;
 const DUE_SOON_HOURS = 24;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Plain-language stand-ins for a failed sync, shown on the merchant-facing
+ * dashboard instead of the provider's own error text (`SyncJob.lastError`),
+ * which is often a raw API message — e.g. "Invalid value passed for
+ * organization_id" — meant for an operator reading logs, not a merchant. */
+const SYNC_FAILURE_MESSAGE: Record<SyncErrorClass, string> = {
+  AUTHENTICATION: 'Zoho connection needs to be reconnected',
+  VALIDATION: "Zoho couldn't accept some of this record's details",
+  CONFLICT: 'Zoho has a newer version of this record',
+  TRANSIENT: "Couldn't reach Zoho — this will retry automatically",
+  PERMANENT: 'Zoho sync failed',
+};
+
+function syncFailureMessage(errorClass: SyncErrorClass | null): string {
+  return errorClass ? SYNC_FAILURE_MESSAGE[errorClass] : SYNC_FAILURE_MESSAGE.PERMANENT;
+}
 
 /** The KPI cards' and By Brand rollup's window — defaults to the current
  * calendar month, overridable by the header's date-range selector (This
@@ -98,6 +114,11 @@ export interface RecentActivityItem {
   readonly kind: RecentActivityKind;
   readonly brandId: string;
   readonly brandName: string | null;
+  /** Always populated (unlike `brandName`, which is null outside All Brands
+   * mode to avoid repeating the same name on every row) — the feed's avatar
+   * is brand-colored in both modes, same treatment as the By Brand cards. */
+  readonly brandThemeColor: string;
+  readonly brandInitial: string;
   readonly message: string;
   readonly occurredAt: Date;
 }
@@ -427,7 +448,7 @@ export class DashboardService {
             brandId: true,
             objectType: true,
             objectId: true,
-            lastError: true,
+            errorClass: true,
             updatedAt: true,
             brand: { select: { displayName: true } },
           },
@@ -479,7 +500,7 @@ export class DashboardService {
               invoice?.customer.displayName ??
               customer?.displayName ??
               `${job.objectType.toLowerCase()} sync`,
-            detail: 'Zoho sync failed' + (job.lastError ? ` — ${job.lastError}` : ''),
+            detail: syncFailureMessage(job.errorClass),
             invoiceId: invoice?.id ?? null,
             syncJobId: job.id,
             occurredAt: job.updatedAt,
@@ -525,7 +546,7 @@ export class DashboardService {
             currency: true,
             settledAt: true,
             brandId: true,
-            brand: { select: { displayName: true } },
+            brand: { select: { displayName: true, themeColor: true } },
             invoice: { select: { customer: { select: { displayName: true } } } },
           },
         }),
@@ -539,7 +560,7 @@ export class DashboardService {
               select: {
                 number: true,
                 brandId: true,
-                brand: { select: { displayName: true } },
+                brand: { select: { displayName: true, themeColor: true } },
                 customer: { select: { displayName: true } },
               },
             },
@@ -553,7 +574,7 @@ export class DashboardService {
             displayName: true,
             createdAt: true,
             brandId: true,
-            brand: { select: { displayName: true } },
+            brand: { select: { displayName: true, themeColor: true } },
           },
         }),
         // A row this method's own CUSTOMER_ADDED branch already reported as
@@ -569,10 +590,12 @@ export class DashboardService {
             createdAt: true,
             updatedAt: true,
             brandId: true,
-            brand: { select: { displayName: true } },
+            brand: { select: { displayName: true, themeColor: true } },
           },
         }),
       ]);
+
+      const brandInitial = (name: string): string => (name.trim().charAt(0) || '?').toUpperCase();
 
       const items: RecentActivityItem[] = [
         ...payments
@@ -581,6 +604,8 @@ export class DashboardService {
             kind: 'PAYMENT_RECEIVED',
             brandId: p.brandId,
             brandName: brandId ? null : p.brand.displayName,
+            brandThemeColor: p.brand.themeColor,
+            brandInitial: brandInitial(p.brand.displayName),
             message: `Payment of ${formatMinorForDisplay(Number(p.amountMinor), toCurrencyCode(p.currency))} received from ${p.invoice.customer.displayName}`,
             occurredAt: p.settledAt!,
           })),
@@ -588,6 +613,8 @@ export class DashboardService {
           kind: 'INVOICE_SENT',
           brandId: e.invoice.brandId,
           brandName: brandId ? null : e.invoice.brand.displayName,
+          brandThemeColor: e.invoice.brand.themeColor,
+          brandInitial: brandInitial(e.invoice.brand.displayName),
           message: `Invoice ${e.invoice.number} sent to ${e.invoice.customer.displayName}`,
           occurredAt: e.occurredAt,
         })),
@@ -595,6 +622,8 @@ export class DashboardService {
           kind: 'CUSTOMER_ADDED',
           brandId: c.brandId,
           brandName: brandId ? null : c.brand.displayName,
+          brandThemeColor: c.brand.themeColor,
+          brandInitial: brandInitial(c.brand.displayName),
           message: `New customer ${c.displayName} added`,
           occurredAt: c.createdAt,
         })),
@@ -604,6 +633,8 @@ export class DashboardService {
             kind: 'CUSTOMER_UPDATED',
             brandId: c.brandId,
             brandName: brandId ? null : c.brand.displayName,
+            brandThemeColor: c.brand.themeColor,
+            brandInitial: brandInitial(c.brand.displayName),
             message: `Customer ${c.displayName} updated`,
             occurredAt: c.updatedAt,
           })),
@@ -738,7 +769,13 @@ export class DashboardService {
     return this.prisma.withScope(scope, async (tx) => {
       const connections = await tx.integrationConnection.findMany({
         where: { status: 'CONNECTED', ...(brandId ? { brandId } : {}) },
-        orderBy: { lastSyncAt: 'desc' },
+        // Providers that never populate lastSyncAt (Stripe, a payment
+        // gateway with nothing to "sync") must not shadow a real Zoho
+        // timestamp — plain `desc` puts Postgres's default NULLS FIRST
+        // ahead of any actual sync time, so the banner would (silently)
+        // never show "Last synced" as long as a null-lastSyncAt connection
+        // existed for the brand.
+        orderBy: { lastSyncAt: { sort: 'desc', nulls: 'last' } },
         select: { provider: true, lastSyncAt: true },
         take: 1,
       });

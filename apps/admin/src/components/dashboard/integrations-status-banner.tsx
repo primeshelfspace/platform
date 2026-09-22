@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Link2 } from 'lucide-react';
+import { formatRelativeTime } from '@/lib/relative-time';
 
 /**
  * Two states, not one dimmed-down version of the other: connected shows
@@ -42,9 +43,7 @@ export function IntegrationsStatusBanner({
         <span className="h-2 w-2 shrink-0 rounded-full bg-success" aria-hidden />
         <span className="font-medium text-success">Zoho Books &amp; Stripe: Connected</span>
         {lastSyncAt && (
-          <span className="text-ink-subtle">
-            · Last synced {new Date(lastSyncAt).toLocaleString()}
-          </span>
+          <span className="text-ink-subtle">Last synced {formatRelativeTime(lastSyncAt)}</span>
         )}
       </span>
       {needsAttentionCount > 0 && (

@@ -30,12 +30,12 @@ export function CollectionRateTrendChart({ trend }: { trend: DashboardTrendPoint
       ) : (
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
-            <CartesianGrid vertical={false} stroke={palette.border} />
+            <CartesianGrid vertical={false} stroke={palette.border} strokeDasharray="4 4" />
             <XAxis
               dataKey="label"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: palette.inkSubtle, fontSize: 12 }}
+              tick={{ fill: palette.ink, fontSize: 12, fontWeight: 500 }}
             />
             <YAxis
               domain={[0, 100]}
@@ -43,7 +43,7 @@ export function CollectionRateTrendChart({ trend }: { trend: DashboardTrendPoint
               tickFormatter={(v: number) => `${v}%`}
               axisLine={false}
               tickLine={false}
-              tick={{ fill: palette.inkSubtle, fontSize: 12 }}
+              tick={{ fill: palette.ink, fontSize: 12, fontWeight: 500 }}
             />
             <Tooltip
               formatter={(value: number) => [`${value.toFixed(1)}%`, 'Collection rate']}
