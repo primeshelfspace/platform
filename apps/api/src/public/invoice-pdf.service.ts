@@ -41,26 +41,42 @@ export class InvoicePdfService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async launch(): Promise<void> {
-    this.browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        // Chrome's own sandbox needs unprivileged user namespaces, which
-        // recent Ubuntu locks down via AppArmor by default. Safe to drop
-        // here — this browser only ever renders our own invoice-pdf-html.ts
-        // output, never arbitrary/untrusted content from the web.
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        // /dev/shm defaults to 64MB on many cloud VMs/containers — too small
-        // for Chrome's shared memory needs, and it crashes rather than
-        // falling back gracefully. This makes it use /tmp instead, which is
-        // slower but not size-capped the same way.
-        '--disable-dev-shm-usage',
-        // No display and nothing this renders needs GPU-accelerated
-        // compositing; avoids a class of driver/EGL failures headless
-        // servers otherwise hit trying to initialise one anyway.
-        '--disable-gpu',
-      ],
-    });
+    const args = [
+      // Chrome's own sandbox needs unprivileged user namespaces, which
+      // recent Ubuntu locks down via AppArmor by default. Safe to drop
+      // here — this browser only ever renders our own invoice-pdf-html.ts
+      // output, never arbitrary/untrusted content from the web.
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      // /dev/shm defaults to 64MB on many cloud VMs/containers — too small
+      // for Chrome's shared memory needs, and it crashes rather than
+      // falling back gracefully. This makes it use /tmp instead, which is
+      // slower but not size-capped the same way.
+      '--disable-dev-shm-usage',
+      // No display and nothing this renders needs GPU-accelerated
+      // compositing; avoids a class of driver/EGL failures headless
+      // servers otherwise hit trying to initialise one anyway.
+      '--disable-gpu',
+    ];
+
+    try {
+      this.browser = await puppeteer.launch({ headless: true, args });
+    } catch (error) {
+      // Puppeteer's own bundled Chromium download, which lives under a
+      // per-user cache directory. Some machines run an Application Control /
+      // WDAC policy that only trusts binaries under Program Files and
+      // refuses to spawn anything from there (observed locally as Windows'
+      // "An Application Control policy has blocked this file", surfaced by
+      // Node as `spawn UNKNOWN`) — falling back to the system-installed
+      // Chrome, which such policies do trust, recovers without needing a
+      // policy exception.
+      this.logger.warn(
+        `bundled chromium failed to launch, retrying with the system-installed Chrome: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      this.browser = await puppeteer.launch({ headless: true, channel: 'chrome', args });
+    }
   }
 
   async render(html: string): Promise<Buffer> {

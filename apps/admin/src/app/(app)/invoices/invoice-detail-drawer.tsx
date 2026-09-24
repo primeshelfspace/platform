@@ -4,7 +4,19 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Download, Pencil, RefreshCw, Send, X } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  Download,
+  MessageCircle,
+  Pencil,
+  RefreshCw,
+  Send,
+  Share2,
+  X,
+} from 'lucide-react';
+import { toast } from '@fenwick/ui/toast';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import type { Brand, InvoiceActivityEntry, InvoiceDetail } from '@/lib/api';
@@ -13,7 +25,13 @@ import {
   invoiceDetailStatusBadgeClass,
   invoiceDetailStatusLabel,
 } from '@/lib/invoice-presentation';
+import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
 import { SendInvoiceModal } from './send-invoice-modal';
+
+// Same public payment app the "View & Pay Invoice" link in an invoice email
+// points at (SendInvoiceModal's own viewUrl) — Share and Copy Link hand out
+// that same URL, just from the drawer instead of the compose modal.
+const PAYMENT_PUBLIC_URL = process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
 
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
@@ -81,15 +99,73 @@ export function InvoiceDetailDrawer({
   const router = useRouter();
   const [tab, setTab] = useState<'items' | 'activity'>('items');
   const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [shareMenuOpen, setShareMenuOpen] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const shareMenuRef = useDismissablePanel<HTMLDivElement>(shareMenuOpen, () =>
+    setShareMenuOpen(false),
+  );
 
   if (!open) return null;
 
   const status = invoice ? invoiceDetailStatus(invoice) : null;
   const currency = toCurrencyCode(invoice?.currency);
+  // Draft invoices have no active public token yet — same gate Download PDF
+  // already uses below, since a link to an inactive token 404s on arrival.
+  const shareUrl =
+    invoice && status !== 'DRAFT' ? `${PAYMENT_PUBLIC_URL}/i/${invoice.publicToken}` : null;
+  const shareMessage = invoice
+    ? `Invoice ${invoice.number} — ${formatMinorForDisplay(invoice.balanceMinor, currency)} due. View & pay: ${shareUrl}`
+    : '';
 
   function handleSent() {
     router.refresh(); // the list row behind this drawer needs the new status too
     onChanged();
+  }
+
+  async function handleCopyLink() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setLinkCopied(true);
+      toast.success('Link copied', { description: shareUrl });
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy the link — copy it from your browser instead.');
+    }
+  }
+
+  function handleShareWhatsApp() {
+    if (!shareUrl) return;
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareMessage)}`, '_blank', 'noopener');
+    setShareMenuOpen(false);
+  }
+
+  // No direct Chatly deep-link/API exists to target yet, so this goes
+  // through the browser's native share sheet (which lists Chatly itself if
+  // it's installed on the device) and falls back to copying the link with a
+  // Chatly-specific hint when that API isn't available (most desktop
+  // browsers) or the user backs out of it without picking anything.
+  async function handleShareChatly() {
+    if (!shareUrl) return;
+    setShareMenuOpen(false);
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: invoice ? `Invoice ${invoice.number}` : 'Invoice',
+          text: shareMessage,
+          url: shareUrl,
+        });
+        return;
+      } catch (error) {
+        if ((error as Error)?.name === 'AbortError') return; // user cancelled the share sheet
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Link copied', { description: 'Paste it into Chatly to share.' });
+    } catch {
+      toast.error('Could not share the link — copy it from your browser instead.');
+    }
   }
 
   // Portalled straight to <body> — same reason CustomerDetailDrawer's own
@@ -101,8 +177,8 @@ export function InvoiceDetailDrawer({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
 
       <div className="relative flex h-full w-1/2 flex-col overflow-y-auto bg-white shadow-xl">
-        <div className="flex items-start justify-between gap-4 px-8 py-6">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-4 px-8 py-6">
+          <div className="min-w-0">
             <p className="text-sm text-ink-muted">Invoice #</p>
             <div className="mt-1 flex flex-wrap items-center gap-3">
               <h2 className="text-2xl font-bold text-ink-strong">
@@ -119,7 +195,7 @@ export function InvoiceDetailDrawer({
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex flex-wrap shrink-0 items-center justify-end gap-3">
             {status === 'DRAFT' && (
               <button
                 type="button"
@@ -167,6 +243,69 @@ export function InvoiceDetailDrawer({
                 Download PDF
               </button>
             )}
+            {shareUrl ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyLink()}
+                  title="Copy the invoice's shareable link"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#D4D4D4] bg-white px-4
+                             text-sm font-bold text-ink-strong transition-colors hover:bg-surface-muted"
+                >
+                  {linkCopied ? (
+                    <Check className="h-4 w-4 text-success" aria-hidden />
+                  ) : (
+                    <Copy className="h-4 w-4" aria-hidden />
+                  )}
+                  {linkCopied ? 'Copied' : 'Copy Link'}
+                </button>
+
+                <div className="relative shrink-0" ref={shareMenuRef}>
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={shareMenuOpen}
+                    onClick={() => setShareMenuOpen((v) => !v)}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#D4D4D4] bg-white px-4
+                               text-sm font-bold text-ink-strong transition-colors hover:bg-surface-muted"
+                  >
+                    <Share2 className="h-4 w-4" aria-hidden />
+                    Share
+                    <ChevronDown className="h-4 w-4 text-[#64748B]" aria-hidden />
+                  </button>
+
+                  {shareMenuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Share invoice"
+                      className="absolute right-0 z-10 mt-1 w-44 overflow-hidden rounded-lg border border-[#E5E7EB]
+                                 bg-white py-1 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={handleShareWhatsApp}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-strong
+                                   transition-colors hover:bg-[#F5F5F6]"
+                      >
+                        <MessageCircle className="h-4 w-4 text-[#25D366]" aria-hidden />
+                        WhatsApp
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={handleShareChatly}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-strong
+                                   transition-colors hover:bg-[#F5F5F6]"
+                      >
+                        <MessageCircle className="h-4 w-4 text-[#6366F1]" aria-hidden />
+                        Chatly
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
             {status === 'DRAFT' && (
               <button
                 type="button"

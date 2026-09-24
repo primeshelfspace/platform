@@ -35,7 +35,12 @@ export function Toaster() {
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center gap-2 p-4
+      // pt-40 (not p-4's default) — a top-right toast otherwise lands right
+      // on top of the action-button row every drawer/modal in this app keeps
+      // at the very top of its own header (e.g. InvoiceDetailDrawer's
+      // Download PDF/Copy Link/Share row), covering and blocking clicks on
+      // whichever one happens to sit under it.
+      className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex flex-col items-center gap-2 p-4 pt-40
                  sm:inset-x-auto sm:right-0 sm:items-end"
       role="region"
       aria-label="Notifications"

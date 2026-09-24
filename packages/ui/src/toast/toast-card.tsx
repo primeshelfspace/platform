@@ -42,8 +42,10 @@ export function ToastCard({ toast, onDismiss }: { toast: ToastRecord; onDismiss:
         <Icon className={`h-4 w-4 ${iconColor}`} />
       </span>
       <div className="min-w-0 flex-1 pt-0.5">
-        <p className="text-sm font-semibold text-ink">{toast.title}</p>
-        {toast.description && <p className="mt-0.5 text-sm text-ink-muted">{toast.description}</p>}
+        <p className="break-words text-sm font-semibold text-ink">{toast.title}</p>
+        {toast.description && (
+          <p className="mt-0.5 break-words text-sm text-ink-muted">{toast.description}</p>
+        )}
       </div>
       <button
         type="button"
