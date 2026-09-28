@@ -188,6 +188,12 @@ export class UsersService {
    * delete-and-recreate would otherwise let them silently revoke a brand
    * assignment made by a different Brand Admin for a brand they cannot even
    * see.
+   *
+   * The returned ManagedUser.assignedBrandIds is itself scoped the same way:
+   * `user_brand_assignment`'s RLS policy filters every read inside this
+   * transaction to app_brand_visible(), so a Brand Admin's response can only
+   * ever list brands they administer — a brand this actor doesn't administer
+   * may still be assigned underneath, just invisible to them, not removed.
    */
   async updateBrands(
     scope: RequestScope,

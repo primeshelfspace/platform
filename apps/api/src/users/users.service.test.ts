@@ -267,7 +267,19 @@ describeWithDb('UsersService', () => {
     // administers brandA only and submits an empty list (revoking brandA) —
     // brandB must survive untouched, since a full delete-and-recreate would
     // wipe an assignment this actor cannot even see.
-    const updated = await users.updateBrands(brandAdminScope, multiBrandUserId, []);
-    expect(updated.assignedBrandIds).toEqual([brandBId]);
+    //
+    // Asserted via the unscoped `owner` client rather than the returned
+    // ManagedUser: the `user_brand_assignment` RLS policy scopes every read
+    // inside a Brand-Admin transaction to app_brand_visible() too, so the
+    // service's own post-write read of `assignments` can only ever show
+    // brandA-related rows back to this actor — never brandB's — regardless
+    // of whether brandB's row actually survived in the database.
+    await users.updateBrands(brandAdminScope, multiBrandUserId, []);
+
+    const rows = await owner.userBrandAssignment.findMany({
+      where: { userId: multiBrandUserId },
+      select: { brandId: true },
+    });
+    expect(rows.map((r) => r.brandId)).toEqual([brandBId]);
   });
 });
