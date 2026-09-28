@@ -9,7 +9,13 @@ import { toast } from '@fenwick/ui/toast';
 import { Pagination } from '@fenwick/ui/pagination';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
-import type { Brand, Invoice, InvoiceActivityEntry, InvoiceDetail, InvoiceTabCounts } from '@/lib/api';
+import type {
+  Brand,
+  Invoice,
+  InvoiceActivityEntry,
+  InvoiceDetail,
+  InvoiceTabCounts,
+} from '@/lib/api';
 import {
   INVOICE_LIST_TABS,
   INVOICE_RANGE_OPTIONS,
@@ -20,7 +26,11 @@ import {
   isBulkSendable,
 } from '@/lib/invoice-presentation';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
-import { bulkSendInvoicesAction, getInvoiceDetailAction, listSendableInvoicesAction } from './actions';
+import {
+  bulkSendInvoicesAction,
+  getInvoiceDetailAction,
+  listSendableInvoicesAction,
+} from './actions';
 import { BulkSendConfirmModal, BulkSendProgressModal } from './bulk-send-confirm-modal';
 import { InvoiceDetailDrawer } from './invoice-detail-drawer';
 
@@ -212,9 +222,7 @@ export function InvoicesPageClient({
   // Fetched on demand (bulk mode has to actually be on) rather than derived
   // from `invoices`, which after server-side pagination only ever holds one
   // page — see listSendableInvoicesAction. `null` means "not loaded yet".
-  const [allSendable, setAllSendable] = useState<{ id: string; customerId: string }[] | null>(
-    null,
-  );
+  const [allSendable, setAllSendable] = useState<{ id: string; customerId: string }[] | null>(null);
   const [loadingAllSendable, setLoadingAllSendable] = useState(false);
 
   useEffect(() => {
@@ -522,7 +530,8 @@ export function InvoicesPageClient({
             >
               <span className="flex items-center gap-2">
                 <Info className="h-4 w-4 shrink-0" aria-hidden />
-                All <strong>{allSendable?.length ?? selectedIds.size}</strong> invoices are selected.
+                All <strong>{allSendable?.length ?? selectedIds.size}</strong> invoices are
+                selected.
               </span>
               <button
                 type="button"

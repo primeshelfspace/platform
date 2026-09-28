@@ -94,9 +94,9 @@ export const hexColourSchema = z
 export function arrayQueryParam<T extends z.ZodTypeAny>(
   schema: T,
 ): z.ZodEffects<z.ZodUnion<[T, z.ZodArray<T>]>, z.output<T>[], z.input<T> | z.input<T>[]> {
-  return z.union([schema, z.array(schema)]).transform((value) =>
-    Array.isArray(value) ? value : [value],
-  );
+  return z
+    .union([schema, z.array(schema)])
+    .transform((value) => (Array.isArray(value) ? value : [value]));
 }
 
 export const paginationSchema = z.object({

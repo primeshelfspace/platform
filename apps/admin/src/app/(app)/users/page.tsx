@@ -2,7 +2,14 @@ import { redirect } from 'next/navigation';
 import { can, type Role } from '@fenwick/shared';
 import { PageContainer } from '@/components/page-container';
 import { parsePageParams } from '@/lib/pagination';
-import { ApiError, getCurrentUser, listBrands, listUsers, type Brand, type ManagedUser } from '@/lib/api';
+import {
+  ApiError,
+  getCurrentUser,
+  listBrands,
+  listUsers,
+  type Brand,
+  type ManagedUser,
+} from '@/lib/api';
 import { UsersPageClient } from './users-page-client';
 
 export const dynamic = 'force-dynamic';

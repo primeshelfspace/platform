@@ -104,7 +104,9 @@ export function AdminShell({
     : null;
   const firstConcreteBrandId = brands[0]?.id ?? '';
 
-  const mainNav = can(user.role as Role, 'USERS', 'READ') ? [...MAIN_NAV, USERS_NAV_ITEM] : MAIN_NAV;
+  const mainNav = can(user.role as Role, 'USERS', 'READ')
+    ? [...MAIN_NAV, USERS_NAV_ITEM]
+    : MAIN_NAV;
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);

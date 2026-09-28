@@ -31,7 +31,11 @@ const describeWithDb = hasDb ? describe : describe.skip;
 describeWithDb('UsersService', () => {
   const prisma = new PrismaService(env!);
   const mail = createFakeMailPort();
-  const users = new UsersService(prisma, new PasswordResetService(prisma), new AuthMailService(mail, env!));
+  const users = new UsersService(
+    prisma,
+    new PasswordResetService(prisma),
+    new AuthMailService(mail, env!),
+  );
   const owner = new PrismaClient({
     datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
   });
@@ -43,6 +47,7 @@ describeWithDb('UsersService', () => {
   let ownerBId = '';
   let brandAdminId = '';
   let salesUserId = '';
+  let multiBrandUserId = '';
 
   let ownerAScope: RequestScope;
   let adminScope: RequestScope;
@@ -68,7 +73,7 @@ describeWithDb('UsersService', () => {
     brandAId = brandA.id;
     brandBId = brandB.id;
 
-    const [ownerA, ownerB, admin, brandAdmin, salesUser] = await Promise.all([
+    const [ownerA, ownerB, admin, brandAdmin, salesUser, multiBrandUser] = await Promise.all([
       owner.user.create({
         data: {
           merchantId,
@@ -121,11 +126,27 @@ describeWithDb('UsersService', () => {
           assignments: { create: [{ brandId: brandBId }] },
         },
       }),
+      // On both brands, so the Brand Admin (scoped to brandA only) can see
+      // and manage this user while brandB stays a brand they cannot see —
+      // this is what proves updateBrands never removes an assignment outside
+      // the actor's own administered set.
+      owner.user.create({
+        data: {
+          merchantId,
+          email: 'multi-brand@users-fixture.test',
+          name: 'Fixture Multi Brand',
+          passwordHash: 'unused',
+          role: 'SALES_USER',
+          status: 'ACTIVE',
+          assignments: { create: [{ brandId: brandAId }, { brandId: brandBId }] },
+        },
+      }),
     ]);
     ownerAId = ownerA.id;
     ownerBId = ownerB.id;
     brandAdminId = brandAdmin.id;
     salesUserId = salesUser.id;
+    multiBrandUserId = multiBrandUser.id;
 
     ownerAScope = {
       merchantId,
@@ -241,13 +262,12 @@ describeWithDb('UsersService', () => {
     await users.updateStatus(ownerAScope, ownerBId, 'ACTIVE');
   });
 
-  it('replaces brand assignments, and a Brand Admin only ever touches brands they administer', async () => {
-    const updated = await users.updateBrands(brandAdminScope, salesUserId, [brandAId]);
-    // salesUser was on brandB only; Brand Admin (scoped to brandA) adding
-    // brandA must not remove the brandB assignment it cannot see.
-    expect(updated.assignedBrandIds.sort()).toEqual([brandAId, brandBId].sort());
-
-    // Clean up brandA's assignment so this test is order-independent.
-    await owner.userBrandAssignment.deleteMany({ where: { userId: salesUserId, brandId: brandAId } });
+  it('a Brand Admin only ever touches brand assignments within their own administered brands', async () => {
+    // multiBrandUser holds both brandA and brandB. brandAdminScope
+    // administers brandA only and submits an empty list (revoking brandA) —
+    // brandB must survive untouched, since a full delete-and-recreate would
+    // wipe an assignment this actor cannot even see.
+    const updated = await users.updateBrands(brandAdminScope, multiBrandUserId, []);
+    expect(updated.assignedBrandIds).toEqual([brandBId]);
   });
 });

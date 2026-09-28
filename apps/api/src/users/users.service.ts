@@ -1,5 +1,10 @@
 import { randomBytes } from 'node:crypto';
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, type User } from '@prisma/client';
 import {
   coversAllBrands,
@@ -81,7 +86,9 @@ export class UsersService {
   }
 
   async findOne(scope: RequestScope, id: string): Promise<ManagedUser> {
-    return this.prisma.withScope(scope, async (tx) => toManagedUser(await this.requireVisible(tx, scope, id)));
+    return this.prisma.withScope(scope, async (tx) =>
+      toManagedUser(await this.requireVisible(tx, scope, id)),
+    );
   }
 
   /**
@@ -99,7 +106,10 @@ export class UsersService {
     if (!coversAllBrands(input.role) && brandIds.length === 0) {
       throw new ForbiddenException('this role needs at least one assigned brand');
     }
-    if (!coversAllBrands(scope.role) && brandIds.some((id) => !scope.assignedBrandIds.includes(id))) {
+    if (
+      !coversAllBrands(scope.role) &&
+      brandIds.some((id) => !scope.assignedBrandIds.includes(id))
+    ) {
       throw new ForbiddenException('you may only assign brands you administer');
     }
 
@@ -115,7 +125,9 @@ export class UsersService {
             passwordHash,
             role: input.role,
             status: 'INVITED',
-            assignments: brandIds.length ? { create: brandIds.map((brandId) => ({ brandId })) } : undefined,
+            assignments: brandIds.length
+              ? { create: brandIds.map((brandId) => ({ brandId })) }
+              : undefined,
           },
           include: { assignments: true },
         });
@@ -177,7 +189,11 @@ export class UsersService {
    * assignment made by a different Brand Admin for a brand they cannot even
    * see.
    */
-  async updateBrands(scope: RequestScope, id: string, brandIds: readonly string[]): Promise<ManagedUser> {
+  async updateBrands(
+    scope: RequestScope,
+    id: string,
+    brandIds: readonly string[],
+  ): Promise<ManagedUser> {
     if (id === scope.userId) {
       throw new ForbiddenException('you cannot change your own brand assignments');
     }
@@ -196,7 +212,9 @@ export class UsersService {
       if (coversAllBrands(scope.role)) {
         await tx.user.update({
           where: { id: existing.id },
-          data: { assignments: { deleteMany: {}, create: deduped.map((brandId) => ({ brandId })) } },
+          data: {
+            assignments: { deleteMany: {}, create: deduped.map((brandId) => ({ brandId })) },
+          },
         });
       } else {
         const administered = new Set(scope.assignedBrandIds);

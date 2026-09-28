@@ -11,10 +11,10 @@ export const DEFAULT_PAGE_SIZE = 25;
  * non-numeric value falls back to the first page / default size instead of
  * reaching the API with something invoiceListQuerySchema would 400 on.
  */
-export function parsePageParams(params: {
-  page?: string;
-  pageSize?: string;
-}): { page: number; pageSize: number } {
+export function parsePageParams(params: { page?: string; pageSize?: string }): {
+  page: number;
+  pageSize: number;
+} {
   const page = Math.max(1, Math.trunc(Number(params.page)) || 1);
   const rawPageSize = Math.trunc(Number(params.pageSize));
   const pageSize = (PAGE_SIZE_OPTIONS as readonly number[]).includes(rawPageSize)
