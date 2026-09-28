@@ -2,11 +2,13 @@ import { z } from 'zod';
 import { ROLES } from '../domain/roles.js';
 import { BUSINESS_TYPES } from '../domain/business-type.js';
 import { INVOICE_STATUSES } from '../domain/invoice-status.js';
+import { PAYMENT_STATUSES } from '../domain/payment-status.js';
 import { EMAIL_RECEIPT_LAYOUTS } from '../domain/email-receipt-layout.js';
 import { PAYMENT_METHODS } from '../money/calculation.js';
 import { normalizeWebsiteDomain, checkBusinessEmail } from '../domain/company-domain.js';
 import {
   addressSchema,
+  arrayQueryParam,
   basisPointsSchema,
   currencySchema,
   dateRangeSchema,
@@ -490,16 +492,73 @@ export const invoiceStatusSchema = z.enum(INVOICE_STATUSES);
 export const paymentMethodSchema = z.enum(PAYMENT_METHODS);
 export const roleSchema = z.enum(ROLES);
 
-/** Invoice list filters — FR-INV list view: date, brand, and status tabs. */
+// --- Users / Roles (FR-USR) -------------------------------------------------
+//
+// Roles and permissions are computed from the fixed matrix in domain/roles.ts
+// (never stored per user); what's dynamic here is which role and which brands
+// a user holds. INVITED is set by the server on invite and is never a caller
+// choice, so it is deliberately excluded from userStatusSchema.
+
+export const userStatusSchema = z.enum(['ACTIVE', 'SUSPENDED']);
+export type UserStatus = z.infer<typeof userStatusSchema>;
+
+export const inviteUserSchema = z.object({
+  name: z.string().trim().min(1, 'name is required').max(120),
+  email: emailSchema,
+  role: roleSchema,
+  /** Ignored for an all-brand role (Owner/Admin); required for any other
+   * role — enforced in UsersService, where coversAllBrands() already lives. */
+  brandIds: z.array(idSchema).max(200).default([]),
+});
+export type InviteUserInput = z.infer<typeof inviteUserSchema>;
+
+export const updateUserRoleSchema = z.object({
+  role: roleSchema,
+});
+export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>;
+
+export const assignUserBrandsSchema = z.object({
+  brandIds: z.array(idSchema).max(200),
+});
+export type AssignUserBrandsInput = z.infer<typeof assignUserBrandsSchema>;
+
+export const updateUserStatusSchema = z.object({
+  status: userStatusSchema,
+});
+export type UpdateUserStatusInput = z.infer<typeof updateUserStatusSchema>;
+
+export const userListQuerySchema = paginationSchema.extend({
+  search: z.string().trim().max(200).optional(),
+  role: roleSchema.optional(),
+  status: userStatusSchema.optional(),
+});
+export type UserListQuery = z.infer<typeof userListQuerySchema>;
+
+/** Invoice list filters — FR-INV list view: date, brand, and status tabs.
+ * `search` matches the invoice number OR the customer's display name (the
+ * list shows both), and `excludeOverdue` is what the Unpaid/Partial tabs use
+ * to keep an overdue invoice in the Overdue tab only, never double-counted —
+ * `overdueOnly` (true) and `excludeOverdue` (true) are never sent together. */
 export const invoiceListQuerySchema = paginationSchema.extend({
   brandId: idSchema.optional(),
   customerId: idSchema.optional(),
-  status: z.array(invoiceStatusSchema).optional(),
+  status: arrayQueryParam(invoiceStatusSchema).optional(),
   overdueOnly: z.coerce.boolean().optional(),
+  excludeOverdue: z.coerce.boolean().optional(),
   search: z.string().trim().max(200).optional(),
   dateRange: dateRangeSchema.optional(),
 });
 export type InvoiceListQuery = z.infer<typeof invoiceListQuerySchema>;
+
+/** The Invoices list's tab badge counts (All/Draft/Unpaid/Partial/Paid/Overdue)
+ * — same search/date filters as the list itself, no status/pagination: every
+ * bucket's count has to reflect the filters currently applied to the list,
+ * just not the tab selection the counts are themselves choosing between. */
+export const invoiceTabCountsQuerySchema = z.object({
+  search: z.string().trim().max(200).optional(),
+  dateRange: dateRangeSchema.optional(),
+});
+export type InvoiceTabCountsQuery = z.infer<typeof invoiceTabCountsQuerySchema>;
 
 export const customerListQuerySchema = paginationSchema.extend({
   brandId: idSchema.optional(),
@@ -514,6 +573,19 @@ export const customerListQuerySchema = paginationSchema.extend({
 export type CustomerListQuery = z.infer<typeof customerListQuerySchema>;
 
 // --- Payment ---------------------------------------------------------------
+
+export const paymentStatusSchema = z.enum(PAYMENT_STATUSES);
+
+/** Brand Settings > Payment Gateways' Transaction Log — date range, status
+ * and method are all filtered here now rather than against whichever page
+ * happens to already be in the browser, so a filter stays accurate no
+ * matter how many pages of history a brand has. */
+export const paymentListQuerySchema = paginationSchema.extend({
+  status: arrayQueryParam(paymentStatusSchema).optional(),
+  method: arrayQueryParam(paymentMethodSchema).optional(),
+  dateRange: dateRangeSchema.optional(),
+});
+export type PaymentListQuery = z.infer<typeof paymentListQuerySchema>;
 
 export const paymentIntentRequestSchema = z.object({
   publicToken: z.string().regex(/^[0-9a-f]{32}$/),

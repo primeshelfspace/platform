@@ -13,11 +13,15 @@ import { PasswordResetService } from './password-reset.service.js';
  * MailModule is imported for the set-password link: signup is not complete
  * until that message is accepted, so this module genuinely depends on a mailer
  * rather than merely enqueuing to one.
+ *
+ * AuthMailService and PasswordResetService are also exported for UsersModule,
+ * whose invite flow reuses this exact set-password-link plumbing rather than
+ * standing up a second one.
  */
 @Module({
   imports: [MailModule],
   controllers: [AuthController],
   providers: [AuthService, PasswordResetService, AuthMailService],
-  exports: [AuthService, PasswordResetService],
+  exports: [AuthService, PasswordResetService, AuthMailService],
 })
 export class AuthModule {}

@@ -13,6 +13,10 @@
     "./toast": {
       "types": "./dist/toast/index.d.ts",
       "default": "./dist/toast/index.js"
+    },
+    "./pagination": {
+      "types": "./dist/pagination/index.d.ts",
+      "default": "./dist/pagination/index.js"
     }
   },
   "files": [

@@ -1,5 +1,10 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { idSchema, paginationSchema, type Pagination, type Scope } from '@fenwick/shared';
+import {
+  idSchema,
+  paymentListQuerySchema,
+  type PaymentListQuery,
+  type Scope,
+} from '@fenwick/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import { PaymentsService, type PaymentListResult } from './payments.service.js';
@@ -15,7 +20,7 @@ export class PaymentsController {
   list(
     @CurrentScope() scope: Scope,
     @Param('brandId', zodPipe(idSchema)) brandId: string,
-    @Query(zodPipe(paginationSchema)) query: Pagination,
+    @Query(zodPipe(paymentListQuerySchema)) query: PaymentListQuery,
   ): Promise<PaymentListResult> {
     return this.payments.list(scope, brandId, query);
   }

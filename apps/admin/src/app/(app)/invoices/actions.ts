@@ -8,6 +8,7 @@ import {
   getInvoiceEvents,
   getInvoicePdfSettings,
   issueInvoice,
+  listInvoices,
   sendInvoiceEmail,
   type BulkSendResult,
   type Invoice,
@@ -17,6 +18,12 @@ import {
   type InvoiceEmailSendInput,
 } from '@/lib/api';
 import { describeActionError } from '@/lib/form';
+import {
+  invoiceListStatus,
+  invoiceListTabFilter,
+  invoiceRangeCutoffIso,
+  isBulkSendable,
+} from '@/lib/invoice-presentation';
 
 const PAYMENT_TERMS_LABEL: Record<string, string> = {
   DUE_ON_RECEIPT: 'Due on receipt',
@@ -111,6 +118,57 @@ export async function sendInvoiceEmailAction(
     return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: describeActionError(error, 'Could not send this invoice.') };
+  }
+}
+
+/** A hard ceiling on how many invoices "Select all invoices" will actually
+ * collect, not just this one fetch's page size — a brand with more sendable
+ * invoices in one tab than this either scrolls through them in batches or
+ * narrows the search/date range first; this is only a safety valve against
+ * an unbounded loop; no brand has come close to it in practice. */
+const MAX_SELECT_ALL_INVOICES = 2_000;
+const SELECT_ALL_FETCH_PAGE_SIZE = 200;
+
+/**
+ * The invoices list's "Select all invoices" — every sendable row across
+ * every page of the current tab/search/date-range, not just the page
+ * already on screen (that's `selectableVisible` in InvoicesPageClient, built
+ * straight from its own `invoices` prop). Paginates through the same filters
+ * `listInvoices` uses for the visible table so the two can never disagree
+ * about which rows match.
+ */
+export async function listSendableInvoicesAction(
+  brandId: string,
+  filters: { tab: string; search: string; range: string },
+): Promise<ActionResult<{ id: string; customerId: string }[]>> {
+  try {
+    const dateRange = { from: invoiceRangeCutoffIso(filters.range) };
+    const tabFilter = invoiceListTabFilter(filters.tab);
+    const sendable: { id: string; customerId: string }[] = [];
+
+    let page = 1;
+    for (;;) {
+      const result = await listInvoices(brandId, {
+        page,
+        pageSize: SELECT_ALL_FETCH_PAGE_SIZE,
+        search: filters.search || undefined,
+        dateRange,
+        ...tabFilter,
+      });
+      for (const invoice of result.data) {
+        if (isBulkSendable(invoiceListStatus(invoice))) {
+          sendable.push({ id: invoice.id, customerId: invoice.customerId });
+        }
+      }
+
+      const fetched = page * SELECT_ALL_FETCH_PAGE_SIZE;
+      if (fetched >= result.total || fetched >= MAX_SELECT_ALL_INVOICES) break;
+      page += 1;
+    }
+
+    return { ok: true, data: sendable };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not load invoices to select.') };
   }
 }
 

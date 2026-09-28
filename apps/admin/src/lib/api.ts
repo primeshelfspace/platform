@@ -37,6 +37,27 @@ export class SessionExpiredError extends ApiError {
   }
 }
 
+/** A `{from?, to?}` cutoff, ISO date strings — what every list endpoint's
+ * `dateRange` query param expects. */
+export interface DateRangeFilter {
+  from?: string;
+  to?: string;
+}
+
+/** Appends `key=value` once per array entry (e.g. `status=DRAFT&status=SENT`)
+ * — the shape Express's default `qs` query parser turns back into an array
+ * server-side, matching the corresponding Zod `z.array(...)` schema. */
+function appendArrayParam(qs: URLSearchParams, key: string, values: readonly string[] | undefined) {
+  for (const value of values ?? []) qs.append(key, value);
+}
+
+/** Appends `dateRange[from]`/`dateRange[to]` — the bracket nesting Express's
+ * `qs` parser turns into `{ from, to }` server-side, matching dateRangeSchema. */
+function appendDateRangeParam(qs: URLSearchParams, dateRange: DateRangeFilter | undefined) {
+  if (dateRange?.from) qs.set('dateRange[from]', dateRange.from);
+  if (dateRange?.to) qs.set('dateRange[to]', dateRange.to);
+}
+
 export async function apiFetch<T>(
   path: string,
   init: RequestInit & { revalidate?: number; token?: string | null } = {},
@@ -212,6 +233,90 @@ export function setPassword(newPassword: string): Promise<{ ok: true }> {
   return apiFetch<{ ok: true }>('/auth/set-password', {
     method: 'POST',
     body: JSON.stringify({ newPassword }),
+  });
+}
+
+// --- Users & Roles (FR-USR) --------------------------------------------------
+//
+// Role -> permission mapping is not fetched from anywhere — it's the fixed
+// matrix in @fenwick/shared (ROLES/RESOURCES/actionsFor), imported directly
+// wherever the UI needs to show or check it. What's dynamic, and what these
+// calls manage, is which role and which brands a given user holds.
+
+export interface ManagedUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: 'INVITED' | 'ACTIVE' | 'SUSPENDED';
+  assignedBrandIds: string[];
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface ManagedUserListResponse {
+  data: ManagedUser[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export function listUsers(
+  params: {
+    search?: string;
+    role?: string;
+    status?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+): Promise<ManagedUserListResponse> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.role) qs.set('role', params.role);
+  if (params.status) qs.set('status', params.status);
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<ManagedUserListResponse>(`/users${suffix}`);
+}
+
+export function getUser(id: string): Promise<ManagedUser> {
+  return apiFetch<ManagedUser>(`/users/${id}`);
+}
+
+/** Mirrors inviteUserSchema in packages/shared exactly. */
+export interface InviteUserFormInput {
+  name: string;
+  email: string;
+  role: string;
+  brandIds: string[];
+}
+
+export function inviteUser(input: InviteUserFormInput): Promise<ManagedUser> {
+  return apiFetch<ManagedUser>('/users/invite', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateUserRole(id: string, role: string): Promise<ManagedUser> {
+  return apiFetch<ManagedUser>(`/users/${id}/role`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function updateUserBrands(id: string, brandIds: string[]): Promise<ManagedUser> {
+  return apiFetch<ManagedUser>(`/users/${id}/brands`, {
+    method: 'PUT',
+    body: JSON.stringify({ brandIds }),
+  });
+}
+
+export function updateUserStatus(id: string, status: 'ACTIVE' | 'SUSPENDED'): Promise<ManagedUser> {
+  return apiFetch<ManagedUser>(`/users/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
   });
 }
 
@@ -532,14 +637,51 @@ export interface InvoiceListResponse {
 
 export function listInvoices(
   brandId: string,
-  params: { page?: number; pageSize?: number; customerId?: string } = {},
+  params: {
+    page?: number;
+    pageSize?: number;
+    customerId?: string;
+    status?: readonly InvoiceStatus[];
+    /** true = only overdue rows (the Overdue tab); false = never an overdue
+     * row (the Unpaid/Partial tabs) — never both at once. */
+    overdueOnly?: boolean;
+    excludeOverdue?: boolean;
+    search?: string;
+    dateRange?: DateRangeFilter;
+  } = {},
 ): Promise<InvoiceListResponse> {
   const qs = new URLSearchParams();
   if (params.page) qs.set('page', String(params.page));
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));
   if (params.customerId) qs.set('customerId', params.customerId);
+  appendArrayParam(qs, 'status', params.status);
+  if (params.overdueOnly) qs.set('overdueOnly', 'true');
+  if (params.excludeOverdue) qs.set('excludeOverdue', 'true');
+  if (params.search) qs.set('search', params.search);
+  appendDateRangeParam(qs, params.dateRange);
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return apiFetch<InvoiceListResponse>(`/brands/${brandId}/invoices${suffix}`);
+}
+
+/** The Invoices list's tab badge counts — see InvoicesService.tabCounts. */
+export interface InvoiceTabCounts {
+  all: number;
+  draft: number;
+  unpaid: number;
+  partial: number;
+  paid: number;
+  overdue: number;
+}
+
+export function getInvoiceTabCounts(
+  brandId: string,
+  params: { search?: string; dateRange?: DateRangeFilter } = {},
+): Promise<InvoiceTabCounts> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  appendDateRangeParam(qs, params.dateRange);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<InvoiceTabCounts>(`/brands/${brandId}/invoices/tab-counts${suffix}`);
 }
 
 export interface InvoiceSummary {
@@ -950,11 +1092,20 @@ export interface PaymentTransactionListResponse {
 
 export function listPaymentTransactions(
   brandId: string,
-  params: { page?: number; pageSize?: number } = {},
+  params: {
+    page?: number;
+    pageSize?: number;
+    status?: readonly PaymentTransaction['status'][];
+    method?: readonly PaymentTransaction['method'][];
+    dateRange?: DateRangeFilter;
+  } = {},
 ): Promise<PaymentTransactionListResponse> {
   const qs = new URLSearchParams();
   if (params.page) qs.set('page', String(params.page));
   if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  appendArrayParam(qs, 'status', params.status);
+  appendArrayParam(qs, 'method', params.method);
+  appendDateRangeParam(qs, params.dateRange);
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   return apiFetch<PaymentTransactionListResponse>(`/brands/${brandId}/payments${suffix}`);
 }

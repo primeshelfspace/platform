@@ -15,12 +15,14 @@ import {
   ScrollText,
   Search,
   Settings,
+  ShieldCheck,
   ShoppingBag,
   Store,
   Users,
   X,
   type LucideIcon,
 } from 'lucide-react';
+import { can, type Role } from '@fenwick/shared';
 import { logoutAction } from '@/lib/logout-action';
 import type { Brand, CurrentUser } from '@/lib/api';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
@@ -46,6 +48,12 @@ const MAIN_NAV: readonly NavItem[] = [
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/invoices', label: 'Invoices', icon: ScrollText },
 ];
+
+/** Shown only when the signed-in user holds USERS READ (see the `can` check
+ * below) — hiding it for anyone else is UX only, not the actual access
+ * control, which the API guard enforces regardless of what this sidebar
+ * renders. */
+const USERS_NAV_ITEM: NavItem = { href: '/users', label: 'Users & Roles', icon: ShieldCheck };
 
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
@@ -95,6 +103,8 @@ export function AdminShell({
     ? (brands.find((b) => b.id === activeBrandId) ?? brands[0] ?? null)
     : null;
   const firstConcreteBrandId = brands[0]?.id ?? '';
+
+  const mainNav = can(user.role as Role, 'USERS', 'READ') ? [...MAIN_NAV, USERS_NAV_ITEM] : MAIN_NAV;
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
@@ -344,7 +354,7 @@ export function AdminShell({
         )}
 
         <div className="mt-4 space-y-1">
-          {MAIN_NAV.map((item) => (
+          {mainNav.map((item) => (
             <NavLink key={item.href} {...item} />
           ))}
           {BRAND_NAV.map((item) => (

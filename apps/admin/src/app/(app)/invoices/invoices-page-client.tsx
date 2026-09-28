@@ -6,55 +6,30 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown, Info, Plus, ScrollText, Search, Send, X } from 'lucide-react';
 import { toast } from '@fenwick/ui/toast';
+import { Pagination } from '@fenwick/ui/pagination';
 import { formatDateForDisplay } from '@fenwick/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
-import type { Brand, Invoice, InvoiceActivityEntry, InvoiceDetail } from '@/lib/api';
+import type { Brand, Invoice, InvoiceActivityEntry, InvoiceDetail, InvoiceTabCounts } from '@/lib/api';
 import {
+  INVOICE_LIST_TABS,
+  INVOICE_RANGE_OPTIONS,
   invoiceListStatus,
   invoiceListStatusDot,
   invoiceListStatusLabel,
   invoiceListStatusTone,
-  type InvoiceListStatus,
+  isBulkSendable,
 } from '@/lib/invoice-presentation';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
-import { bulkSendInvoicesAction, getInvoiceDetailAction } from './actions';
+import { bulkSendInvoicesAction, getInvoiceDetailAction, listSendableInvoicesAction } from './actions';
 import { BulkSendConfirmModal, BulkSendProgressModal } from './bulk-send-confirm-modal';
 import { InvoiceDetailDrawer } from './invoice-detail-drawer';
 
 /** How long the search box waits after the last keystroke before pushing a
- * new URL — matches CustomersPageClient's own debounce (FR-CUS list). The
- * filtering itself never waits on this; it runs against `searchTerm`
- * directly so the table updates on every keystroke. */
+ * new URL — matches CustomersPageClient's own debounce (FR-CUS list). Tab,
+ * search and date-range are all applied server-side now (InvoicesService.list),
+ * so — unlike before — the table itself only updates once that round trip
+ * completes; `searchTerm` only drives what the box displays while typing. */
 const SEARCH_DEBOUNCE_MS = 300;
-
-const TABS: ReadonlyArray<{
-  key: string;
-  label: string;
-  statuses: readonly InvoiceListStatus[] | null;
-}> = [
-  { key: 'all', label: 'All', statuses: null },
-  { key: 'draft', label: 'Drafts', statuses: ['DRAFT'] },
-  { key: 'unpaid', label: 'Unpaid', statuses: ['UNPAID'] },
-  { key: 'paid', label: 'Paid', statuses: ['PAID'] },
-  { key: 'partial', label: 'Partial', statuses: ['PARTIAL'] },
-  { key: 'overdue', label: 'Overdue', statuses: ['OVERDUE'] },
-];
-
-/** A row can be bulk-sent (or resent) unless it's already settled — same
- * exclusion InvoicesService.bulkSend applies server-side; disabling its
- * checkbox here just saves a round trip to learn that. */
-function isBulkSendable(status: InvoiceListStatus): boolean {
-  return status !== 'PAID' && status !== 'CANCELLED';
-}
-
-const RANGE_OPTIONS = [
-  { key: '7', label: 'Last 7 days' },
-  { key: '30', label: 'Last 30 days' },
-  { key: '90', label: 'Last 90 days' },
-  { key: 'all', label: 'All time' },
-] as const;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
@@ -63,6 +38,10 @@ function initialOf(value: string): string {
 export function InvoicesPageClient({
   brand,
   invoices,
+  total,
+  page,
+  pageSize,
+  tabCounts,
   tab,
   search,
   range,
@@ -72,7 +51,13 @@ export function InvoicesPageClient({
   justCreated,
 }: {
   brand: Brand | null;
+  /** Already filtered (tab/search/date-range) and paginated server-side —
+   * this is exactly one page of the current tab's rows, not the full set. */
   invoices: Invoice[];
+  total: number;
+  page: number;
+  pageSize: number;
+  tabCounts: InvoiceTabCounts;
   tab: string;
   search: string;
   range: string;
@@ -164,76 +149,47 @@ export function InvoicesPageClient({
     setSearchTerm(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(
-      () => pushParams({ search: value || null }),
+      // A new search term can only shrink or reshuffle the result set — page 2
+      // of the old set has no guaranteed relationship to page 2 of this one,
+      // so every filter change below returns to page 1 too.
+      () => pushParams({ search: value || null, page: null }),
       SEARCH_DEBOUNCE_MS,
     );
   }
 
   function onTabChange(key: string) {
-    pushParams({ tab: key === 'all' ? null : key });
+    pushParams({ tab: key === 'all' ? null : key, page: null });
   }
 
   function onRangeChange(key: string) {
-    pushParams({ range: key === '90' ? null : key });
+    pushParams({ range: key === '90' ? null : key, page: null });
     setRangeMenuOpen(false);
   }
 
-  const withStatus = useMemo(
+  function onPageChange(nextPage: number) {
+    pushParams({ page: nextPage === 1 ? null : String(nextPage) });
+  }
+
+  function onPageSizeChange(nextPageSize: number) {
+    pushParams({ pageSize: String(nextPageSize), page: null });
+  }
+
+  const rows = useMemo(
     () => invoices.map((inv) => ({ inv, status: invoiceListStatus(inv) })),
     [invoices],
   );
 
-  const rangeFiltered = useMemo(() => {
-    if (range === 'all') return withStatus;
-    const cutoff = Date.now() - Number(range) * DAY_MS;
-    return withStatus.filter(({ inv }) => new Date(inv.invoiceDate).getTime() >= cutoff);
-  }, [withStatus, range]);
-
-  const counts = useMemo(() => {
-    let draft = 0;
-    let unpaid = 0;
-    let paid = 0;
-    let partial = 0;
-    let overdue = 0;
-    for (const { status } of rangeFiltered) {
-      if (status === 'DRAFT') draft++;
-      else if (status === 'UNPAID') unpaid++;
-      else if (status === 'PAID') paid++;
-      else if (status === 'PARTIAL') partial++;
-      else if (status === 'OVERDUE') overdue++;
-      // CANCELLED counts toward "All" only — it has no tab of its own.
-    }
-    return {
-      all: rangeFiltered.length,
-      draft,
-      unpaid,
-      paid,
-      partial,
-      overdue,
-    } as Record<string, number>;
-  }, [rangeFiltered]);
-
-  const visible = useMemo(() => {
-    const activeStatuses = TABS.find((t) => t.key === tab)?.statuses ?? null;
-    const term = searchTerm.trim().toLowerCase();
-    return rangeFiltered.filter(({ inv, status }) => {
-      if (activeStatuses && !activeStatuses.includes(status)) return false;
-      if (!term) return true;
-      const haystack = `${inv.number} ${inv.customer?.displayName ?? ''}`.toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [rangeFiltered, tab, searchTerm]);
-
   const currency = toCurrencyCode(brand?.currency);
-  const activeRangeLabel = RANGE_OPTIONS.find((r) => r.key === range)?.label ?? 'Last 90 days';
+  const activeRangeLabel =
+    INVOICE_RANGE_OPTIONS.find((r) => r.key === range)?.label ?? 'Last 90 days';
 
   // "Bulk Send Invoices" row selection — sendable rows only (see
-  // isBulkSendable); pruned to whatever the current tab/range still covers,
-  // so a row that drops out under a filter change can't stay silently
-  // selected and surprise someone with an extra send later. The checkbox
-  // column and its floating action bar only exist in `bulkMode`, entered
-  // from the toolbar button and left either by its own cancel (X) or once a
-  // send completes.
+  // isBulkSendable); pruned to whatever the current tab/search/range still
+  // covers, so a row that drops out under a filter change can't stay
+  // silently selected and surprise someone with an extra send later. The
+  // checkbox column and its floating action bar only exist in `bulkMode`,
+  // entered from the toolbar button and left either by its own cancel (X) or
+  // once a send completes.
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSending, setBulkSending] = useState(false);
@@ -246,31 +202,54 @@ export function InvoicesPageClient({
   );
 
   const selectableVisible = useMemo(
-    () => visible.filter(({ status }) => isBulkSendable(status)),
-    [visible],
+    () => rows.filter(({ status }) => isBulkSendable(status)),
+    [rows],
   );
 
-  // The broader scope "Select all invoices" reaches — this tab's sendable
-  // rows regardless of the search box, unlike selectableVisible above (which
-  // "Select page" uses, and which the search term does narrow). Pruning
-  // against this rather than selectableVisible means clearing/editing the
-  // search term never silently drops a "select all" selection that a search
-  // filter was merely hiding, not invalidating.
-  const selectableAllInTab = useMemo(() => {
-    const activeStatuses = TABS.find((t) => t.key === tab)?.statuses ?? null;
-    return rangeFiltered.filter(
-      ({ status }) =>
-        (!activeStatuses || activeStatuses.includes(status)) && isBulkSendable(status),
-    );
-  }, [rangeFiltered, tab]);
+  // The broader scope "Select all invoices" reaches — every sendable
+  // invoice matching this tab/search/range across every page, not just the
+  // one on screen (selectableVisible above, which "Select page" uses).
+  // Fetched on demand (bulk mode has to actually be on) rather than derived
+  // from `invoices`, which after server-side pagination only ever holds one
+  // page — see listSendableInvoicesAction. `null` means "not loaded yet".
+  const [allSendable, setAllSendable] = useState<{ id: string; customerId: string }[] | null>(
+    null,
+  );
+  const [loadingAllSendable, setLoadingAllSendable] = useState(false);
 
   useEffect(() => {
-    const selectableIds = new Set(selectableAllInTab.map(({ inv }) => inv.id));
+    if (!bulkMode || !brand) {
+      setAllSendable(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingAllSendable(true);
+    listSendableInvoicesAction(brand.id, { tab, search, range })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok) {
+          setAllSendable(result.data);
+        } else {
+          setAllSendable([]);
+          toast.error(result.error);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAllSendable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bulkMode, brand, tab, search, range]);
+
+  useEffect(() => {
+    if (allSendable === null) return;
+    const selectableIds = new Set(allSendable.map((s) => s.id));
     setSelectedIds((prev) => {
       const next = new Set([...prev].filter((id) => selectableIds.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [selectableAllInTab]);
+  }, [allSendable]);
 
   // Reflects what's actually rendered under the header checkbox right now
   // (selectableVisible), not the broader "select all invoices" scope — a
@@ -284,21 +263,34 @@ export function InvoicesPageClient({
   // ticking every box by hand, using the header checkbox on a tab small
   // enough that "page" and "all" coincide, or using "Select all invoices"
   // from the menu all land here the same way. The banner is about what's
-  // true right now, not about how it got that way.
+  // true right now, not about how it got that way. `allSendable` has to have
+  // actually loaded (not null) — otherwise every selection looks "partial"
+  // against an unknown total, which is correct: it is.
   const allInTabSelected =
-    selectableAllInTab.length > 0 && selectedIds.size === selectableAllInTab.length;
+    allSendable !== null && allSendable.length > 0 && selectedIds.size === allSendable.length;
+
+  // customerId for every id this render currently knows about — the current
+  // page's rows (`rows`) plus whatever `listSendableInvoicesAction` has
+  // loaded, if bulk mode's "Select all invoices" has been used. A ticked id
+  // always appears in at least one of the two, however it was selected.
+  const customerIdById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const { inv } of rows) map.set(inv.id, inv.customerId);
+    for (const s of allSendable ?? []) map.set(s.id, s.customerId);
+    return map;
+  }, [rows, allSendable]);
 
   // Distinct customers among the current selection — a bulk send can hit the
   // same customer more than once (several invoices, one inbox), so this is
   // never just selectedIds.size.
   const selectedRecipientCount = useMemo(() => {
-    const customerIds = new Set(
-      selectableAllInTab
-        .filter(({ inv }) => selectedIds.has(inv.id))
-        .map(({ inv }) => inv.customerId),
-    );
+    const customerIds = new Set<string>();
+    for (const id of selectedIds) {
+      const customerId = customerIdById.get(id);
+      if (customerId) customerIds.add(customerId);
+    }
     return customerIds.size;
-  }, [selectableAllInTab, selectedIds]);
+  }, [selectedIds, customerIdById]);
 
   function toggleSelectAll() {
     setSelectedIds(allSelected ? new Set() : new Set(selectableVisible.map(({ inv }) => inv.id)));
@@ -310,7 +302,7 @@ export function InvoicesPageClient({
   }
 
   function selectAllInvoices() {
-    setSelectedIds(new Set(selectableAllInTab.map(({ inv }) => inv.id)));
+    if (allSendable) setSelectedIds(new Set(allSendable.map((s) => s.id)));
     setSelectAllMenuOpen(false);
   }
 
@@ -426,7 +418,7 @@ export function InvoicesPageClient({
       ) : (
         <>
           <div className="mb-3 flex items-center gap-6 border-b border-[#E5E7EB]">
-            {TABS.map((t) => {
+            {INVOICE_LIST_TABS.map((t) => {
               const active = t.key === tab;
               return (
                 <button
@@ -445,7 +437,7 @@ export function InvoicesPageClient({
                     className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs
                                 font-bold ${active ? 'bg-[#0F172A] text-white' : 'bg-[#F1F1F2] text-[#64748B]'}`}
                   >
-                    {counts[t.key] ?? 0}
+                    {tabCounts[t.key]}
                   </span>
                 </button>
               );
@@ -492,7 +484,7 @@ export function InvoicesPageClient({
                   className="absolute right-0 z-10 mt-1 w-40 overflow-hidden rounded-lg border border-[#E5E7EB]
                              bg-white py-1 shadow-lg"
                 >
-                  {RANGE_OPTIONS.map((r) => (
+                  {INVOICE_RANGE_OPTIONS.map((r) => (
                     <button
                       key={r.key}
                       type="button"
@@ -530,7 +522,7 @@ export function InvoicesPageClient({
             >
               <span className="flex items-center gap-2">
                 <Info className="h-4 w-4 shrink-0" aria-hidden />
-                All <strong>{selectableAllInTab.length}</strong> invoices are selected.
+                All <strong>{allSendable?.length ?? selectedIds.size}</strong> invoices are selected.
               </span>
               <button
                 type="button"
@@ -550,12 +542,12 @@ export function InvoicesPageClient({
                 <p className="font-medium">Could not load invoices.</p>
                 <p className="mt-1 font-mono text-xs">{invoicesError}</p>
               </div>
-            ) : visible.length === 0 ? (
+            ) : invoices.length === 0 ? (
               <div className="flex flex-col items-center gap-2 p-12 text-center">
                 <ScrollText className="h-8 w-8 text-ink-subtle" aria-hidden />
                 <p className="font-medium text-ink-strong">No invoices found</p>
                 <p className="text-sm text-ink-muted">
-                  {searchTerm || tab !== 'all'
+                  {search || tab !== 'all'
                     ? 'No invoice matches these filters.'
                     : `Create the first invoice for ${brand?.displayName}.`}
                 </p>
@@ -591,7 +583,7 @@ export function InvoicesPageClient({
                               aria-expanded={selectAllMenuOpen}
                               aria-label="Selection options"
                               onClick={() => setSelectAllMenuOpen((open) => !open)}
-                              disabled={selectableAllInTab.length === 0}
+                              disabled={selectableVisible.length === 0 && allSendable?.length === 0}
                               className="flex h-5 w-5 items-center justify-center rounded text-[#8C919B]
                                          transition-colors hover:bg-[#E5E7EB] hover:text-[#0F172A]
                                          disabled:cursor-not-allowed disabled:opacity-40"
@@ -625,14 +617,17 @@ export function InvoicesPageClient({
                                   type="button"
                                   role="menuitem"
                                   onClick={selectAllInvoices}
-                                  className="block w-full px-3 py-2 text-left transition-colors hover:bg-[#F5F5F6]"
+                                  disabled={!allSendable || allSendable.length === 0}
+                                  className="block w-full px-3 py-2 text-left transition-colors hover:bg-[#F5F5F6]
+                                             disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <span className="block text-sm font-semibold text-[#0F172A]">
                                     Select all invoices
                                   </span>
                                   <span className="block text-xs text-[#8C919B]">
-                                    {selectableAllInTab.length} total invoice
-                                    {selectableAllInTab.length === 1 ? '' : 's'}
+                                    {loadingAllSendable || !allSendable
+                                      ? 'Loading…'
+                                      : `${allSendable.length} total invoice${allSendable.length === 1 ? '' : 's'}`}
                                   </span>
                                 </button>
                               </div>
@@ -653,7 +648,7 @@ export function InvoicesPageClient({
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map(({ inv, status }) => (
+                  {rows.map(({ inv, status }) => (
                     <tr key={inv.id} className="border-b border-[#E5E7EB] last:border-0">
                       {bulkMode && (
                         <td className="px-5 py-2">
@@ -726,6 +721,15 @@ export function InvoicesPageClient({
                 </tbody>
               </table>
             )}
+
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={onPageChange}
+              onPageSizeChange={onPageSizeChange}
+              itemLabel="invoices"
+            />
           </section>
         </>
       )}

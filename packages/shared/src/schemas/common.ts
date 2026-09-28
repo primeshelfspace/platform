@@ -83,6 +83,22 @@ export const hexColourSchema = z
   .regex(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'expected a hex colour such as #2D6A6A')
   .transform((value) => (value.startsWith('#') ? value.toUpperCase() : `#${value.toUpperCase()}`));
 
+/**
+ * A query-string array field, tolerant of how many values actually arrived.
+ * Express's default (`qs`) parser only produces an array when a key repeats
+ * (`?status=A&status=B`) — a single `?status=A` comes through as the bare
+ * string `"A"`, which a plain `z.array(schema)` rejects outright. Every list
+ * filter that can narrow to exactly one value (an invoice tab, a payment
+ * status/method dropdown) hits this in practice, not just a hypothetical.
+ */
+export function arrayQueryParam<T extends z.ZodTypeAny>(
+  schema: T,
+): z.ZodEffects<z.ZodUnion<[T, z.ZodArray<T>]>, z.output<T>[], z.input<T> | z.input<T>[]> {
+  return z.union([schema, z.array(schema)]).transform((value) =>
+    Array.isArray(value) ? value : [value],
+  );
+}
+
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(25),

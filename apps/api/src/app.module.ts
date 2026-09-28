@@ -20,6 +20,7 @@ import { PaymentsModule } from './payments/payments.module.js';
 import { PublicModule } from './public/public.module.js';
 import { AuthorisationGuard } from './tenancy/authorisation.js';
 import { TenancyModule } from './tenancy/tenancy.module.js';
+import { UsersModule } from './users/users.module.js';
 
 /**
  * Composition root.
@@ -45,6 +46,7 @@ import { TenancyModule } from './tenancy/tenancy.module.js';
     GatewayModule,
     HealthModule,
     AuthModule,
+    UsersModule,
     BrandsModule,
     MerchantModule,
     CustomersModule,

@@ -4,11 +4,13 @@ import {
   idSchema,
   invoiceDraftSchema,
   invoiceListQuerySchema,
+  invoiceTabCountsQuerySchema,
   sendInvoiceEmailSchema,
   type BulkSendInvoicesInput,
   type EmailReceiptLayout,
   type InvoiceDraftInput,
   type InvoiceListQuery,
+  type InvoiceTabCountsQuery,
   type Scope,
   type SendInvoiceEmailInput,
 } from '@fenwick/shared';
@@ -21,6 +23,7 @@ import {
   type InvoiceDetail,
   type InvoiceListResult,
   type InvoiceSummary,
+  type InvoiceTabCounts,
   type InvoiceWithLines,
 } from './invoices.service.js';
 
@@ -49,6 +52,18 @@ export class InvoicesController {
     @Param('brandId', zodPipe(idSchema)) brandId: string,
   ): Promise<InvoiceSummary> {
     return this.invoices.summary(scope, brandId);
+  }
+
+  /** The Invoices list's tab badges (All/Draft/Unpaid/Partial/Paid/Overdue) —
+   * declared before ':id' for the same reason 'summary' is. */
+  @Get('tab-counts')
+  @RequirePermission('INVOICES', 'READ')
+  tabCounts(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Query(zodPipe(invoiceTabCountsQuerySchema)) query: InvoiceTabCountsQuery,
+  ): Promise<InvoiceTabCounts> {
+    return this.invoices.tabCounts(scope, brandId, query);
   }
 
   @Get(':id')

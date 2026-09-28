@@ -8,6 +8,7 @@
  * folded in here — it colours SyncJob states (QUEUED/RUNNING/FAILED), a
  * different vocabulary that only looks similar.
  */
+import type { InvoiceStatus } from '@fenwick/shared';
 
 /** Tailwind text colour for an invoice status. */
 export function invoiceStatusTone(status: string): string {
@@ -102,4 +103,73 @@ export function invoiceDetailStatusBadgeClass(status: InvoiceDetailStatus): stri
   if (status === 'OVERDUE') return 'bg-danger-surface text-danger';
   if (status === 'PARTIAL') return 'bg-warning-surface text-warning';
   return 'bg-surface-muted text-ink-muted';
+}
+
+/** A row can be bulk-sent (or resent) unless it's already settled — shared
+ * between InvoicesPageClient (disabling its own checkbox) and
+ * listSendableInvoicesAction (the same rule enforced server-side, since
+ * InvoicesService.bulkSend applies it again regardless). */
+export function isBulkSendable(status: InvoiceListStatus): boolean {
+  return status !== 'PAID' && status !== 'CANCELLED';
+}
+
+/** The Invoices list's tabs — shared between the server page (which turns
+ * the active tab into a `listInvoices` filter) and the client component
+ * (which just needs the labels). */
+export const INVOICE_LIST_TABS = [
+  { key: 'all', label: 'All' },
+  { key: 'draft', label: 'Drafts' },
+  { key: 'unpaid', label: 'Unpaid' },
+  { key: 'paid', label: 'Paid' },
+  { key: 'partial', label: 'Partial' },
+  { key: 'overdue', label: 'Overdue' },
+] as const;
+export type InvoiceListTabKey = (typeof INVOICE_LIST_TABS)[number]['key'];
+
+/**
+ * A tab key -> the `listInvoices` filter that reproduces it server-side.
+ * Mirrors `invoiceListStatus` above exactly: Unpaid/Partial exclude the
+ * overdue overlay (Overdue is where those rows show up instead), Overdue
+ * needs no status filter of its own since `isOverdue` (packages/shared) is
+ * already false for DRAFT/PAID/CANCELLED.
+ */
+export function invoiceListTabFilter(tab: string): {
+  status?: InvoiceStatus[];
+  overdueOnly?: boolean;
+  excludeOverdue?: boolean;
+} {
+  switch (tab) {
+    case 'draft':
+      return { status: ['DRAFT'] };
+    case 'unpaid':
+      return { status: ['SENT', 'VIEWED', 'PENDING_PAYMENT'], excludeOverdue: true };
+    case 'paid':
+      return { status: ['PAID'] };
+    case 'partial':
+      return { status: ['PARTIALLY_PAID'], excludeOverdue: true };
+    case 'overdue':
+      return { overdueOnly: true };
+    default:
+      return {};
+  }
+}
+
+/** The invoices list's date-range filter — a fixed set of lookback windows
+ * rather than a free date picker. */
+export const INVOICE_RANGE_OPTIONS = [
+  { key: '7', label: 'Last 7 days' },
+  { key: '30', label: 'Last 30 days' },
+  { key: '90', label: 'Last 90 days' },
+  { key: 'all', label: 'All time' },
+] as const;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** `range` -> the `dateRange.from` cutoff (ISO) `listInvoices` filters on;
+ * undefined for 'all time' (no lower bound) or an unrecognised value. */
+export function invoiceRangeCutoffIso(range: string): string | undefined {
+  if (range === 'all') return undefined;
+  const days = Number(range);
+  if (!Number.isFinite(days)) return undefined;
+  return new Date(Date.now() - days * DAY_MS).toISOString();
 }

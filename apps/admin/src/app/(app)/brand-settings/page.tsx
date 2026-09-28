@@ -23,12 +23,14 @@ import {
   type PaymentGatewaySummary,
   type PaymentMethodSettings,
   type PaymentPageDisplaySettings,
+  type PaymentTransaction,
   type PaymentTransactionListResponse,
   type ZohoActivityEntry,
   type ZohoConnectionStatus,
 } from '@/lib/api';
 import { PaymentGatewaysPanel } from '@/app/(app)/settings/integrations/payment-gateways-panel';
 import { PageContainer } from '@/components/page-container';
+import { parsePageParams } from '@/lib/pagination';
 import { BrandDetailsForm } from './brand-details-form';
 import { EmailReceiptEditor } from './email-receipt-editor';
 import { IntegrationsPanel } from './integrations-panel';
@@ -78,6 +80,19 @@ function describeSquareError(raw: string): string {
 }
 
 export const dynamic = 'force-dynamic';
+
+const TX_DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The Transaction Log's date-range filter -> `listPaymentTransactions`'
+ * dateRange.from cutoff — same convention as invoice-presentation.ts's
+ * invoiceRangeCutoffIso, kept separate since payments and invoices filter on
+ * different tables and this is the only place payments needs it. */
+function txRangeCutoffIso(range: string): string | undefined {
+  if (range === 'all') return undefined;
+  const days = Number(range);
+  if (!Number.isFinite(days)) return undefined;
+  return new Date(Date.now() - days * TX_DAY_MS).toISOString();
+}
 
 // Same convention as the Invoices list page's "Open payment page" link.
 const PAYMENT_PUBLIC_URL = process.env['NEXT_PUBLIC_PAYMENT_PUBLIC_URL'] ?? 'http://localhost:3001';
@@ -225,6 +240,11 @@ export default async function BrandSettingsPage({
     squareConnected?: string;
     squareDisconnected?: string;
     squareError?: string;
+    txPage?: string;
+    txPageSize?: string;
+    txStatus?: string;
+    txMethod?: string;
+    txRange?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -305,10 +325,20 @@ export default async function BrandSettingsPage({
     // stale link) just falls back to the list.
     const detail = selectedGateway && gateways.find((g) => g.provider === selectedGateway);
     if (detail?.connected) {
+      const { page: txPage, pageSize: txPageSize } = parsePageParams({
+        page: params.txPage,
+        pageSize: params.txPageSize,
+      });
       // Neither call depends on the other's result — fetched together.
       [methodSettings, transactions] = await Promise.all([
         getPaymentMethodSettings(brand.id),
-        listPaymentTransactions(brand.id, { pageSize: 50 }),
+        listPaymentTransactions(brand.id, {
+          page: txPage,
+          pageSize: txPageSize,
+          status: params.txStatus ? [params.txStatus as PaymentTransaction['status']] : undefined,
+          method: params.txMethod ? [params.txMethod as PaymentTransaction['method']] : undefined,
+          dateRange: { from: txRangeCutoffIso(params.txRange ?? '30') },
+        }),
       ]);
     }
   }

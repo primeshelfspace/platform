@@ -1,17 +1,30 @@
-import { ApiError, listBrands, listInvoices, type Brand, type Invoice } from '@/lib/api';
+import {
+  ApiError,
+  getInvoiceTabCounts,
+  listBrands,
+  listInvoices,
+  type Brand,
+  type Invoice,
+  type InvoiceTabCounts,
+} from '@/lib/api';
 import { BrandTheme } from '@/components/brand-theme';
 import { PageContainer } from '@/components/page-container';
+import { invoiceListTabFilter, invoiceRangeCutoffIso } from '@/lib/invoice-presentation';
+import { parsePageParams } from '@/lib/pagination';
 import { InvoicesPageClient } from './invoices-page-client';
 
 export const dynamic = 'force-dynamic';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
 
-/** Large enough that a brand's full invoice history fits in one fetch — the
- * tabs' counts and the date-range filter both need the complete set, not
- * just one page of it (the same "fetch the whole small thing" trade-off
- * CustomersPageClient makes, surfaced there as "Showing X of Y"). */
-const INVOICE_FETCH_PAGE_SIZE = 200;
+const EMPTY_TAB_COUNTS: InvoiceTabCounts = {
+  all: 0,
+  draft: 0,
+  unpaid: 0,
+  partial: 0,
+  paid: 0,
+  overdue: 0,
+};
 
 export default async function InvoicesPage({
   searchParams,
@@ -22,9 +35,16 @@ export default async function InvoicesPage({
     tab?: string;
     search?: string;
     range?: string;
+    page?: string;
+    pageSize?: string;
   }>;
 }) {
   const params = await searchParams;
+  const tab = params.tab ?? 'all';
+  const search = params.search ?? '';
+  const range = params.range ?? '90';
+  const { page, pageSize } = parsePageParams(params);
+  const dateRange = { from: invoiceRangeCutoffIso(range) };
 
   let brands: Brand[] = [];
   let brandsError: string | null = null;
@@ -37,10 +57,28 @@ export default async function InvoicesPage({
   const activeBrand = brands.find((b) => b.id === params.brandId) ?? brands[0] ?? null;
 
   let invoices: Invoice[] = [];
+  let total = 0;
+  let tabCounts: InvoiceTabCounts = EMPTY_TAB_COUNTS;
   let invoicesError: string | null = null;
   if (activeBrand) {
     try {
-      invoices = (await listInvoices(activeBrand.id, { pageSize: INVOICE_FETCH_PAGE_SIZE })).data;
+      // Neither call depends on the other's result — the tab badges need
+      // every bucket's count under the current search/range regardless of
+      // which tab is open, while the table itself needs only the active
+      // tab's page.
+      const [listResult, counts] = await Promise.all([
+        listInvoices(activeBrand.id, {
+          page,
+          pageSize,
+          search: search || undefined,
+          dateRange,
+          ...invoiceListTabFilter(tab),
+        }),
+        getInvoiceTabCounts(activeBrand.id, { search: search || undefined, dateRange }),
+      ]);
+      invoices = listResult.data;
+      total = listResult.total;
+      tabCounts = counts;
     } catch (cause) {
       invoicesError = cause instanceof ApiError ? cause.message : String(cause);
     }
@@ -52,9 +90,13 @@ export default async function InvoicesPage({
         <InvoicesPageClient
           brand={activeBrand}
           invoices={invoices}
-          tab={params.tab ?? 'all'}
-          search={params.search ?? ''}
-          range={params.range ?? '90'}
+          total={total}
+          page={page}
+          pageSize={pageSize}
+          tabCounts={tabCounts}
+          tab={tab}
+          search={search}
+          range={range}
           brandsError={brandsError}
           hasBrands={brands.length > 0}
           invoicesError={invoicesError}

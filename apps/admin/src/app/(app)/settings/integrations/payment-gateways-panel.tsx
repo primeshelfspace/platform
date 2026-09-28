@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Pagination } from '@fenwick/ui/pagination';
 import {
   ArrowLeft,
   Calendar,
@@ -641,6 +642,17 @@ function AmountCell({
   );
 }
 
+/**
+ * Brand Settings > Payment Gateways > Transaction Log. Date range, status
+ * and method all now filter server-side (PaymentsService.list) and the
+ * table is one real page of the brand's history, not everything fetched up
+ * front and narrowed in the browser — a status or method that has no match
+ * on today's page but does exist further back used to look like it simply
+ * had no transactions at all. Filters and pagination both live in the URL
+ * (the `tx*` params, read directly here rather than threaded down as props
+ * through PaymentGatewaysPanel/GatewayDetail) alongside this page's own
+ * `tab`/`gateway` params, which a plain `pushParams` merge leaves untouched.
+ */
 function TransactionLog({
   brandId,
   initial,
@@ -648,20 +660,45 @@ function TransactionLog({
   brandId: string;
   initial: PaymentTransactionListResponse;
 }) {
-  const [dateRange, setDateRange] = useState<string>('30');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [methodFilter, setMethodFilter] = useState<string>('all');
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
-  const transactions = useMemo(() => {
-    const cutoff =
-      dateRange === 'all' ? null : Date.now() - Number(dateRange) * 24 * 60 * 60 * 1000;
-    return initial.data.filter((tx) => {
-      if (cutoff !== null && new Date(tx.createdAt).getTime() < cutoff) return false;
-      if (statusFilter !== 'all' && tx.status !== statusFilter) return false;
-      if (methodFilter !== 'all' && tx.method !== methodFilter) return false;
-      return true;
-    });
-  }, [initial.data, dateRange, statusFilter, methodFilter]);
+  const dateRange = searchParams.get('txRange') ?? '30';
+  const statusFilter = searchParams.get('txStatus') ?? 'all';
+  const methodFilter = searchParams.get('txMethod') ?? 'all';
+  const page = Number(searchParams.get('txPage')) || 1;
+  const pageSize = Number(searchParams.get('txPageSize')) || 25;
+
+  const transactions = initial.data;
+
+  function pushParams(next: Record<string, string | null>) {
+    const query = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(next)) {
+      if (value === null || value === '') query.delete(key);
+      else query.set(key, value);
+    }
+    router.push(`${pathname}?${query.toString()}`);
+  }
+
+  // A new filter can only reshuffle which page the same transaction lands
+  // on — page 2 of the old, unfiltered log has no guaranteed relationship to
+  // page 2 of this one, so every filter change below returns to page 1 too.
+  function onDateRangeChange(value: string) {
+    pushParams({ txRange: value === '30' ? null : value, txPage: null });
+  }
+  function onStatusFilterChange(value: string) {
+    pushParams({ txStatus: value === 'all' ? null : value, txPage: null });
+  }
+  function onMethodFilterChange(value: string) {
+    pushParams({ txMethod: value === 'all' ? null : value, txPage: null });
+  }
+  function onPageChange(nextPage: number) {
+    pushParams({ txPage: nextPage === 1 ? null : String(nextPage) });
+  }
+  function onPageSizeChange(nextPageSize: number) {
+    pushParams({ txPageSize: String(nextPageSize), txPage: null });
+  }
 
   const statusOptions = [
     { value: 'all', label: 'All statuses' },
@@ -693,21 +730,21 @@ function TransactionLog({
             icon={Calendar}
             ariaLabel="Filter by date range"
             value={dateRange}
-            onChange={setDateRange}
+            onChange={onDateRangeChange}
             options={DATE_RANGE_OPTIONS}
           />
           <FilterSelect
             icon={Target}
             ariaLabel="Filter by status"
             value={statusFilter}
-            onChange={setStatusFilter}
+            onChange={onStatusFilterChange}
             options={statusOptions}
           />
           <FilterSelect
             icon={CreditCard}
             ariaLabel="Filter by payment method"
             value={methodFilter}
-            onChange={setMethodFilter}
+            onChange={onMethodFilterChange}
             options={methodOptions}
           />
         </div>
@@ -715,7 +752,7 @@ function TransactionLog({
 
       {transactions.length === 0 ? (
         <p className="px-5 py-8 text-center text-sm text-ink-muted sm:px-6">
-          {initial.data.length === 0
+          {statusFilter === 'all' && methodFilter === 'all' && dateRange === '30'
             ? 'No transactions yet.'
             : 'No transactions match these filters.'}
         </p>
@@ -798,6 +835,15 @@ function TransactionLog({
           </table>
         </div>
       )}
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={initial.total}
+        onPageChange={onPageChange}
+        onPageSizeChange={onPageSizeChange}
+        itemLabel="transactions"
+      />
     </section>
   );
 }

@@ -28,6 +28,7 @@ import {
   type EmailReceiptLayout,
   type InvoiceDraftInput,
   type InvoiceListQuery,
+  type InvoiceTabCountsQuery,
   type MailPort,
   type Scope,
   type StoragePort,
@@ -69,6 +70,19 @@ export interface InvoiceSummary {
   readonly openCount: number;
 }
 
+/** The Invoices list's tab badges — see invoiceTabCountsQuerySchema. Mirrors
+ * InvoicesPageClient's own TABS/invoiceListStatus grouping exactly, computed
+ * in the database instead of over whatever page happens to be in the
+ * browser (see InvoicesService.tabCounts). */
+export interface InvoiceTabCounts {
+  readonly all: number;
+  readonly draft: number;
+  readonly unpaid: number;
+  readonly partial: number;
+  readonly paid: number;
+  readonly overdue: number;
+}
+
 /** The Invoices list's "Bulk Send Invoices" outcome — one id per bucket,
  * never thrown as a single all-or-nothing error (see InvoicesService.bulkSend). */
 export interface BulkSendResult {
@@ -107,6 +121,39 @@ export class InvoicesService {
   ) {}
 
   /**
+   * The filters InvoicesPageClient's search box, date-range menu and status
+   * tabs all reduce to — factored out so `list` (one tab's page of rows) and
+   * `tabCounts` (every tab's badge, for the same search/range) never risk
+   * disagreeing about what a given search term or date range actually
+   * matches. Status/overdue are deliberately excluded: those are what makes
+   * `list`'s where different per tab and `tabCounts`' where different per
+   * bucket, so each caller applies its own on top of this.
+   */
+  private baseInvoiceWhere(
+    brandId: string,
+    filters: { search?: string; dateRange?: InvoiceListQuery['dateRange']; customerId?: string },
+  ): Prisma.InvoiceWhereInput {
+    const where: Prisma.InvoiceWhereInput = { brandId };
+    if (filters.customerId) where.customerId = filters.customerId;
+    if (filters.search) {
+      // Matches whatever InvoicesPageClient's own client-side search used to
+      // check — the invoice number or the customer's display name — so
+      // moving the filter server-side doesn't narrow what a search finds.
+      where.OR = [
+        { number: { contains: filters.search, mode: 'insensitive' } },
+        { customer: { displayName: { contains: filters.search, mode: 'insensitive' } } },
+      ];
+    }
+    if (filters.dateRange && (filters.dateRange.from || filters.dateRange.to)) {
+      where.invoiceDate = {
+        ...(filters.dateRange.from ? { gte: filters.dateRange.from } : {}),
+        ...(filters.dateRange.to ? { lte: filters.dateRange.to } : {}),
+      };
+    }
+    return where;
+  }
+
+  /**
    * Paginated, matching CustomersService.list — `invoiceListQuerySchema` has
    * existed in packages/shared since the first cut but nothing passed it here,
    * so this loaded every invoice a brand has ever issued, each with all of its
@@ -114,17 +161,14 @@ export class InvoicesService {
    */
   async list(scope: Scope, brandId: string, query: InvoiceListQuery): Promise<InvoiceListResult> {
     return this.prisma.withScope(scope, async (tx) => {
-      const where: Prisma.InvoiceWhereInput = { brandId };
-      if (query.customerId) where.customerId = query.customerId;
+      const where = this.baseInvoiceWhere(brandId, query);
       if (query.status?.length) where.status = { in: query.status };
+      // Both booleans come from the same tab selection and are never sent
+      // together (see invoiceListQuerySchema) — Unpaid/Partial send
+      // excludeOverdue so an invoice already showing under Overdue isn't
+      // double-counted into them.
       if (query.overdueOnly) where.overdue = true;
-      if (query.search) where.number = { contains: query.search, mode: 'insensitive' };
-      if (query.dateRange && (query.dateRange.from || query.dateRange.to)) {
-        where.invoiceDate = {
-          ...(query.dateRange.from ? { gte: query.dateRange.from } : {}),
-          ...(query.dateRange.to ? { lte: query.dateRange.to } : {}),
-        };
-      }
+      else if (query.excludeOverdue) where.overdue = false;
 
       const [data, total] = await Promise.all([
         tx.invoice.findMany({
@@ -141,6 +185,36 @@ export class InvoicesService {
       ]);
 
       return { data, page: query.page, pageSize: query.pageSize, total };
+    });
+  }
+
+  /**
+   * The Invoices list's tab badge counts — six `count()`s under the same
+   * search/date-range filters `list` above applies, so a badge and the rows
+   * you get by clicking it always agree. Six small indexed counts rather
+   * than one `groupBy` because Draft/Paid are a single status each but
+   * Unpaid/Partial both need the overdue overlay split out, which `groupBy`
+   * can express as a second grouping key but not as a boolean carve-out from
+   * a specific status set without seven distinct groups to reassemble anyway.
+   */
+  async tabCounts(
+    scope: Scope,
+    brandId: string,
+    filters: InvoiceTabCountsQuery,
+  ): Promise<InvoiceTabCounts> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const base = this.baseInvoiceWhere(brandId, filters);
+      const [all, draft, unpaid, partial, paid, overdue] = await Promise.all([
+        tx.invoice.count({ where: base }),
+        tx.invoice.count({ where: { ...base, status: 'DRAFT' } }),
+        tx.invoice.count({
+          where: { ...base, status: { in: ['SENT', 'VIEWED', 'PENDING_PAYMENT'] }, overdue: false },
+        }),
+        tx.invoice.count({ where: { ...base, status: 'PARTIALLY_PAID', overdue: false } }),
+        tx.invoice.count({ where: { ...base, status: 'PAID' } }),
+        tx.invoice.count({ where: { ...base, overdue: true } }),
+      ]);
+      return { all, draft, unpaid, partial, paid, overdue };
     });
   }
 

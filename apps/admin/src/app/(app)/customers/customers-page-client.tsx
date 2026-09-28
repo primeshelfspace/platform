@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Users } from 'lucide-react';
 import { toast } from '@fenwick/ui/toast';
+import { Pagination } from '@fenwick/ui/pagination';
 import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
 import { Toggle } from '@/components/ui/toggle';
 import type { Brand, Customer, CustomerListRow, CustomerWithContacts, Invoice } from '@/lib/api';
@@ -22,6 +23,8 @@ export function CustomersPageClient({
   brand,
   customers,
   total,
+  page,
+  pageSize,
   search,
   outstandingOnly,
   includeArchived,
@@ -32,6 +35,8 @@ export function CustomersPageClient({
   brand: Brand | null;
   customers: CustomerListRow[];
   total: number;
+  page: number;
+  pageSize: number;
   search: string;
   outstandingOnly: boolean;
   includeArchived: boolean;
@@ -114,17 +119,28 @@ export function CustomersPageClient({
     setSearchTerm(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(
-      () => pushParams({ search: value || null }),
+      // A new search term can only shrink or reshuffle the result set — page 2
+      // of the old, unfiltered list has no guaranteed relationship to page 2
+      // of this one, so every filter change below returns to page 1 too.
+      () => pushParams({ search: value || null, page: null }),
       SEARCH_DEBOUNCE_MS,
     );
   }
 
   function onOutstandingChange(checked: boolean) {
-    pushParams({ outstanding: checked ? '1' : null });
+    pushParams({ outstanding: checked ? '1' : null, page: null });
   }
 
   function onIncludeArchivedChange(checked: boolean) {
-    pushParams({ archived: checked ? '1' : null });
+    pushParams({ archived: checked ? '1' : null, page: null });
+  }
+
+  function onPageChange(nextPage: number) {
+    pushParams({ page: nextPage === 1 ? null : String(nextPage) });
+  }
+
+  function onPageSizeChange(nextPageSize: number) {
+    pushParams({ pageSize: String(nextPageSize), page: null });
   }
 
   function toggleAll(checked: boolean) {
@@ -337,13 +353,16 @@ export function CustomersPageClient({
                 </tbody>
               </table>
             )}
-          </section>
 
-          {total > customers.length && (
-            <p className="mt-3 text-xs text-ink-subtle">
-              Showing {customers.length} of {total}.
-            </p>
-          )}
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={onPageChange}
+              onPageSizeChange={onPageSizeChange}
+              itemLabel="customers"
+            />
+          </section>
         </>
       )}
 

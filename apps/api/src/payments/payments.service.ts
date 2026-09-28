@@ -8,9 +8,9 @@ import {
   evaluateTransition,
   type CurrencyCode,
   type InvoiceStatus,
-  type Pagination,
   type PaymentGatewayPort,
   type PaymentIntentStatus,
+  type PaymentListQuery,
   type PaymentMethod,
   type PublicScope,
   type Scope,
@@ -72,9 +72,18 @@ export class PaymentsService {
    * switching gateways must not make its settlement history disappear. So
    * this is simply the brand's full payment history, newest first.
    */
-  async list(scope: Scope, brandId: string, query: Pagination): Promise<PaymentListResult> {
+  async list(scope: Scope, brandId: string, query: PaymentListQuery): Promise<PaymentListResult> {
     return this.prisma.withScope(scope, async (tx) => {
       const where: Prisma.PaymentWhereInput = { brandId };
+      if (query.status?.length) where.status = { in: query.status };
+      if (query.method?.length) where.method = { in: query.method };
+      if (query.dateRange && (query.dateRange.from || query.dateRange.to)) {
+        where.createdAt = {
+          ...(query.dateRange.from ? { gte: query.dateRange.from } : {}),
+          ...(query.dateRange.to ? { lte: query.dateRange.to } : {}),
+        };
+      }
+
       const [rows, total] = await Promise.all([
         tx.payment.findMany({
           where,
