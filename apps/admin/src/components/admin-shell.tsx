@@ -14,7 +14,6 @@ import {
   Plus,
   ScrollText,
   Search,
-  Settings,
   ShieldCheck,
   ShoppingBag,
   Store,
@@ -421,19 +420,10 @@ export function AdminShell({
 
           {/* ml-auto rather than relying on the search box's own flex-grow to
               push these right: the search box caps out at max-w-sm, so once
-              the header is wider than that plus these two controls, the
+              the header is wider than that plus the account menu, the
               leftover space would sit unclaimed after them instead of
               pinning them to the header's trailing edge. */}
           <div className="ml-auto flex shrink-0 items-center gap-4">
-            <Link
-              href={hrefFor('/settings/payment-methods')}
-              aria-label="Settings"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-muted
-                         transition-colors hover:bg-surface-muted hover:text-ink-strong"
-            >
-              <Settings className="h-5 w-5" aria-hidden />
-            </Link>
-
             <div className="relative shrink-0" ref={headerMenuRef}>
               <button
                 type="button"
