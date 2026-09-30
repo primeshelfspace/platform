@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   BadGatewayException,
   ConflictException,
@@ -30,6 +30,7 @@ import {
   type InvoiceListQuery,
   type InvoiceTabCountsQuery,
   type MailPort,
+  type RecordManualPaymentInput,
   type Scope,
   type StoragePort,
 } from '@fenwick/shared';
@@ -761,6 +762,138 @@ export class InvoicesService {
     // Enqueued after commit — see CustomersService.create for why.
     await this.queue.enqueue('sync', 'zoho-push-invoice', { brandId, invoiceId: id });
 
+    return updated;
+  }
+
+  /**
+   * Staff recording money received outside the platform (cash, check, bank
+   * transfer). Creates a SETTLED payment row so balance, reports and the
+   * Zoho mirror all see it the same way they see a gateway settlement —
+   * the status follows from the new balance, never set directly.
+   */
+  async recordManualPayment(
+    scope: Scope,
+    brandId: string,
+    id: string,
+    input: RecordManualPaymentInput,
+  ): Promise<InvoiceWithLines> {
+    const { updated, paymentId } = await this.prisma.withScope(scope, async (tx) => {
+      const invoice = await tx.invoice.findFirst({ where: { id, brandId } });
+      if (!invoice) throw new NotFoundException('invoice not found');
+
+      const amountMinor = parseMinor(input.amount, toCurrencyCode(invoice.currency));
+      const totalMinor = Number(invoice.totalMinor);
+      const balanceMinor = Number(invoice.balanceMinor);
+      const decision = evaluateTransition('RECORD_PAYMENT', {
+        status: invoice.status,
+        lineItemCount: 0,
+        totalMinor,
+        balanceMinor,
+        settledMinor: totalMinor - balanceMinor + amountMinor,
+        customerHasDeliverableEmail: true,
+      });
+      if (!decision.ok) throw new ConflictException(decision.message);
+
+      const newBalance = balanceMinor - amountMinor;
+      // Conditional on the balance just read, so a gateway settlement landing
+      // between that read and this write cannot be silently overwritten.
+      const { count } = await tx.invoice.updateMany({
+        where: { id, balanceMinor: invoice.balanceMinor },
+        data: {
+          status: decision.to,
+          balanceMinor: BigInt(newBalance),
+          previousStatus: null,
+          ...(decision.to === 'PAID' ? { paidAt: input.paidAt } : {}),
+        },
+      });
+      if (count === 0) {
+        throw new ConflictException('this invoice changed while saving — reload and try again');
+      }
+
+      const payment = await tx.payment.create({
+        data: {
+          invoiceId: id,
+          brandId,
+          method: input.method,
+          amountMinor: BigInt(amountMinor),
+          currency: invoice.currency,
+          status: 'SETTLED',
+          settledAt: input.paidAt,
+          idempotencyKey: `manual:${randomUUID()}`,
+        },
+      });
+
+      await tx.invoiceEvent.create({
+        data: {
+          invoiceId: id,
+          eventType: 'MANUAL_PAYMENT_RECORDED',
+          fromStatus: invoice.status,
+          toStatus: decision.to,
+          actor: isPublicScope(scope) ? 'system' : scope.userId,
+          payload: {
+            paymentId: payment.id,
+            amountMinor,
+            method: input.method,
+            ...(input.reference ? { reference: input.reference } : {}),
+          },
+        },
+      });
+
+      const updated = await tx.invoice.findUniqueOrThrow({
+        where: { id },
+        include: { lineItems: { orderBy: { position: 'asc' } } },
+      });
+      return { updated, paymentId: payment.id };
+    });
+
+    // Enqueued after commit — see CustomersService.create for why.
+    await this.queue.enqueue('sync', 'zoho-push-payment', { brandId, paymentId });
+
+    return updated;
+  }
+
+  /** Staff voiding an invoice that has no settled payment against it. */
+  async cancel(scope: Scope, brandId: string, id: string): Promise<InvoiceWithLines> {
+    const updated = await this.prisma.withScope(scope, async (tx) => {
+      const invoice = await tx.invoice.findFirst({ where: { id, brandId } });
+      if (!invoice) throw new NotFoundException('invoice not found');
+
+      const decision = evaluateTransition('CANCEL', {
+        status: invoice.status,
+        lineItemCount: 0,
+        totalMinor: Number(invoice.totalMinor),
+        balanceMinor: Number(invoice.balanceMinor),
+        settledMinor: Number(invoice.totalMinor - invoice.balanceMinor),
+        customerHasDeliverableEmail: true,
+      });
+      if (!decision.ok) throw new ConflictException(decision.message);
+
+      const { count } = await tx.invoice.updateMany({
+        where: { id, status: invoice.status },
+        data: { status: decision.to, cancelledAt: new Date(), previousStatus: null },
+      });
+      if (count === 0) {
+        throw new ConflictException('this invoice changed while saving — reload and try again');
+      }
+
+      await tx.invoiceEvent.create({
+        data: {
+          invoiceId: id,
+          eventType: 'CANCEL',
+          fromStatus: invoice.status,
+          toStatus: decision.to,
+          actor: isPublicScope(scope) ? 'system' : scope.userId,
+        },
+      });
+
+      return tx.invoice.findUniqueOrThrow({
+        where: { id },
+        include: { lineItems: { orderBy: { position: 'asc' } } },
+      });
+    });
+
+    // No Zoho push: voiding on the Zoho side is still a stub
+    // (ZohoBooksAdapter.voidInvoice), so there is nothing to mirror yet.
     return updated;
   }
 }

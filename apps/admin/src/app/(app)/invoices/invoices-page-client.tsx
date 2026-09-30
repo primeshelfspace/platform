@@ -59,6 +59,8 @@ export function InvoicesPageClient({
   hasBrands,
   invoicesError,
   justCreated,
+  canRecordPayment,
+  canCancel,
 }: {
   brand: Brand | null;
   /** Already filtered (tab/search/date-range) and paginated server-side —
@@ -75,6 +77,8 @@ export function InvoicesPageClient({
   hasBrands: boolean;
   invoicesError: string | null;
   justCreated: boolean;
+  canRecordPayment: boolean;
+  canCancel: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -821,6 +825,8 @@ export function InvoicesPageClient({
         invoice={detailInvoice}
         activity={detailActivity}
         paymentTermsLabel={detailPaymentTerms}
+        canRecordPayment={canRecordPayment}
+        canCancel={canCancel}
         onChanged={() => detailInvoice && openInvoiceDetail(detailInvoice.id)}
       />
     </div>

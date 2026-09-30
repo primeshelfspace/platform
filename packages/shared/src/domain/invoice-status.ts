@@ -41,6 +41,7 @@ export const INVOICE_TRANSITIONS = [
   'SETTLE_FULL',
   'PAYMENT_FAILED',
   'CANCEL',
+  'RECORD_PAYMENT',
 ] as const;
 export type InvoiceTransition = (typeof INVOICE_TRANSITIONS)[number];
 
@@ -59,6 +60,11 @@ const ALLOWED: Record<InvoiceTransition, ReadonlySet<InvoiceStatus>> = {
   SETTLE_FULL: new Set<InvoiceStatus>(['PENDING_PAYMENT', 'PARTIALLY_PAID']),
   PAYMENT_FAILED: new Set<InvoiceStatus>(['PENDING_PAYMENT']),
   CANCEL: new Set<InvoiceStatus>(['DRAFT', 'SENT', 'VIEWED', 'PENDING_PAYMENT']),
+  // A payment received outside the platform (cash, check, bank transfer)
+  // and recorded by staff. Same "issued and still owing" states as
+  // INITIATE_PAYMENT: PENDING_PAYMENT is included so an abandoned card
+  // attempt never blocks recording money that actually arrived.
+  RECORD_PAYMENT: new Set<InvoiceStatus>(['SENT', 'VIEWED', 'PENDING_PAYMENT', 'PARTIALLY_PAID']),
 };
 
 export interface TransitionContext {
@@ -85,7 +91,8 @@ export type TransitionFailure =
   | 'BALANCE_NOT_CLEARED'
   | 'BALANCE_ALREADY_CLEARED'
   | 'SETTLED_PAYMENT_EXISTS'
-  | 'NO_PREVIOUS_STATUS';
+  | 'NO_PREVIOUS_STATUS'
+  | 'EXCEEDS_BALANCE';
 
 /**
  * Evaluates a transition and returns either the resulting status or the reason
@@ -164,6 +171,23 @@ export function evaluateTransition(
         );
       }
       return { ok: true, to: 'CANCELLED' };
+    }
+
+    case 'RECORD_PAYMENT': {
+      // settledMinor is the cumulative amount including this payment.
+      // Unlike a gateway settlement, overpayment is refused rather than
+      // absorbed: a person typed this amount, so a figure above the balance
+      // is far more likely a typo than money actually received.
+      if (context.settledMinor <= context.totalMinor - context.balanceMinor) {
+        return refuse('BALANCE_NOT_CLEARED', 'a recorded payment must be a positive amount');
+      }
+      if (context.settledMinor > context.totalMinor) {
+        return refuse('EXCEEDS_BALANCE', 'the payment is more than the balance due');
+      }
+      return {
+        ok: true,
+        to: context.settledMinor === context.totalMinor ? 'PAID' : 'PARTIALLY_PAID',
+      };
     }
   }
 }

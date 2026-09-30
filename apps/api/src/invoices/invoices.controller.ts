@@ -5,12 +5,14 @@ import {
   invoiceDraftSchema,
   invoiceListQuerySchema,
   invoiceTabCountsQuerySchema,
+  recordManualPaymentSchema,
   sendInvoiceEmailSchema,
   type BulkSendInvoicesInput,
   type EmailReceiptLayout,
   type InvoiceDraftInput,
   type InvoiceListQuery,
   type InvoiceTabCountsQuery,
+  type RecordManualPaymentInput,
   type Scope,
   type SendInvoiceEmailInput,
 } from '@fenwick/shared';
@@ -154,5 +156,31 @@ export class InvoicesController {
   ): Promise<{ sent: true }> {
     await this.invoices.sendEmail(scope, brandId, id, body);
     return { sent: true };
+  }
+
+  /** The Invoice Details drawer's "Record Payment" — money received outside
+   * the platform. Gated on PAYMENTS WRITE (Owner, Merchant Admin, Brand
+   * Admin, Finance), not INVOICES WRITE, since it moves the balance. */
+  @Post(':id/payments')
+  @RequirePermission('PAYMENTS', 'WRITE')
+  recordPayment(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Param('id', zodPipe(idSchema)) id: string,
+    @Body(zodPipe(recordManualPaymentSchema)) body: RecordManualPaymentInput,
+  ): Promise<InvoiceWithLines> {
+    return this.invoices.recordManualPayment(scope, brandId, id, body);
+  }
+
+  /** The Invoice Details drawer's "Cancel Invoice" — a void, hence DELETE. */
+  @Post(':id/cancel')
+  @HttpCode(200)
+  @RequirePermission('INVOICES', 'DELETE')
+  cancel(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Param('id', zodPipe(idSchema)) id: string,
+  ): Promise<InvoiceWithLines> {
+    return this.invoices.cancel(scope, brandId, id);
   }
 }

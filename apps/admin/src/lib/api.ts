@@ -729,6 +729,31 @@ export function issueInvoice(brandId: string, id: string): Promise<Invoice> {
   return apiFetch<Invoice>(`/brands/${brandId}/invoices/${id}/issue`, { method: 'POST' });
 }
 
+/** Mirrors recordManualPaymentSchema in packages/shared — money received
+ * outside the platform. `amount` is a decimal string ("125.50"); `paidAt`
+ * a YYYY-MM-DD date. */
+export interface ManualPaymentInput {
+  amount: string;
+  method: 'MANUAL' | 'CHECK' | 'ACH';
+  paidAt: string;
+  reference?: string;
+}
+
+export function recordInvoicePayment(
+  brandId: string,
+  id: string,
+  input: ManualPaymentInput,
+): Promise<Invoice> {
+  return apiFetch<Invoice>(`/brands/${brandId}/invoices/${id}/payments`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function cancelInvoice(brandId: string, id: string): Promise<Invoice> {
+  return apiFetch<Invoice>(`/brands/${brandId}/invoices/${id}/cancel`, { method: 'POST' });
+}
+
 /** What the Invoice Details screen's single-invoice fetch returns —
  * Invoice's customer is fully resolved (email, formatted billing address),
  * where the list row above only carries a display name. */

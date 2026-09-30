@@ -175,6 +175,63 @@ describe('CANCEL', () => {
   });
 });
 
+describe('RECORD_PAYMENT', () => {
+  const issued: TransitionContext = {
+    ...base,
+    status: 'SENT',
+    totalMinor: 10000,
+    balanceMinor: 10000,
+  };
+
+  it('moves to PARTIALLY_PAID for a payment short of the balance', () => {
+    expect(evaluateTransition('RECORD_PAYMENT', { ...issued, settledMinor: 4000 })).toEqual({
+      ok: true,
+      to: 'PARTIALLY_PAID',
+    });
+  });
+
+  it('moves to PAID when the payment clears the balance', () => {
+    for (const status of ['SENT', 'VIEWED', 'PENDING_PAYMENT'] as const) {
+      expect(
+        evaluateTransition('RECORD_PAYMENT', { ...issued, status, settledMinor: 10000 }),
+      ).toEqual({ ok: true, to: 'PAID' });
+    }
+  });
+
+  it('clears the rest of a partially paid invoice', () => {
+    expect(
+      evaluateTransition('RECORD_PAYMENT', {
+        ...issued,
+        status: 'PARTIALLY_PAID',
+        balanceMinor: 6000,
+        settledMinor: 10000,
+      }),
+    ).toEqual({ ok: true, to: 'PAID' });
+  });
+
+  it('refuses an amount above the balance', () => {
+    expect(evaluateTransition('RECORD_PAYMENT', { ...issued, settledMinor: 10001 })).toMatchObject({
+      ok: false,
+      code: 'EXCEEDS_BALANCE',
+    });
+  });
+
+  it('refuses a zero payment', () => {
+    expect(evaluateTransition('RECORD_PAYMENT', { ...issued, settledMinor: 0 })).toMatchObject({
+      ok: false,
+      code: 'BALANCE_NOT_CLEARED',
+    });
+  });
+
+  it('refuses from DRAFT, PAID and CANCELLED', () => {
+    for (const status of ['DRAFT', 'PAID', 'CANCELLED'] as const) {
+      expect(
+        evaluateTransition('RECORD_PAYMENT', { ...issued, status, settledMinor: 100 }),
+      ).toMatchObject({ ok: false, code: 'ILLEGAL_FROM_STATUS' });
+    }
+  });
+});
+
 describe('overdue overlay', () => {
   const dueDate = new Date('2026-07-01T00:00:00Z');
 

@@ -3,12 +3,14 @@
 import { revalidatePath } from 'next/cache';
 import {
   bulkSendInvoices,
+  cancelInvoice,
   getInvoice,
   getInvoiceEmailPreview,
   getInvoiceEvents,
   getInvoicePdfSettings,
   issueInvoice,
   listInvoices,
+  recordInvoicePayment,
   sendInvoiceEmail,
   type BulkSendResult,
   type Invoice,
@@ -16,6 +18,7 @@ import {
   type InvoiceDetail,
   type InvoiceEmailDraft,
   type InvoiceEmailSendInput,
+  type ManualPaymentInput,
 } from '@/lib/api';
 import { describeActionError } from '@/lib/form';
 import {
@@ -88,6 +91,38 @@ export async function issueInvoiceAction(
     return { ok: true, data: invoice };
   } catch (error) {
     return { ok: false, error: describeActionError(error, 'Could not send this invoice.') };
+  }
+}
+
+/** The drawer's "Record Payment" — money received outside the platform.
+ * The server derives the resulting status (Partial or Paid) from the new
+ * balance; nothing here sets a status directly. */
+export async function recordInvoicePaymentAction(
+  brandId: string,
+  id: string,
+  input: ManualPaymentInput,
+): Promise<ActionResult<Invoice>> {
+  try {
+    const invoice = await recordInvoicePayment(brandId, id, input);
+    revalidatePath('/invoices');
+    return { ok: true, data: invoice };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not record this payment.') };
+  }
+}
+
+/** The drawer's "Cancel Invoice" — refused server-side once any payment
+ * has settled against it. */
+export async function cancelInvoiceAction(
+  brandId: string,
+  id: string,
+): Promise<ActionResult<Invoice>> {
+  try {
+    const invoice = await cancelInvoice(brandId, id);
+    revalidatePath('/invoices');
+    return { ok: true, data: invoice };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not cancel this invoice.') };
   }
 }
 

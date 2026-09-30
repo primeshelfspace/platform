@@ -1,5 +1,7 @@
+import { can, type Role } from '@fenwick/shared';
 import {
   ApiError,
+  getCurrentUser,
   getInvoiceTabCounts,
   listBrands,
   listInvoices,
@@ -54,6 +56,14 @@ export default async function InvoicesPage({
     brandsError = cause instanceof ApiError ? cause.message : String(cause);
   }
 
+  // Hiding the drawer's Record Payment / Cancel buttons is UX only — the
+  // API enforces the same PAYMENTS WRITE / INVOICES DELETE checks itself.
+  const role = await getCurrentUser()
+    .then((user) => user.role as Role)
+    .catch(() => null);
+  const canRecordPayment = role !== null && can(role, 'PAYMENTS', 'WRITE');
+  const canCancel = role !== null && can(role, 'INVOICES', 'DELETE');
+
   const activeBrand = brands.find((b) => b.id === params.brandId) ?? brands[0] ?? null;
 
   let invoices: Invoice[] = [];
@@ -101,6 +111,8 @@ export default async function InvoicesPage({
           hasBrands={brands.length > 0}
           invoicesError={invoicesError}
           justCreated={Boolean(params.created)}
+          canRecordPayment={canRecordPayment}
+          canCancel={canCancel}
         />
       </PageContainer>
     </BrandTheme>

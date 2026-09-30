@@ -409,4 +409,116 @@ describeWithDb('InvoicesService', () => {
       ]);
     });
   });
+
+  describe('recordManualPayment', () => {
+    async function issued() {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await invoices.issue(ownerScope, solsticeId, created.id);
+      return created; // total 3307.20
+    }
+    const paidAt = new Date('2026-02-01');
+
+    it('records a partial payment: balance drops and status becomes PARTIALLY_PAID', async () => {
+      const invoice = await issued();
+      const updated = await invoices.recordManualPayment(ownerScope, solsticeId, invoice.id, {
+        amount: '1000.00',
+        method: 'MANUAL',
+        paidAt,
+        reference: 'Cash at counter',
+      });
+      expect(updated.status).toBe('PARTIALLY_PAID');
+      expect(updated.balanceMinor).toBe(230720n);
+
+      const payments = await owner.payment.findMany({ where: { invoiceId: invoice.id } });
+      expect(payments).toHaveLength(1);
+      expect(payments[0]).toMatchObject({
+        method: 'MANUAL',
+        status: 'SETTLED',
+        amountMinor: 100000n,
+      });
+
+      const event = await owner.invoiceEvent.findFirst({
+        where: { invoiceId: invoice.id, eventType: 'MANUAL_PAYMENT_RECORDED' },
+      });
+      expect(event).toMatchObject({ fromStatus: 'SENT', toStatus: 'PARTIALLY_PAID' });
+    });
+
+    it('marks the invoice PAID once the balance is cleared', async () => {
+      const invoice = await issued();
+      await invoices.recordManualPayment(ownerScope, solsticeId, invoice.id, {
+        amount: '1000.00',
+        method: 'CHECK',
+        paidAt,
+      });
+      const updated = await invoices.recordManualPayment(ownerScope, solsticeId, invoice.id, {
+        amount: '2307.20',
+        method: 'ACH',
+        paidAt,
+      });
+      expect(updated.status).toBe('PAID');
+      expect(updated.balanceMinor).toBe(0n);
+      expect(updated.paidAt).toEqual(paidAt);
+    });
+
+    it('refuses an amount above the balance, leaving the invoice untouched', async () => {
+      const invoice = await issued();
+      await expect(
+        invoices.recordManualPayment(ownerScope, solsticeId, invoice.id, {
+          amount: '5000.00',
+          method: 'MANUAL',
+          paidAt,
+        }),
+      ).rejects.toThrow(ConflictException);
+
+      const row = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      expect(row.status).toBe('SENT');
+      expect(row.balanceMinor).toBe(330720n);
+      expect(await owner.payment.count({ where: { invoiceId: invoice.id } })).toBe(0);
+    });
+
+    it('refuses a payment against a draft', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await expect(
+        invoices.recordManualPayment(ownerScope, solsticeId, created.id, {
+          amount: '10.00',
+          method: 'MANUAL',
+          paidAt,
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('cancel', () => {
+    it('cancels an unpaid invoice and records the event', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await invoices.issue(ownerScope, solsticeId, created.id);
+      const cancelled = await invoices.cancel(ownerScope, solsticeId, created.id);
+      expect(cancelled.status).toBe('CANCELLED');
+      expect(cancelled.cancelledAt).not.toBeNull();
+      const event = await owner.invoiceEvent.findFirst({
+        where: { invoiceId: created.id, eventType: 'CANCEL' },
+      });
+      expect(event).toMatchObject({ fromStatus: 'SENT', toStatus: 'CANCELLED' });
+    });
+
+    it('refuses to cancel an invoice with a recorded payment', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await invoices.issue(ownerScope, solsticeId, created.id);
+      await invoices.recordManualPayment(ownerScope, solsticeId, created.id, {
+        amount: '10.00',
+        method: 'MANUAL',
+        paidAt: new Date('2026-02-01'),
+      });
+      await expect(invoices.cancel(ownerScope, solsticeId, created.id)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it("never cancels another brand's invoice", async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await expect(invoices.cancel(ownerScope, northgateId, created.id)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
 });

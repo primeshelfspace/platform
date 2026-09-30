@@ -488,6 +488,22 @@ export const invoiceDraftSchema = z
   });
 export type InvoiceDraftInput = z.infer<typeof invoiceDraftSchema>;
 
+/** Methods staff can record by hand from the Invoice Details drawer — money
+ * that arrived outside the platform. CARD and WALLET are excluded: those
+ * only ever arrive through a gateway settlement, never typed in. */
+export const MANUAL_PAYMENT_METHODS = ['MANUAL', 'CHECK', 'ACH'] as const;
+
+/** The Invoice Details drawer's "Record Payment". The amount is a decimal
+ * string, same as a line item's unitPrice, and is converted to minor units
+ * against the invoice's own currency server-side. */
+export const recordManualPaymentSchema = z.object({
+  amount: decimalAmountStringSchema,
+  method: z.enum(MANUAL_PAYMENT_METHODS),
+  paidAt: z.coerce.date(),
+  reference: z.string().trim().max(200).optional(),
+});
+export type RecordManualPaymentInput = z.infer<typeof recordManualPaymentSchema>;
+
 export const invoiceStatusSchema = z.enum(INVOICE_STATUSES);
 export const paymentMethodSchema = z.enum(PAYMENT_METHODS);
 export const roleSchema = z.enum(ROLES);

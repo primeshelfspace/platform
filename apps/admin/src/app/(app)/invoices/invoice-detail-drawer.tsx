@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
+  Ban,
+  Banknote,
   Check,
   ChevronDown,
   Copy,
@@ -26,7 +28,14 @@ import {
   invoiceDetailStatusLabel,
 } from '@/lib/invoice-presentation';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
+import { cancelInvoiceAction } from './actions';
+import { RecordPaymentModal } from './record-payment-modal';
 import { SendInvoiceModal } from './send-invoice-modal';
+
+/** Same "issued and still owing" states the API's RECORD_PAYMENT accepts. */
+const RECORDABLE_STATUSES = new Set(['SENT', 'VIEWED', 'PENDING_PAYMENT', 'PARTIALLY_PAID']);
+/** CANCEL's own from-states; the API also refuses once anything has settled. */
+const CANCELLABLE_STATUSES = new Set(['DRAFT', 'SENT', 'VIEWED', 'PENDING_PAYMENT']);
 
 // Same public payment app the "View & Pay Invoice" link in an invoice email
 // points at (SendInvoiceModal's own viewUrl) — Share and Copy Link hand out
@@ -46,6 +55,8 @@ const EVENT_LABEL: Record<string, string> = {
   FIRST_VIEW: 'Customer viewed the invoice',
   PAYMENT_SETTLED: 'Payment received',
   PAYMENT_FAILED: 'Payment attempt failed',
+  MANUAL_PAYMENT_RECORDED: 'Payment recorded manually',
+  CANCEL: 'Invoice cancelled',
   EMAIL_SENT: 'Invoice emailed',
   // Recorded by the old resend-only endpoint, before it merged into
   // sendEmail — kept so already-recorded history still reads nicely.
@@ -81,6 +92,8 @@ export function InvoiceDetailDrawer({
   invoice,
   activity,
   paymentTermsLabel,
+  canRecordPayment,
+  canCancel,
   onChanged,
 }: {
   open: boolean;
@@ -91,6 +104,10 @@ export function InvoiceDetailDrawer({
   invoice: InvoiceDetail | null;
   activity: InvoiceActivityEntry[];
   paymentTermsLabel: string | null | undefined;
+  /** PAYMENTS WRITE — Owner, Merchant Admin, Brand Admin, Finance. */
+  canRecordPayment: boolean;
+  /** INVOICES DELETE — the same four roles. */
+  canCancel: boolean;
   /** Called after a successful Send — the parent owns the actual data
    * (this component only holds ephemeral UI state), so a status change
    * means asking it to re-fetch rather than patching a local copy here. */
@@ -99,6 +116,8 @@ export function InvoiceDetailDrawer({
   const router = useRouter();
   const [tab, setTab] = useState<'items' | 'activity'>('items');
   const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const shareMenuRef = useDismissablePanel<HTMLDivElement>(shareMenuOpen, () =>
@@ -120,6 +139,34 @@ export function InvoiceDetailDrawer({
   function handleSent() {
     router.refresh(); // the list row behind this drawer needs the new status too
     onChanged();
+  }
+
+  const showRecordPayment =
+    canRecordPayment && invoice !== null && RECORDABLE_STATUSES.has(invoice.status);
+  const showCancel =
+    canCancel &&
+    invoice !== null &&
+    CANCELLABLE_STATUSES.has(invoice.status) &&
+    invoice.balanceMinor === invoice.totalMinor;
+
+  async function handleCancelInvoice() {
+    if (!brand || !invoice || cancelling) return;
+    if (
+      !window.confirm(
+        `Cancel invoice ${invoice.number}? The customer will no longer be able to pay it.`,
+      )
+    ) {
+      return;
+    }
+    setCancelling(true);
+    const result = await cancelInvoiceAction(brand.id, invoice.id);
+    setCancelling(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success('Invoice cancelled');
+    handleSent();
   }
 
   async function handleCopyLink() {
@@ -205,6 +252,17 @@ export function InvoiceDetailDrawer({
               >
                 <Send className="h-4 w-4" aria-hidden />
                 Send
+              </button>
+            )}
+            {showRecordPayment && (
+              <button
+                type="button"
+                onClick={() => setPaymentModalOpen(true)}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold text-white
+                           transition-colors hover:bg-neutral-800"
+              >
+                <Banknote className="h-4 w-4" aria-hidden />
+                Record Payment
               </button>
             )}
             {status && status !== 'DRAFT' && (
@@ -316,6 +374,19 @@ export function InvoiceDetailDrawer({
               >
                 <Pencil className="h-4 w-4" aria-hidden />
                 Edit
+              </button>
+            )}
+            {showCancel && (
+              <button
+                type="button"
+                onClick={() => void handleCancelInvoice()}
+                disabled={cancelling}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#D4D4D4] bg-white px-4
+                           text-sm font-bold text-danger transition-colors hover:bg-danger-surface
+                           disabled:opacity-60"
+              >
+                <Ban className="h-4 w-4" aria-hidden />
+                {cancelling ? 'Cancelling…' : 'Cancel Invoice'}
               </button>
             )}
             <button
@@ -525,6 +596,16 @@ export function InvoiceDetailDrawer({
           invoice={invoice}
           isFirstSend={status === 'DRAFT'}
           onSent={handleSent}
+        />
+      )}
+      {invoice && brand && showRecordPayment && (
+        <RecordPaymentModal
+          key={invoice.id}
+          open={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          brand={brand}
+          invoice={invoice}
+          onRecorded={handleSent}
         />
       )}
     </div>,
