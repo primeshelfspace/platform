@@ -49,12 +49,6 @@ const MAIN_NAV: readonly NavItem[] = [
   { href: '/invoices', label: 'Invoices', icon: ScrollText },
 ];
 
-/** Shown only when the signed-in user holds USERS READ (see the `can` check
- * below) — hiding it for anyone else is UX only, not the actual access
- * control, which the API guard enforces regardless of what this sidebar
- * renders. */
-const USERS_NAV_ITEM: NavItem = { href: '/users', label: 'Users & Roles', icon: ShieldCheck };
-
 function initialOf(value: string): string {
   return (value.trim().charAt(0) || '?').toUpperCase();
 }
@@ -104,9 +98,11 @@ export function AdminShell({
     : null;
   const firstConcreteBrandId = brands[0]?.id ?? '';
 
-  const mainNav = can(user.role as Role, 'USERS', 'READ')
-    ? [...MAIN_NAV, USERS_NAV_ITEM]
-    : MAIN_NAV;
+  // Users & Roles lives in the account menu, shown only when the signed-in
+  // user holds USERS READ — hiding it for anyone else is UX only, not the
+  // actual access control, which the API guard enforces regardless of what
+  // this menu renders.
+  const canManageUsers = can(user.role as Role, 'USERS', 'READ');
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
@@ -356,7 +352,7 @@ export function AdminShell({
         )}
 
         <div className="mt-4 space-y-1">
-          {mainNav.map((item) => (
+          {MAIN_NAV.map((item) => (
             <NavLink key={item.href} {...item} />
           ))}
           {BRAND_NAV.map((item) => (
@@ -463,6 +459,17 @@ export function AdminShell({
                     </p>
                     <p className="truncate text-xs text-ink-subtle">{user.email}</p>
                   </div>
+                  {canManageUsers && (
+                    <Link
+                      role="menuitem"
+                      href={hrefFor('/users')}
+                      className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted transition-colors
+                                 hover:bg-surface-muted hover:text-ink-strong"
+                    >
+                      <ShieldCheck className="h-4 w-4" aria-hidden />
+                      Users &amp; Roles
+                    </Link>
+                  )}
                   <Link
                     role="menuitem"
                     href="/status"
