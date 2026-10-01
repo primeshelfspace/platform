@@ -31,6 +31,7 @@ import {
 import { PaymentGatewaysPanel } from '@/app/(app)/settings/integrations/payment-gateways-panel';
 import { PageContainer } from '@/components/page-container';
 import { parsePageParams } from '@/lib/pagination';
+import { hasPermission } from '@/lib/permissions';
 import { BrandDetailsForm } from './brand-details-form';
 import { EmailReceiptEditor } from './email-receipt-editor';
 import { IntegrationsPanel } from './integrations-panel';
@@ -269,7 +270,19 @@ export default async function BrandSettingsPage({
     brandsError = cause instanceof ApiError ? cause.message : String(cause);
   }
   const brand = brands.find((b) => b.id === params.brandId) ?? brands[0];
-  const activeTab: BrandSettingsTab = isBrandSettingsTab(params.tab) ? params.tab : 'details';
+
+  // Same matrix the API guard enforces — hiding here is UX only. Sales and
+  // Read Only hold no INTEGRATIONS access at all (both tabs would only ever
+  // render a 403), and only Owner, Merchant Admin and Brand Admin may change
+  // brand configuration; everyone else gets these screens read-only.
+  const currentUser = await getCurrentUser().catch(() => null);
+  const canReadIntegrations = hasPermission(currentUser, 'INTEGRATIONS', 'READ');
+  const canEditConfig = hasPermission(currentUser, 'BRAND_CONFIGURATION', 'WRITE');
+  const hiddenTabs = new Set<BrandSettingsTab>(
+    canReadIntegrations ? [] : ['integrations', 'payments'],
+  );
+  const requestedTab: BrandSettingsTab = isBrandSettingsTab(params.tab) ? params.tab : 'details';
+  const activeTab: BrandSettingsTab = hiddenTabs.has(requestedTab) ? 'details' : requestedTab;
   const activeSub: BrandingSubTab = isBrandingSubTab(params.sub) ? params.sub : 'email-receipt';
 
   // Each sub-tab's data calls are independent of one another (none reads the
@@ -358,18 +371,15 @@ export default async function BrandSettingsPage({
       // The accent colour comes back on the email-receipt response itself —
       // it is part of every branding section's shape now, so there is no
       // second request to the payment-page endpoint to disagree with.
-      const [settings, previewInvoice, userEmail] = await Promise.all([
+      const [settings, previewInvoice] = await Promise.all([
         getEmailReceiptSettings(brand.id),
         loadPreviewInvoice(brand.id),
-        getCurrentUser()
-          .then((u) => u.email)
-          .catch(() => null),
       ]);
       emailReceiptProps = {
         settings,
         accentColor: settings.accentColor,
         previewInvoice,
-        userEmail,
+        userEmail: currentUser?.email ?? null,
       };
     } else if (activeSub === 'invoice-pdf') {
       const [settings, previewInvoice] = await Promise.all([
@@ -385,7 +395,7 @@ export default async function BrandSettingsPage({
       {brand && <p className="text-xs text-ink-muted">{brand.displayName}</p>}
       <h1 className="mt-0.5 text-xl font-bold text-ink-strong">Brand Settings</h1>
 
-      <BrandSettingsTabs active={activeTab} brandId={brand?.id} />
+      <BrandSettingsTabs active={activeTab} brandId={brand?.id} hidden={hiddenTabs} />
 
       {brandsError ? (
         <div className="mt-3 rounded-md bg-danger-surface p-4 text-sm text-danger">
@@ -395,7 +405,9 @@ export default async function BrandSettingsPage({
         <p className="mt-3 text-sm text-ink-muted">No brand exists to configure yet.</p>
       ) : activeTab === 'details' ? (
         <div className="mt-3">
-          <BrandDetailsForm brand={brand} />
+          <ReadOnlyUnless allowed={canEditConfig}>
+            <BrandDetailsForm brand={brand} />
+          </ReadOnlyUnless>
         </div>
       ) : activeTab === 'integrations' ? (
         integrationsError ? (
@@ -490,7 +502,7 @@ export default async function BrandSettingsPage({
           )}
         </div>
       ) : (
-        <>
+        <ReadOnlyUnless allowed={canEditConfig}>
           {/* Branches on activeSub itself — the props objects above are
               filled in by the identical condition, so the assertions below
               just tell TS what's already guaranteed true at runtime. All
@@ -520,8 +532,29 @@ export default async function BrandSettingsPage({
               previewInvoice={invoicePdfProps!.previewInvoice}
             />
           )}
-        </>
+        </ReadOnlyUnless>
       )}
     </PageContainer>
+  );
+}
+
+/**
+ * Wraps an editor for a role without BRAND_CONFIGURATION WRITE (Finance,
+ * Sales, Read Only). A disabled <fieldset> disables every input, select and
+ * button inside it natively — so no Save can be dirtied or submitted — while
+ * the sub-tab links (anchors) keep working for browsing.
+ */
+function ReadOnlyUnless({ allowed, children }: { allowed: boolean; children: React.ReactNode }) {
+  if (allowed) return <>{children}</>;
+  return (
+    <>
+      <p className="mt-3 rounded-md bg-surface-muted p-3 text-sm text-ink-muted">
+        You have view-only access to brand settings. Ask an owner, admin or brand admin to make
+        changes.
+      </p>
+      <fieldset disabled className="m-0 min-w-0 border-0 p-0">
+        {children}
+      </fieldset>
+    </>
   );
 }

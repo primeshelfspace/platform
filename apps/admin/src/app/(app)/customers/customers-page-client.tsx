@@ -1,6 +1,7 @@
 'use client';
 
-import Link from 'next/link';
+import { NoBrandsState } from '@/components/no-brands-state';
+import { useCan } from '@/hooks/use-permissions';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Users } from 'lucide-react';
@@ -49,6 +50,8 @@ export function CustomersPageClient({
   const searchParams = useSearchParams();
 
   const [searchTerm, setSearchTerm] = useState(search);
+  // Read Only holds CUSTOMERS READ only — no Add, no Edit.
+  const canWrite = useCan('CUSTOMERS', 'WRITE');
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -174,7 +177,7 @@ export function CustomersPageClient({
             View, add, and manage customers for invoicing and payments.
           </p>
         </div>
-        {brand && (
+        {brand && canWrite && (
           <button
             type="button"
             onClick={() => setAddOpen(true)}
@@ -194,15 +197,7 @@ export function CustomersPageClient({
           <p className="mt-1 font-mono text-xs">{brandsError}</p>
         </div>
       ) : !hasBrands ? (
-        <div className="rounded-2xl border border-border bg-surface p-8 text-center">
-          <p className="text-sm text-ink-muted">No brands exist yet.</p>
-          <Link
-            href="/brands/new"
-            className="mt-4 inline-block rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-foreground"
-          >
-            Create your first brand
-          </Link>
-        </div>
+        <NoBrandsState />
       ) : (
         <>
           <div className="mb-3 flex items-center justify-between gap-4">
@@ -378,7 +373,7 @@ export function CustomersPageClient({
       <CustomerDetailDrawer
         open={detailRow !== null}
         onClose={closeCustomerDetail}
-        onEdit={() => setEditOpen(true)}
+        onEdit={canWrite ? () => setEditOpen(true) : undefined}
         brandName={brand?.displayName}
         loading={detailLoading}
         error={detailError}
@@ -388,7 +383,7 @@ export function CustomersPageClient({
         currency={currency}
       />
 
-      {detail?.customer && (
+      {canWrite && detail?.customer && (
         <EditCustomerModal
           open={editOpen}
           brandId={detail.customer.brandId}

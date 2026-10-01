@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { NoBrandsState } from '@/components/no-brands-state';
 import { toCurrencyCode } from '@fenwick/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
 import { BrandScopeSelect } from '@/components/dashboard/brand-scope-select';
@@ -184,15 +184,7 @@ export default async function DashboardPage({
             Could not load brands: {brandsError}
           </div>
         ) : brands.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-surface p-8 text-center">
-            <p className="text-sm text-ink-muted">No brands exist yet.</p>
-            <Link
-              href="/brands/structure"
-              className="mt-4 inline-block rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-foreground"
-            >
-              Create your first brand
-            </Link>
-          </div>
+          <NoBrandsState createHref="/brands/structure" />
         ) : dataError || !summary ? (
           <div className="rounded-md bg-danger-surface p-4 text-sm text-danger">
             Could not load dashboard data: {dataError ?? 'unknown error'}

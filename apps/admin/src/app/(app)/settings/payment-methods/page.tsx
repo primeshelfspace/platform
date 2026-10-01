@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { NoBrandsState } from '@/components/no-brands-state';
 import { BrandTheme } from '@/components/brand-theme';
 import { ApiError, getPaymentMethodSettings, listBrands, type Brand } from '@/lib/api';
 import { MethodsForm } from './methods-form';
@@ -63,15 +64,7 @@ export default async function PaymentMethodsPage({
             Could not load brands: {brandsError}
           </div>
         ) : brands.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-surface p-8 text-center">
-            <p className="text-sm text-ink-muted">No brands exist yet.</p>
-            <Link
-              href="/brands/new"
-              className="mt-4 inline-block rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-foreground"
-            >
-              Create your first brand
-            </Link>
-          </div>
+          <NoBrandsState />
         ) : (
           <>
             {params.saved && (

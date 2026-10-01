@@ -110,7 +110,8 @@ export function CustomerDetailDrawer({
   /** Opens the Edit Details modal — owned by the parent (same place
    * AddCustomerModal's open state lives) rather than nested in here, so
    * there's one modal-stacking pattern for this page rather than two. */
-  onEdit: () => void;
+  /** Omitted for a role without CUSTOMERS WRITE — the button is hidden. */
+  onEdit?: () => void;
   brandName: string | undefined;
   loading: boolean;
   error: string | null;
@@ -158,16 +159,18 @@ export function CustomerDetailDrawer({
           </div>
 
           <div className="flex shrink-0 items-center gap-3">
-            <button
-              type="button"
-              onClick={onEdit}
-              disabled={!customer}
-              className="inline-flex h-9 items-center rounded-lg border border-[#D4D4D4] bg-white px-4
-                         text-sm font-bold text-[#0F172A] transition-colors hover:bg-slate-50
-                         disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Edit Details
-            </button>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={onEdit}
+                disabled={!customer}
+                className="inline-flex h-9 items-center rounded-lg border border-[#D4D4D4] bg-white px-4
+                           text-sm font-bold text-[#0F172A] transition-colors hover:bg-slate-50
+                           disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Edit Details
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

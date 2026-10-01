@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
-import { ApiError, listBrands, listCustomers } from '@/lib/api';
+import { redirect } from 'next/navigation';
+import { DEFAULT_BRAND_CURRENCY } from '@fenwick/shared';
+import { ApiError, listBrands, listCustomers, getCurrentUser } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { InvoiceForm } from './invoice-form';
 import { PageContainer } from '@/components/page-container';
-import { DEFAULT_BRAND_CURRENCY } from '@fenwick/shared';
 
 const FALLBACK_THEME_COLOUR = '#16261F';
 
@@ -13,6 +15,14 @@ export default async function NewInvoicePage({
   searchParams: Promise<{ brandId?: string }>;
 }) {
   const { brandId } = await searchParams;
+
+  // Defense-in-depth, same as the Users page: the API rejects the create
+  // regardless, but a role without INVOICES WRITE should not land on a form it
+  // can never submit.
+  const user = await getCurrentUser();
+  if (!hasPermission(user, 'INVOICES', 'WRITE')) {
+    redirect(brandId ? `/invoices?brandId=${brandId}` : '/invoices');
+  }
 
   if (!brandId) {
     return (

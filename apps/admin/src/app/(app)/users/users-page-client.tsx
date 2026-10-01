@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, Plus, Search } from 'lucide-react';
 import { toast } from '@fenwick/ui/toast';
 import { Pagination } from '@fenwick/ui/pagination';
-import { ROLES } from '@fenwick/shared';
+import { ROLES, type Role } from '@fenwick/shared';
 import { Select } from '@/components/ui/select';
 import type { Brand, ManagedUser } from '@/lib/api';
 import { InviteUserModal } from './invite-user-modal';
@@ -18,7 +18,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 export function UsersPageClient({
   currentUserId,
-  currentUserRole,
+  assignableRoles,
   canWrite,
   canSuspend,
   users,
@@ -33,7 +33,7 @@ export function UsersPageClient({
   usersError,
 }: {
   currentUserId: string;
-  currentUserRole: string;
+  assignableRoles: Role[];
   canWrite: boolean;
   canSuspend: boolean;
   users: ManagedUser[];
@@ -53,7 +53,9 @@ export function UsersPageClient({
 
   const [searchTerm, setSearchTerm] = useState(search);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [brandsTarget, setBrandsTarget] = useState<ManagedUser | null>(null);
+  // `role` is set when the picker is collecting brands for a role change
+  // (Owner/Admin → brand-scoped), not just editing assignments.
+  const [brandsTarget, setBrandsTarget] = useState<{ user: ManagedUser; role?: Role } | null>(null);
   const [matrixOpen, setMatrixOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -208,12 +210,12 @@ export function UsersPageClient({
                     key={user.id}
                     user={user}
                     currentUserId={currentUserId}
-                    currentUserRole={currentUserRole}
+                    assignableRoles={assignableRoles}
                     canWrite={canWrite}
                     canSuspend={canSuspend}
                     brandNameById={brandNameById}
                     onChanged={onChanged}
-                    onAssignBrands={setBrandsTarget}
+                    onAssignBrands={(user, role) => setBrandsTarget({ user, role })}
                   />
                 ))}
               </tbody>
@@ -253,12 +255,16 @@ export function UsersPageClient({
       <InviteUserModal
         open={inviteOpen}
         brands={brands}
-        actorRole={currentUserRole}
+        assignableRoles={assignableRoles}
         onClose={() => setInviteOpen(false)}
         onInvited={onInvited}
       />
       <AssignBrandsModal
-        user={brandsTarget}
+        // Remounts per mode so the action state of a brand edit and of a
+        // role-with-brands change never carry into each other.
+        key={brandsTarget?.role ?? 'brands'}
+        user={brandsTarget?.user ?? null}
+        pendingRole={brandsTarget?.role}
         brands={brands}
         onClose={() => setBrandsTarget(null)}
         onUpdated={onBrandsUpdated}

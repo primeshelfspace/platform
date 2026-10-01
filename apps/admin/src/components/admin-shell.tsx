@@ -21,10 +21,11 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { can, type Role } from '@fenwick/shared';
 import { logoutAction } from '@/lib/logout-action';
+import { hasPermission } from '@/lib/permissions';
 import type { Brand, CurrentUser } from '@/lib/api';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
+import { PermissionsProvider } from '@/hooks/use-permissions';
 import { AddBrandModal } from './add-brand-modal';
 
 interface NavItem {
@@ -101,7 +102,9 @@ export function AdminShell({
   // user holds USERS READ — hiding it for anyone else is UX only, not the
   // actual access control, which the API guard enforces regardless of what
   // this menu renders.
-  const canManageUsers = can(user.role as Role, 'USERS', 'READ');
+  const canManageUsers = hasPermission(user, 'USERS', 'READ');
+  // Creating a brand is BRANDS WRITE — Owner and Merchant Admin only.
+  const canAddBrand = hasPermission(user, 'BRANDS', 'WRITE');
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [brandMenuOpen, setBrandMenuOpen] = useState(false);
@@ -324,26 +327,30 @@ export function AdminShell({
                     </button>
                   ))}
 
-                  <div className="my-1 border-t border-white/10" aria-hidden />
+                  {canAddBrand && (
+                    <>
+                      <div className="my-1 border-t border-white/10" aria-hidden />
 
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setBrandMenuOpen(false);
-                      setAddBrandOpen(true);
-                    }}
-                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-[#D4D4D4]
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setBrandMenuOpen(false);
+                          setAddBrandOpen(true);
+                        }}
+                        className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-[#D4D4D4]
                                transition-colors hover:bg-white/10 hover:text-white"
-                  >
-                    <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed border-[#8C8C8C]"
-                      aria-hidden
-                    >
-                      <Plus className="h-3.5 w-3.5" aria-hidden />
-                    </span>
-                    <span className="truncate font-medium">Add New Brand</span>
-                  </button>
+                      >
+                        <span
+                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed border-[#8C8C8C]"
+                          aria-hidden
+                        >
+                          <Plus className="h-3.5 w-3.5" aria-hidden />
+                        </span>
+                        <span className="truncate font-medium">Add New Brand</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -363,148 +370,152 @@ export function AdminShell({
   );
 
   return (
-    <div className="min-h-screen lg:flex lg:h-screen">
-      <TopProgress />
-      {/* Mobile top bar: the sidebar is off-canvas below lg (1024px) — no
+    <PermissionsProvider permissions={user.permissions}>
+      <div className="min-h-screen lg:flex lg:h-screen">
+        <TopProgress />
+        {/* Mobile top bar: the sidebar is off-canvas below lg (1024px) — no
           collapse breakpoint was established elsewhere in this app, so this
           follows Tailwind's own default lg cut-off. */}
-      <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          aria-label="Open navigation menu"
-          className="rounded-md p-2 text-ink-strong hover:bg-surface-muted"
-        >
-          <Menu className="h-5 w-5" aria-hidden />
-        </button>
-        <p className="truncate text-sm font-semibold text-ink-strong">{companyName}</p>
-        <span className="w-9" aria-hidden />
-      </div>
+        <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            aria-label="Open navigation menu"
+            className="rounded-md p-2 text-ink-strong hover:bg-surface-muted"
+          >
+            <Menu className="h-5 w-5" aria-hidden />
+          </button>
+          <p className="truncate text-sm font-semibold text-ink-strong">{companyName}</p>
+          <span className="w-9" aria-hidden />
+        </div>
 
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
-          onClick={() => setMobileOpen(false)}
-          aria-hidden
-        />
-      )}
+        {mobileOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden
+          />
+        )}
 
-      <aside
-        className={`fixed inset-y-0 left-0 z-40 -translate-x-full transition-transform duration-200 ease-out
+        <aside
+          className={`fixed inset-y-0 left-0 z-40 -translate-x-full transition-transform duration-200 ease-out
                     lg:static lg:z-auto lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : ''}`}
-      >
-        {sidebar}
-      </aside>
+        >
+          {sidebar}
+        </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Desktop-only header: the mobile top bar above already covers
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Desktop-only header: the mobile top bar above already covers
             navigation below lg, and there is nowhere on a phone screen to
             put a search box that isn't in the way. */}
-        <header className="hidden shrink-0 items-center gap-4 bg-surface px-6 py-3 lg:flex">
-          <form onSubmit={onHeaderSearchSubmit} className="relative max-w-sm flex-1">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#737373]"
-              aria-hidden
-            />
-            <input
-              type="search"
-              aria-label="Search customers by name or email"
-              value={headerSearch}
-              onChange={(event) => setHeaderSearch(event.target.value)}
-              placeholder="Search"
-              className="h-8 w-full appearance-none rounded-lg bg-[#E7EDF5] pl-9 pr-3 text-sm text-[#0F172A]
+          <header className="hidden shrink-0 items-center gap-4 bg-surface px-6 py-3 lg:flex">
+            <form onSubmit={onHeaderSearchSubmit} className="relative max-w-sm flex-1">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-3 w-3 -translate-y-1/2 text-[#737373]"
+                aria-hidden
+              />
+              <input
+                type="search"
+                aria-label="Search customers by name or email"
+                value={headerSearch}
+                onChange={(event) => setHeaderSearch(event.target.value)}
+                placeholder="Search"
+                className="h-8 w-full appearance-none rounded-lg bg-[#E7EDF5] pl-9 pr-3 text-sm text-[#0F172A]
                          placeholder:text-[#737373] focus-visible:outline-none focus-visible:ring-2
                          focus-visible:ring-ink-strong focus-visible:ring-offset-1"
-            />
-          </form>
+              />
+            </form>
 
-          {/* ml-auto rather than relying on the search box's own flex-grow to
+            {/* ml-auto rather than relying on the search box's own flex-grow to
               push these right: the search box caps out at max-w-sm, so once
               the header is wider than that plus the account menu, the
               leftover space would sit unclaimed after them instead of
               pinning them to the header's trailing edge. */}
-          <div className="ml-auto flex shrink-0 items-center gap-4">
-            <div className="relative shrink-0" ref={headerMenuRef}>
-              <button
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={headerMenuOpen}
-                onClick={() => setHeaderMenuOpen((open) => !open)}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-[#7C3AED] text-sm font-bold
+            <div className="ml-auto flex shrink-0 items-center gap-4">
+              <div className="relative shrink-0" ref={headerMenuRef}>
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={headerMenuOpen}
+                  onClick={() => setHeaderMenuOpen((open) => !open)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-[#7C3AED] text-sm font-bold
                            text-white transition-opacity hover:opacity-90"
-              >
-                {initialOf(user.name || user.email)}
-              </button>
-
-              {headerMenuOpen && (
-                <div
-                  role="menu"
-                  aria-label="Account"
-                  className="absolute right-0 z-10 mt-2 w-48 overflow-hidden rounded-lg border border-border
-                             bg-surface py-1 shadow-lg"
                 >
-                  <div className="border-b border-border px-3 py-2">
-                    <p className="truncate text-sm font-semibold text-ink-strong">
-                      {user.name || user.email}
-                    </p>
-                    <p className="truncate text-xs text-ink-subtle">{user.email}</p>
-                  </div>
-                  {canManageUsers && (
+                  {initialOf(user.name || user.email)}
+                </button>
+
+                {headerMenuOpen && (
+                  <div
+                    role="menu"
+                    aria-label="Account"
+                    className="absolute right-0 z-10 mt-2 w-48 overflow-hidden rounded-lg border border-border
+                             bg-surface py-1 shadow-lg"
+                  >
+                    <div className="border-b border-border px-3 py-2">
+                      <p className="truncate text-sm font-semibold text-ink-strong">
+                        {user.name || user.email}
+                      </p>
+                      <p className="truncate text-xs text-ink-subtle">{user.email}</p>
+                    </div>
+                    {canManageUsers && (
+                      <Link
+                        role="menuitem"
+                        href={hrefFor('/users')}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted transition-colors
+                                 hover:bg-surface-muted hover:text-ink-strong"
+                      >
+                        <ShieldCheck className="h-4 w-4" aria-hidden />
+                        Users &amp; Roles
+                      </Link>
+                    )}
                     <Link
                       role="menuitem"
-                      href={hrefFor('/users')}
-                      className="flex items-center gap-2 px-3 py-2 text-sm text-ink-muted transition-colors
-                                 hover:bg-surface-muted hover:text-ink-strong"
-                    >
-                      <ShieldCheck className="h-4 w-4" aria-hidden />
-                      Users &amp; Roles
-                    </Link>
-                  )}
-                  <Link
-                    role="menuitem"
-                    href="/status"
-                    className="block px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-muted
+                      href="/status"
+                      className="block px-3 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-muted
                                hover:text-ink-strong"
-                  >
-                    System status
-                  </Link>
-                  <form action={logoutAction}>
-                    <button
-                      type="submit"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-muted
-                                 transition-colors hover:bg-surface-muted hover:text-ink-strong"
                     >
-                      <LogOut className="h-4 w-4" aria-hidden />
-                      Sign out
-                    </button>
-                  </form>
-                </div>
-              )}
+                      System status
+                    </Link>
+                    <form action={logoutAction}>
+                      <button
+                        type="submit"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-ink-muted
+                                 transition-colors hover:bg-surface-muted hover:text-ink-strong"
+                      >
+                        <LogOut className="h-4 w-4" aria-hidden />
+                        Sign out
+                      </button>
+                    </form>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
 
-        <div className="no-scrollbar min-w-0 flex-1 overflow-y-auto">
-          {/* Keyed by pathname so each real route change remounts this div and
+          <div className="no-scrollbar min-w-0 flex-1 overflow-y-auto">
+            {/* Keyed by pathname so each real route change remounts this div and
               re-triggers the fade — the CSS animation only plays on mount, so
               without the key it would run once and never again. Deliberately
               not keyed on the full URL: switching a query-param filter (a
               brand, a tab, a search term) is an in-page state change, not a
               page transition, and animating every one of those would be the
               "excessive animation" this is supposed to avoid. */}
-          <div key={pathname} className="page-transition">
-            {children}
+            <div key={pathname} className="page-transition">
+              {children}
+            </div>
           </div>
         </div>
-      </div>
 
-      <AddBrandModal
-        open={addBrandOpen}
-        brands={brands}
-        onClose={() => setAddBrandOpen(false)}
-        onCreated={onBrandCreated}
-      />
-    </div>
+        {canAddBrand && (
+          <AddBrandModal
+            open={addBrandOpen}
+            brands={brands}
+            onClose={() => setAddBrandOpen(false)}
+            onCreated={onBrandCreated}
+          />
+        )}
+      </div>
+    </PermissionsProvider>
   );
 }

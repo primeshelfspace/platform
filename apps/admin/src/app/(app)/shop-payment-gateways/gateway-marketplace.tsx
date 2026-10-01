@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { useCan } from '@/hooks/use-permissions';
 import { ArrowRight, CheckCircle2, Globe, Search, ShoppingBag, Star, Zap } from 'lucide-react';
 import {
   COUNTRIES_SUPPORTED,
@@ -48,6 +49,8 @@ function StarRow({ rating }: { rating: number }) {
 }
 
 function GatewayCard({ gateway, connectHref }: { gateway: GatewayListing; connectHref: string }) {
+  // "Shop Now" lands on the connect flow, which is INTEGRATIONS WRITE.
+  const canConnect = useCan('INTEGRATIONS', 'WRITE');
   const highlight = gateway.highlight ? HIGHLIGHT_STYLES[gateway.highlight] : null;
 
   return (
@@ -107,16 +110,18 @@ function GatewayCard({ gateway, connectHref }: { gateway: GatewayListing; connec
             </p>
             <p className="text-sm font-bold text-ink-strong">{gateway.fee}</p>
           </div>
-          <Link
-            href={connectHref}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold text-white
+          {canConnect && (
+            <Link
+              href={connectHref}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-bold text-white
                        transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2
                        focus-visible:ring-offset-2"
-            style={{ backgroundColor: gateway.accentColor }}
-          >
-            Shop Now
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Link>
+              style={{ backgroundColor: gateway.accentColor }}
+            >
+              Shop Now
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          )}
         </div>
       </div>
     </div>

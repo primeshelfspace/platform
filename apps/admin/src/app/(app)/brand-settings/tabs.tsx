@@ -44,9 +44,12 @@ function tabHref(brandId: string | undefined, query: Record<string, string>): st
 export function BrandSettingsTabs({
   active,
   brandId,
+  hidden,
 }: {
   active: BrandSettingsTab;
   brandId: string | undefined;
+  /** Tabs the signed-in role cannot read (see the page's role checks). */
+  hidden?: ReadonlySet<BrandSettingsTab>;
 }) {
   const tabClass = (selected: boolean) =>
     `block whitespace-nowrap border-b-2 px-1 pb-2 text-sm transition-colors ${
@@ -61,7 +64,7 @@ export function BrandSettingsTabs({
       aria-label="Brand settings sections"
     >
       <ul className="-mb-px flex gap-6 overflow-x-auto">
-        {BRAND_SETTINGS_TABS.map((tab) => (
+        {BRAND_SETTINGS_TABS.filter((tab) => !hidden?.has(tab.key)).map((tab) => (
           <li key={tab.key}>
             <Link
               href={tabHref(brandId, { tab: tab.key })}

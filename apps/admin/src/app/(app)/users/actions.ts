@@ -53,9 +53,14 @@ export async function updateUserRoleAction(
 ): Promise<UpdateUserState> {
   const role = String(formData.get('role') ?? '');
   if (!role) return { error: 'Choose a role.' };
+  // Present only when the brand picker submitted alongside the role (an
+  // Owner/Admin moving to a brand-scoped role — see AssignBrandsModal).
+  const withBrands = formData.get('withBrands') === '1';
+  const brandIds = withBrands ? formData.getAll('brandIds').map(String) : undefined;
+  if (withBrands && brandIds!.length === 0) return { error: 'Choose at least one brand.' };
 
   try {
-    const user = await updateUserRole(userId, role);
+    const user = await updateUserRole(userId, role, brandIds);
     return { success: true, user };
   } catch (error) {
     return { error: describeActionError(error, 'Could not change this role.') };

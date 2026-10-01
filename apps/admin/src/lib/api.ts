@@ -9,7 +9,7 @@
  * forwarded — see lib/session.ts.
  */
 
-import type { BusinessType, InvoiceStatus } from '@fenwick/shared';
+import type { BusinessType, InvoiceStatus, PermissionGrants, Role } from '@fenwick/shared';
 import { readSessionToken } from './session';
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
@@ -167,6 +167,14 @@ export interface CurrentUser {
   /** True for an INVITED user still signed in on the temporary password set
    * for them — the layout sends these straight to /set-password. */
   mustResetPassword: boolean;
+  /** Effective permissions as the API computed them for this session — the
+   * only thing the UI consults for "may this user do X" (see
+   * lib/permissions.ts). Never re-derived from `role` on the client. */
+  permissions: PermissionGrants;
+  /** Owner/Merchant Admin: every brand, no assignments. */
+  allBrands: boolean;
+  /** Roles this user may invite as, or change another user to. */
+  assignableRoles: Role[];
 }
 
 /** `token: null` because there is no session yet — this is the call that mints one. */
@@ -299,10 +307,16 @@ export function inviteUser(input: InviteUserFormInput): Promise<ManagedUser> {
   });
 }
 
-export function updateUserRole(id: string, role: string): Promise<ManagedUser> {
+/** `brandIds` is required by the API when moving an Owner/Admin to a
+ * brand-scoped role; role and brands are then applied in one transaction. */
+export function updateUserRole(
+  id: string,
+  role: string,
+  brandIds?: string[],
+): Promise<ManagedUser> {
   return apiFetch<ManagedUser>(`/users/${id}/role`, {
     method: 'PATCH',
-    body: JSON.stringify({ role }),
+    body: JSON.stringify(brandIds ? { role, brandIds } : { role }),
   });
 }
 

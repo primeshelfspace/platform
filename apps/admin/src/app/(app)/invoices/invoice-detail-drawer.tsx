@@ -28,6 +28,7 @@ import {
   invoiceDetailStatusLabel,
 } from '@/lib/invoice-presentation';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
+import { useCan } from '@/hooks/use-permissions';
 import { cancelInvoiceAction } from './actions';
 import { RecordPaymentModal } from './record-payment-modal';
 import { SendInvoiceModal } from './send-invoice-modal';
@@ -92,8 +93,6 @@ export function InvoiceDetailDrawer({
   invoice,
   activity,
   paymentTermsLabel,
-  canRecordPayment,
-  canCancel,
   onChanged,
 }: {
   open: boolean;
@@ -104,10 +103,6 @@ export function InvoiceDetailDrawer({
   invoice: InvoiceDetail | null;
   activity: InvoiceActivityEntry[];
   paymentTermsLabel: string | null | undefined;
-  /** PAYMENTS WRITE — Owner, Merchant Admin, Brand Admin, Finance. */
-  canRecordPayment: boolean;
-  /** INVOICES DELETE — the same four roles. */
-  canCancel: boolean;
   /** Called after a successful Send — the parent owns the actual data
    * (this component only holds ephemeral UI state), so a status change
    * means asking it to re-fetch rather than patching a local copy here. */
@@ -118,6 +113,12 @@ export function InvoiceDetailDrawer({
   const [sendModalOpen, setSendModalOpen] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // Send/Resend are INVOICE_SEND WRITE — every role but Read Only.
+  const canSend = useCan('INVOICE_SEND', 'WRITE');
+  // Record Payment moves the balance (PAYMENTS WRITE); Cancel is a void
+  // (INVOICES DELETE). Both: Owner, Merchant Admin, Brand Admin, Finance.
+  const canRecordPayment = useCan('PAYMENTS', 'WRITE');
+  const canCancel = useCan('INVOICES', 'DELETE');
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const shareMenuRef = useDismissablePanel<HTMLDivElement>(shareMenuOpen, () =>
@@ -243,7 +244,7 @@ export function InvoiceDetailDrawer({
           </div>
 
           <div className="flex flex-wrap shrink-0 items-center justify-end gap-3">
-            {status === 'DRAFT' && (
+            {canSend && status === 'DRAFT' && (
               <button
                 type="button"
                 onClick={() => setSendModalOpen(true)}
@@ -265,7 +266,7 @@ export function InvoiceDetailDrawer({
                 Record Payment
               </button>
             )}
-            {status && status !== 'DRAFT' && (
+            {canSend && status && status !== 'DRAFT' && (
               <button
                 type="button"
                 onClick={() => setSendModalOpen(true)}

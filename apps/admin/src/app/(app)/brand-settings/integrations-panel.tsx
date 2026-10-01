@@ -22,6 +22,7 @@ import type {
 } from '@/lib/api';
 import { Toggle } from '@/components/ui/toggle';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
+import { useCan } from '@/hooks/use-permissions';
 import {
   createZohoSandboxAction,
   deleteZohoSandboxAction,
@@ -120,6 +121,9 @@ export function IntegrationsPanel({
 }) {
   const listHref = `/brand-settings?tab=integrations&brandId=${brandId}`;
   const zohoHref = `${listHref}&integration=zoho`;
+  // Finance holds INTEGRATIONS READ only: it sees status and the log, but
+  // connecting, disconnecting and changing sync settings are WRITE.
+  const canWrite = useCan('INTEGRATIONS', 'WRITE');
 
   if (selected !== 'zoho') {
     return (
@@ -158,7 +162,7 @@ export function IntegrationsPanel({
               View Details
               <ChevronRight className="h-4 w-4" aria-hidden />
             </Link>
-          ) : (
+          ) : canWrite ? (
             <a
               href={connectHref}
               className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black"
@@ -166,6 +170,8 @@ export function IntegrationsPanel({
               <Link2 className="h-4 w-4" aria-hidden />
               Connect
             </a>
+          ) : (
+            <span className="text-sm text-ink-muted">Not connected</span>
           )}
         </div>
       </div>
@@ -189,6 +195,7 @@ export function IntegrationsPanel({
           connectHref={connectHref}
           initialStatus={initialStatus}
           initialActivity={initialActivity}
+          canWrite={canWrite}
         />
       </div>
     </div>
@@ -201,12 +208,14 @@ function ZohoDetail({
   connectHref,
   initialStatus,
   initialActivity,
+  canWrite,
 }: {
   brandId: string;
   brandDisplayName: string;
   connectHref: string;
   initialStatus: ZohoConnectionStatus;
   initialActivity: ZohoActivityEntry[];
+  canWrite: boolean;
 }) {
   const [status, setStatus] = useState(initialStatus);
   const [entries, setEntries] = useState(initialActivity);
@@ -340,7 +349,7 @@ function ZohoDetail({
           </div>
         </div>
 
-        {status.connected ? (
+        {!canWrite ? null : status.connected ? (
           <button
             type="button"
             onClick={() => setConfirmingDisconnect(true)}
@@ -372,7 +381,7 @@ function ZohoDetail({
                 <select
                   aria-label="Sync frequency"
                   value={status.pullFrequencyMinutes}
-                  disabled={savingField === 'pullFrequencyMinutes'}
+                  disabled={!canWrite || savingField === 'pullFrequencyMinutes'}
                   onChange={(event) => {
                     const value = Number(event.target.value) as 1 | 15 | 60 | 1440;
                     void saveSetting(
@@ -414,7 +423,7 @@ function ZohoDetail({
                   label="Customer Synchronization"
                   hint={`Sync customer records between ${brandDisplayName} and Zoho Books.`}
                   checked={status.customerSyncEnabled}
-                  disabled={savingField === 'customerSyncEnabled'}
+                  disabled={!canWrite || savingField === 'customerSyncEnabled'}
                   onChange={(checked) =>
                     void saveSetting(
                       'customerSyncEnabled',
@@ -428,7 +437,7 @@ function ZohoDetail({
                   label="Invoice Synchronization"
                   hint={`Sync invoice status and amounts from Zoho Books into ${brandDisplayName}.`}
                   checked={status.invoiceSyncEnabled}
-                  disabled={savingField === 'invoiceSyncEnabled'}
+                  disabled={!canWrite || savingField === 'invoiceSyncEnabled'}
                   onChange={(checked) =>
                     void saveSetting(
                       'invoiceSyncEnabled',
@@ -441,7 +450,8 @@ function ZohoDetail({
             </section>
           </div>
 
-          <ZohoSandboxSection brandId={brandId} />
+          {/* Every sandbox control (create, rebuild, push, delete) is a write. */}
+          {canWrite && <ZohoSandboxSection brandId={brandId} />}
 
           <section className="rounded-xl border border-border bg-surface shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
@@ -451,15 +461,17 @@ function ZohoDetail({
                   Recent sync activity between {brandDisplayName} and Zoho Books.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={runManualResync}
-                disabled={resyncing}
-                className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted disabled:opacity-60"
-              >
-                <RefreshCw className={`h-4 w-4 ${resyncing ? 'animate-spin' : ''}`} aria-hidden />
-                {resyncing ? 'Queuing…' : 'Manual Resync'}
-              </button>
+              {canWrite && (
+                <button
+                  type="button"
+                  onClick={runManualResync}
+                  disabled={resyncing}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted disabled:opacity-60"
+                >
+                  <RefreshCw className={`h-4 w-4 ${resyncing ? 'animate-spin' : ''}`} aria-hidden />
+                  {resyncing ? 'Queuing…' : 'Manual Resync'}
+                </button>
+              )}
             </div>
 
             {entries.length === 0 ? (

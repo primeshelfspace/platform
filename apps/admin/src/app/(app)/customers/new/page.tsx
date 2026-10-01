@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
-import { ApiError, listBrands } from '@/lib/api';
+import { redirect } from 'next/navigation';
+import { ApiError, listBrands, getCurrentUser } from '@/lib/api';
+import { hasPermission } from '@/lib/permissions';
 import { CustomerForm } from './customer-form';
 import { PageContainer } from '@/components/page-container';
 
@@ -14,6 +16,14 @@ export default async function NewCustomerPage({
   searchParams: Promise<{ brandId?: string }>;
 }) {
   const { brandId } = await searchParams;
+
+  // Defense-in-depth, same as the Users page: the API rejects the create
+  // regardless, but a role without CUSTOMERS WRITE should not land on a form it
+  // can never submit.
+  const user = await getCurrentUser();
+  if (!hasPermission(user, 'CUSTOMERS', 'WRITE')) {
+    redirect(brandId ? `/customers?brandId=${brandId}` : '/customers');
+  }
 
   if (!brandId) {
     return (

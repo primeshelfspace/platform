@@ -3,13 +3,16 @@
 import { useActionState, useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { useFormStatusToast } from '@/hooks/use-form-status-toast';
+import type { Role } from '@fenwick/shared';
 import type { Brand, ManagedUser } from '@/lib/api';
-import { updateUserBrandsAction, type UpdateUserState } from './actions';
+import { ROLE_LABELS } from './role-labels';
+import { updateUserBrandsAction, updateUserRoleAction, type UpdateUserState } from './actions';
 
 const initialState: UpdateUserState = {};
 
 export function AssignBrandsModal({
   user,
+  pendingRole,
   brands,
   onClose,
   onUpdated,
@@ -17,13 +20,20 @@ export function AssignBrandsModal({
   /** Null closes the modal — kept as a single prop (rather than open + user)
    * so the parent can't render it open without a target. */
   user: ManagedUser | null;
+  /** Set when moving an Owner/Admin to this brand-scoped role: the role and
+   * the brands are submitted together, in one API call and one transaction
+   * (the API refuses the role change without them). */
+  pendingRole?: Role;
   brands: Brand[];
   onClose: () => void;
   onUpdated: (user: ManagedUser) => void;
 }) {
-  const action = updateUserBrandsAction.bind(null, user?.id ?? '');
+  const action = (pendingRole ? updateUserRoleAction : updateUserBrandsAction).bind(
+    null,
+    user?.id ?? '',
+  );
   const [state, formAction, pending] = useActionState(action, initialState);
-  useFormStatusToast(state, 'Brand assignments updated.');
+  useFormStatusToast(state, pendingRole ? 'Role updated.' : 'Brand assignments updated.');
 
   const [selected, setSelected] = useState<Set<string>>(new Set(user?.assignedBrandIds ?? []));
 
@@ -52,9 +62,23 @@ export function AssignBrandsModal({
       open={Boolean(user)}
       onClose={onClose}
       titleId="assign-brands-heading"
-      title={`Brands for ${user.name}`}
+      title={
+        pendingRole
+          ? `Choose brands for ${user.name} as ${ROLE_LABELS[pendingRole]}`
+          : `Brands for ${user.name}`
+      }
     >
       <form action={formAction} className="space-y-4">
+        {pendingRole && (
+          <>
+            <input type="hidden" name="role" value={pendingRole} />
+            <input type="hidden" name="withBrands" value="1" />
+            <p className="text-sm text-ink-muted">
+              A {ROLE_LABELS[pendingRole]} only sees the brands they are assigned. Pick at least
+              one.
+            </p>
+          </>
+        )}
         {brands.length === 0 ? (
           <p className="text-sm text-ink-muted">No brands exist yet.</p>
         ) : (
@@ -87,7 +111,7 @@ export function AssignBrandsModal({
           </button>
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || (Boolean(pendingRole) && selected.size === 0)}
             className="rounded-lg bg-black px-5 py-2.5 text-sm font-bold text-white transition-colors
                        hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-[#E5E7EB]
                        disabled:text-[#94A3B8] focus-visible:outline-none focus-visible:ring-2

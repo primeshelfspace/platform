@@ -29,6 +29,7 @@ import type {
 } from '@/lib/api';
 import { Toggle } from '@/components/ui/toggle';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
+import { useCan } from '@/hooks/use-permissions';
 import { GatewayMark } from './gateway-mark';
 import { disconnectPaymentGatewayAction, updatePaymentMethodSettingsAction } from './actions';
 
@@ -231,6 +232,9 @@ function AvailableGatewayCard({
   gateway: PaymentGatewaySummary;
   stripeConnectUrl: string;
 }) {
+  // Connecting a gateway is INTEGRATIONS WRITE; Finance sees the list only.
+  const canConnect = useCan('INTEGRATIONS', 'WRITE');
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4 shadow-sm sm:p-5">
       <div className="flex items-center gap-4">
@@ -241,7 +245,7 @@ function AvailableGatewayCard({
         </div>
       </div>
 
-      {isConnectable(gateway.provider) ? (
+      {!canConnect ? null : isConnectable(gateway.provider) ? (
         <a
           href={stripeConnectUrl}
           className="inline-flex shrink-0 items-center gap-2 rounded-[10px] bg-ink-strong px-4 py-2 text-sm font-bold text-white hover:bg-black"
@@ -361,6 +365,7 @@ function GatewayDetail({
   initialTransactions: PaymentTransactionListResponse | null;
   onGatewaysChange: (updater: (prev: PaymentGatewaySummary[]) => PaymentGatewaySummary[]) => void;
 }) {
+  const canDisconnect = useCan('INTEGRATIONS', 'WRITE');
   const router = useRouter();
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -423,14 +428,16 @@ function GatewayDetail({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setConfirmingDisconnect(true)}
-            className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-danger bg-danger-surface px-4 py-2.5 text-sm font-bold text-danger hover:opacity-90"
-          >
-            <Unlink className="h-4 w-4" aria-hidden />
-            Disconnect
-          </button>
+          {canDisconnect && (
+            <button
+              type="button"
+              onClick={() => setConfirmingDisconnect(true)}
+              className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-danger bg-danger-surface px-4 py-2.5 text-sm font-bold text-danger hover:opacity-90"
+            >
+              <Unlink className="h-4 w-4" aria-hidden />
+              Disconnect
+            </button>
+          )}
         </div>
 
         {initialMethodSettings && (
@@ -512,6 +519,8 @@ function PaymentMethodsSection({
   brandId: string;
   initial: PaymentMethodSettings;
 }) {
+  // PATCH payment-methods is BRAND_CONFIGURATION WRITE (brand-settings.controller.ts).
+  const canEdit = useCan('BRAND_CONFIGURATION', 'WRITE');
   const [settings, setSettings] = useState(initial);
   const [savingField, setSavingField] = useState<
     keyof PaymentMethodSettings | 'digitalWallet' | null
@@ -547,7 +556,7 @@ function PaymentMethodsSection({
           label="Credit / Debit Card"
           hint="Visa, Mastercard, Amex, and Discover — instant confirmation"
           checked={settings.cardEnabled}
-          disabled={savingField === 'cardEnabled'}
+          disabled={!canEdit || savingField === 'cardEnabled'}
           onChange={(v) => void save('cardEnabled', { cardEnabled: v })}
         />
         <Toggle
@@ -555,7 +564,7 @@ function PaymentMethodsSection({
           label="ACH Bank Transfer"
           hint="Pay directly from a US bank account — settles in 3–5 business days"
           checked={settings.achEnabled}
-          disabled={savingField === 'achEnabled'}
+          disabled={!canEdit || savingField === 'achEnabled'}
           onChange={(v) => void save('achEnabled', { achEnabled: v })}
         />
         <Toggle
@@ -563,7 +572,7 @@ function PaymentMethodsSection({
           label="Digital Wallet"
           hint="Apple Pay or Google Pay — only shown if customer device supports it"
           checked={settings.applePayEnabled || settings.googlePayEnabled}
-          disabled={savingField === 'digitalWallet'}
+          disabled={!canEdit || savingField === 'digitalWallet'}
           onChange={(v) => void save('digitalWallet', { applePayEnabled: v, googlePayEnabled: v })}
         />
         <Toggle
@@ -572,7 +581,7 @@ function PaymentMethodsSection({
           label="Upload Check"
           hint="Attach a photo of the check for manual review and approval"
           checked={settings.checkEnabled}
-          disabled={savingField === 'checkEnabled'}
+          disabled={!canEdit || savingField === 'checkEnabled'}
           onChange={(v) => void save('checkEnabled', { checkEnabled: v })}
         />
       </div>

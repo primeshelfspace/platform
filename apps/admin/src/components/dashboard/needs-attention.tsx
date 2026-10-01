@@ -6,6 +6,7 @@ import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from '@fenwick/ui/toast';
 import { retrySyncJobAction } from '../../app/(app)/dashboard-actions';
 import type { NeedsAttentionItem, NeedsAttentionResult } from '@/lib/api';
+import { useCan } from '@/hooks/use-permissions';
 
 const DETAIL_TONE: Record<NeedsAttentionItem['kind'], string> = {
   STALE_DRAFT: 'text-ink-subtle',
@@ -21,6 +22,10 @@ const ICON_BADGE_TONE: Record<NeedsAttentionItem['kind'], string> = {
 
 function RetryButton({ syncJobId }: { syncJobId: string }) {
   const [pending, startTransition] = useTransition();
+  // POST sync-jobs/:id/retry is INTEGRATIONS WRITE — Finance, Sales and Read
+  // Only still see the failure, just not a button that would 403.
+  const canRetry = useCan('INTEGRATIONS', 'WRITE');
+  if (!canRetry) return null;
 
   return (
     <div className="flex shrink-0 flex-col items-end gap-1">

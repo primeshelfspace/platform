@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useRef, useState } from 'react';
-import { ROLES, coversAllBrands, rankOf, type Role } from '@fenwick/shared';
+import { coversAllBrands, type Role } from '@fenwick/shared';
 import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import {
@@ -24,13 +24,14 @@ const initialState: InviteUserState = {};
 export function InviteUserModal({
   open,
   brands,
-  actorRole,
+  assignableRoles,
   onClose,
   onInvited,
 }: {
   open: boolean;
   brands: Brand[];
-  actorRole: string;
+  /** From GET /auth/me — the API's own mayAssignRole, not re-derived here. */
+  assignableRoles: Role[];
   onClose: () => void;
   onInvited: (user: ManagedUser) => void;
 }) {
@@ -42,12 +43,6 @@ export function InviteUserModal({
   const [role, setRole] = useState<Role>('READ_ONLY');
   const [selectedBrands, setSelectedBrands] = useState<Set<string>>(new Set());
   const brandsRequired = !coversAllBrands(role);
-
-  // Only roles the inviting user may actually assign — mirrors mayAssignRole
-  // on the server so a Brand Admin never sees Owner/Admin as an option only
-  // to have it refused on submit.
-  const actorRank = rankOf(actorRole as Role);
-  const assignableRoles = ROLES.filter((candidate) => rankOf(candidate) <= actorRank);
 
   useEffect(() => {
     if (!state.user) return;

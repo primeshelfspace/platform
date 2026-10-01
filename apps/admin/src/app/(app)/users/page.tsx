@@ -1,5 +1,5 @@
+import { hasPermission } from '@/lib/permissions';
 import { redirect } from 'next/navigation';
-import { can, type Role } from '@fenwick/shared';
 import { PageContainer } from '@/components/page-container';
 import { parsePageParams } from '@/lib/pagination';
 import {
@@ -33,11 +33,11 @@ export default async function UsersPage({
   // seeing the page shell at all (see authorisation.ts: hiding navigation is
   // not access control, but it is still worth doing).
   const currentUser = await getCurrentUser();
-  if (!can(currentUser.role as Role, 'USERS', 'READ')) {
+  if (!hasPermission(currentUser, 'USERS', 'READ')) {
     redirect('/');
   }
-  const canWrite = can(currentUser.role as Role, 'USERS', 'WRITE');
-  const canSuspend = can(currentUser.role as Role, 'USERS', 'DELETE');
+  const canWrite = hasPermission(currentUser, 'USERS', 'WRITE');
+  const canSuspend = hasPermission(currentUser, 'USERS', 'DELETE');
 
   let brands: Brand[] = [];
   let brandsError: string | null = null;
@@ -68,7 +68,7 @@ export default async function UsersPage({
     <PageContainer compact>
       <UsersPageClient
         currentUserId={currentUser.id}
-        currentUserRole={currentUser.role}
+        assignableRoles={currentUser.assignableRoles ?? []}
         canWrite={canWrite}
         canSuspend={canSuspend}
         users={users}

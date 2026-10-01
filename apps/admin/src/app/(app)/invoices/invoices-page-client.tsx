@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
+import { NoBrandsState } from '@/components/no-brands-state';
+import { useCan } from '@/hooks/use-permissions';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown, Info, Plus, ScrollText, Search, Send, X } from 'lucide-react';
 import { toast } from '@fenwick/ui/toast';
@@ -59,8 +61,6 @@ export function InvoicesPageClient({
   hasBrands,
   invoicesError,
   justCreated,
-  canRecordPayment,
-  canCancel,
 }: {
   brand: Brand | null;
   /** Already filtered (tab/search/date-range) and paginated server-side —
@@ -77,8 +77,6 @@ export function InvoicesPageClient({
   hasBrands: boolean;
   invoicesError: string | null;
   justCreated: boolean;
-  canRecordPayment: boolean;
-  canCancel: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -204,6 +202,10 @@ export function InvoicesPageClient({
   // checkbox column and its floating action bar only exist in `bulkMode`,
   // entered from the toolbar button and left either by its own cancel (X) or
   // once a send completes.
+  // Bulk mode is only ever entered from its toolbar button, so gating that
+  // one button on INVOICE_SEND WRITE keeps Read Only out of the whole flow.
+  const canSend = useCan('INVOICE_SEND', 'WRITE');
+  const canCreate = useCan('INVOICES', 'WRITE');
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkSending, setBulkSending] = useState(false);
@@ -399,7 +401,7 @@ export function InvoicesPageClient({
             Full invoice lifecycle for this brand, synchronized with Zoho Books.
           </p>
         </div>
-        {brand && (
+        {brand && canCreate && (
           <Link
             href={`/invoices/new?brandId=${brand.id}`}
             className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-black px-4 text-sm font-bold
@@ -418,15 +420,7 @@ export function InvoicesPageClient({
           <p className="mt-1 font-mono text-xs">{brandsError}</p>
         </div>
       ) : !hasBrands ? (
-        <div className="rounded-2xl border border-border bg-surface p-8 text-center">
-          <p className="text-sm text-ink-muted">No brands exist yet.</p>
-          <Link
-            href="/brands/new"
-            className="mt-4 inline-block rounded-md bg-brand px-4 py-2 text-sm font-medium text-brand-foreground"
-          >
-            Create your first brand
-          </Link>
-        </div>
+        <NoBrandsState />
       ) : (
         <>
           <div className="mb-3 flex items-center gap-6 border-b border-[#E5E7EB]">
@@ -513,7 +507,7 @@ export function InvoicesPageClient({
               )}
             </div>
 
-            {brand && !bulkMode && (
+            {brand && canSend && !bulkMode && (
               <button
                 type="button"
                 onClick={() => setBulkMode(true)}
@@ -825,8 +819,6 @@ export function InvoicesPageClient({
         invoice={detailInvoice}
         activity={detailActivity}
         paymentTermsLabel={detailPaymentTerms}
-        canRecordPayment={canRecordPayment}
-        canCancel={canCancel}
         onChanged={() => detailInvoice && openInvoiceDetail(detailInvoice.id)}
       />
     </div>

@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import { can, type Role } from '@fenwick/shared';
 import {
   getCurrentUser,
   getMerchantOnboarding,
@@ -7,6 +6,7 @@ import {
   type MerchantOnboardingState,
 } from './api';
 import { LOGIN_PATH, readSessionToken } from './session';
+import { hasPermission } from './permissions';
 
 /**
  * Onboarding, FR-ONB. The current step is never stored as its own flag — it
@@ -60,7 +60,7 @@ export async function resolveOnboardingStep(
   // not a prompt: every other route bounces them back here, so they cannot
   // reach the app at all and cannot fix it themselves either. Tell them who
   // can instead.
-  if (BRAND_SETUP_STEPS.has(step) && !can(user.role as Role, 'BRANDS', 'WRITE')) {
+  if (BRAND_SETUP_STEPS.has(step) && !hasPermission(user, 'BRANDS', 'WRITE')) {
     return 'awaiting-setup';
   }
   return step;
