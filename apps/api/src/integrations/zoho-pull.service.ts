@@ -14,9 +14,14 @@ import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { RedisService } from '../infra/redis/redis.service.js';
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
 import {
+  PUSHED_CARD_FEE_LINE_DESCRIPTION,
+  PUSHED_CARD_FEE_LINE_NAME,
+  PUSHED_TAX_LINE_DESCRIPTION_PREFIX,
+  PUSHED_TAX_LINE_NAME,
   ZohoBooksAdapter,
   type ZohoContactListItem,
   type ZohoInvoiceDetail,
+  type ZohoInvoiceLineItem,
   type ZohoInvoiceListItem,
 } from '../adapters/accounting/zoho-books.adapter.js';
 import { IntegrationConnectionService } from './integration-connection.service.js';
@@ -54,6 +59,26 @@ const PULL_DETAIL_CONCURRENCY = 8;
  * details in Zoho and asked for a pull right now should get one.
  */
 const CONTACTS_FULL_SCAN_FLOOR_SECONDS = 15 * 60;
+
+/** Whether a Zoho line item is one pushInvoice added for tax or the card fee,
+ * rather than a real product line. Matched on name and description together
+ * (and no tax_id) so a merchant's own line named "Tax" in Zoho is left alone. */
+function syntheticPushedLineKind(line: ZohoInvoiceLineItem): 'TAX' | 'CARD_FEE' | null {
+  if (line.tax_id) return null;
+  if (
+    line.name === PUSHED_TAX_LINE_NAME &&
+    line.description?.startsWith(PUSHED_TAX_LINE_DESCRIPTION_PREFIX)
+  ) {
+    return 'TAX';
+  }
+  if (
+    line.name === PUSHED_CARD_FEE_LINE_NAME &&
+    line.description === PUSHED_CARD_FEE_LINE_DESCRIPTION
+  ) {
+    return 'CARD_FEE';
+  }
+  return null;
+}
 
 /**
  * How often a brand's invoices are reconciled against Zoho's full list to
@@ -114,8 +139,10 @@ const INVOICE_STATUS_MAP: Record<string, InvoiceStatus> = {
  * type, and contact persons aren't in the list response at all). Invoices
  * are list-only: only what GET /invoices' list response itself returns
  * (status, totals, dates, customer, invoice number) is pulled — no per-invoice
- * detail fetch, and therefore no line items, tax breakdown or notes from
- * Zoho. Customer payments are not pulled at all; the outbound direction
+ * detail fetch on import. Line items, tax breakdown and notes come from the
+ * single-invoice GET instead: on demand when an invoice is first opened, and
+ * again whenever Zoho reports a genuine edit to an invoice that already has
+ * line items here (see pullOneInvoice). Customer payments are not pulled at all; the outbound direction
  * (ZohoSyncService.pushPayment) is how Zoho ever learns a payment happened.
  *
  * Zoho is treated as authoritative for everything pulled: totals, balance
@@ -903,7 +930,7 @@ export class ZohoPullService {
         const existing = await this.prisma.withScope(scope, (tx) =>
           tx.invoice.findFirst({
             where: { brandId, zohoInvoiceId: invoiceId },
-            select: { zohoSyncedVersion: true },
+            select: { id: true, zohoSyncedVersion: true, _count: { select: { lineItems: true } } },
           }),
         );
         if (this.isOwnPushEcho(item.last_modified_time, existing?.zohoSyncedVersion)) {
@@ -944,6 +971,25 @@ export class ZohoPullService {
           });
         }
         const currency: CurrencyCode = item.currency_code;
+
+        // A genuine Zoho edit to an invoice whose line items are already stored
+        // here. The list response carries only header fields, and the on-demand
+        // enrichment only ever runs for an invoice with no line items at all, so
+        // without this an edit to items, quantities, rates or notes in Zoho was
+        // never reflected — the header updated and the SyncJob reported success,
+        // while the line items stayed as they were. One detail GET per edited
+        // invoice; invoices with no local line items stay lazy and are still
+        // fetched by the on-demand path when first opened.
+        //
+        // Applied BEFORE the header upsert below, because that upsert stamps
+        // zohoSyncedVersion: if this write fails the version is not stamped and
+        // the next pull retries the invoice, instead of treating it as already
+        // up to date with stale line items.
+        if (existing && existing._count.lineItems > 0) {
+          const detail = await this.zoho.getInvoice(connection, invoiceId);
+          await this.applyInvoiceDetail(scope, existing.id, detail, currency);
+        }
+
         const totalMinor = BigInt(this.zoho.decimalToMinor(item.total, currency));
         const balanceMinor = BigInt(this.zoho.decimalToMinor(item.balance, currency));
 
@@ -1073,36 +1119,68 @@ export class ZohoPullService {
       zohoInvoiceId,
       async () => {
         const detail = await this.zoho.getInvoice(connection, zohoInvoiceId);
-
-        const taxRateBpApplied =
-          detail.sub_total > 0 ? Math.round((detail.tax_total / detail.sub_total) * 10000) : 0;
-        const lineItems = this.toLocalLineItems(invoiceId, detail, currency);
-
-        await this.prisma.withScope(scope, async (tx) => {
-          await tx.invoice.update({
-            where: { id: invoiceId },
-            data: {
-              subtotalMinor: BigInt(this.zoho.decimalToMinor(detail.sub_total, currency)),
-              taxRateBpApplied,
-              taxMinor: BigInt(this.zoho.decimalToMinor(detail.tax_total, currency)),
-              notes: detail.notes ?? null,
-            },
-          });
-          for (const item of lineItems) {
-            await tx.lineItem.upsert({
-              where: { invoiceId_position: { invoiceId, position: item.position } },
-              create: item,
-              update: item,
-            });
-          }
-          await tx.lineItem.deleteMany({
-            where: { invoiceId, position: { gte: lineItems.length } },
-          });
-        });
+        await this.applyInvoiceDetail(scope, invoiceId, detail, currency);
         return true;
       },
       { skippedWhen: (applied) => applied === false },
     );
+  }
+
+  /** Writes a Zoho invoice detail's line items, tax breakdown and notes onto
+   * the local invoice `invoiceId`. Shared by the on-demand enrichment above
+   * and pullOneInvoice's refresh of an invoice edited in Zoho. */
+  private async applyInvoiceDetail(
+    scope: Scope,
+    invoiceId: string,
+    detail: ZohoInvoiceDetail,
+    currency: CurrencyCode,
+  ): Promise<void> {
+    // pushInvoice appends tax (when no synced TaxRate) and the card fee as
+    // plain line items. Read back as-is they would become products, fold into
+    // subtotalMinor and double-count cardFeeMinor — so they are recognised and
+    // mapped back: the tax line onto taxMinor, the fee line dropped (cardFeeMinor
+    // is owned locally and left untouched).
+    let syntheticTaxMinor = 0;
+    let syntheticFeeMinor = 0;
+    const realLines = detail.line_items.filter((line) => {
+      const kind = syntheticPushedLineKind(line);
+      if (kind === null) return true;
+      const amount = this.zoho.decimalToMinor(line.rate * line.quantity, currency);
+      if (kind === 'TAX') syntheticTaxMinor += amount;
+      else syntheticFeeMinor += amount;
+      return false;
+    });
+    const subtotalMinor =
+      this.zoho.decimalToMinor(detail.sub_total, currency) - syntheticTaxMinor - syntheticFeeMinor;
+    const taxMinor = this.zoho.decimalToMinor(detail.tax_total, currency) + syntheticTaxMinor;
+    const taxRateBpApplied = subtotalMinor > 0 ? Math.round((taxMinor / subtotalMinor) * 10000) : 0;
+    const lineItems = this.toLocalLineItems(
+      invoiceId,
+      { ...detail, line_items: realLines },
+      currency,
+    );
+
+    await this.prisma.withScope(scope, async (tx) => {
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          subtotalMinor: BigInt(subtotalMinor),
+          taxRateBpApplied,
+          taxMinor: BigInt(taxMinor),
+          notes: detail.notes ?? null,
+        },
+      });
+      for (const item of lineItems) {
+        await tx.lineItem.upsert({
+          where: { invoiceId_position: { invoiceId, position: item.position } },
+          create: item,
+          update: item,
+        });
+      }
+      await tx.lineItem.deleteMany({
+        where: { invoiceId, position: { gte: lineItems.length } },
+      });
+    });
   }
 
   /** Same mapping pullOneInvoice used before line items moved to the

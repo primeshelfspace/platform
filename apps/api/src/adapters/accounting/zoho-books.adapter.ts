@@ -133,6 +133,15 @@ export interface ZohoInvoiceLineItem {
   tax_id?: string;
 }
 
+/** The plain line items pushInvoice appends for tax and the card fee. Exported
+ * so ZohoPullService can recognise them when an invoice is read back. */
+export const PUSHED_TAX_LINE_NAME = 'Tax';
+export const PUSHED_TAX_LINE_DESCRIPTION_PREFIX =
+  'Tax at the rate applied when this invoice was issued';
+export const PUSHED_CARD_FEE_LINE_NAME = 'Card processing fee';
+export const PUSHED_CARD_FEE_LINE_DESCRIPTION =
+  'Applied because this invoice was paid by card or digital wallet';
+
 /** GET /invoices/{id} only — line_items is absent from the list response. */
 export interface ZohoInvoiceDetail extends ZohoInvoiceListItem {
   sub_total: number;
@@ -518,8 +527,8 @@ export class ZohoBooksAdapter implements AccountingPort {
     // tax as a visible, zero-quantity-priced line rather than a silent gap.
     if (invoice.taxMinor > 0 && invoice.lines.every((l) => !l.remoteTaxId)) {
       lineItems.push({
-        name: 'Tax',
-        description: `Tax at the rate applied when this invoice was issued (${(invoice.taxRateBpApplied / 100).toFixed(2)}%)`,
+        name: PUSHED_TAX_LINE_NAME,
+        description: `${PUSHED_TAX_LINE_DESCRIPTION_PREFIX} (${(invoice.taxRateBpApplied / 100).toFixed(2)}%)`,
         rate: this.minorToDecimal(invoice.taxMinor, invoice.currency),
         quantity: 1,
         tax_id: undefined,
@@ -527,8 +536,8 @@ export class ZohoBooksAdapter implements AccountingPort {
     }
     if (invoice.cardFeeMinor > 0) {
       lineItems.push({
-        name: 'Card processing fee',
-        description: 'Applied because this invoice was paid by card or digital wallet',
+        name: PUSHED_CARD_FEE_LINE_NAME,
+        description: PUSHED_CARD_FEE_LINE_DESCRIPTION,
         rate: this.minorToDecimal(invoice.cardFeeMinor, invoice.currency),
         quantity: 1,
         tax_id: undefined,

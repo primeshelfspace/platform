@@ -348,6 +348,102 @@ describeWithDb('ZohoPullService', () => {
       expect(lines[0]!.lineTotalMinor).toBe(10000n);
     });
 
+    it('refreshes stored line items when Zoho reports an edit to the invoice', async () => {
+      const zohoInvoiceId = `edit-invoice-${randomUUID()}`;
+      const { invoice, contactId } = await zohoSourcedInvoiceWithNoLineItems(zohoInvoiceId);
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.invoiceDetails.set(
+        zohoInvoiceId,
+        fakeInvoiceDetail(zohoInvoiceId, invoice.number, contactId),
+      );
+      const svc = service(zoho);
+      await svc.enrichInvoiceFromZohoOnDemand(scope, brandId, invoice.id);
+
+      // Edited in Zoho: quantity 1 -> 3, and a second item added.
+      zoho.invoiceDetails.set(zohoInvoiceId, {
+        ...fakeInvoiceDetail(zohoInvoiceId, invoice.number, contactId),
+        total: 400,
+        balance: 400,
+        sub_total: 400,
+        tax_total: 0,
+        line_items: [
+          { name: 'Consulting', rate: 100, quantity: 3 },
+          { name: 'Setup', rate: 100, quantity: 1 },
+        ],
+      });
+      const applied = await svc.pullOneInvoice(scope, brandId, connection, {
+        ...fakeInvoiceListItem(zohoInvoiceId, invoice.number, contactId),
+        total: 400,
+        balance: 400,
+        last_modified_time: '2026-09-02T10:00:00+0000',
+      });
+      expect(applied).toBe(true);
+
+      const lines = await owner.lineItem.findMany({
+        where: { invoiceId: invoice.id },
+        orderBy: { position: 'asc' },
+      });
+      expect(lines.map((l) => [l.itemName, l.quantity])).toEqual([
+        ['Consulting', 30_000],
+        ['Setup', 10_000],
+      ]);
+      const after = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      expect(after.subtotalMinor).toBe(40000n);
+      expect(after.totalMinor).toBe(40000n);
+    });
+
+    it('maps the tax and card fee lines pushInvoice added back instead of importing them as items', async () => {
+      const zohoInvoiceId = `pushed-lines-${randomUUID()}`;
+      const { invoice, contactId } = await zohoSourcedInvoiceWithNoLineItems(zohoInvoiceId);
+      await owner.invoice.update({ where: { id: invoice.id }, data: { cardFeeMinor: 300n } });
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.invoiceDetails.set(
+        zohoInvoiceId,
+        fakeInvoiceDetail(zohoInvoiceId, invoice.number, contactId),
+      );
+      const svc = service(zoho);
+      await svc.enrichInvoiceFromZohoOnDemand(scope, brandId, invoice.id);
+
+      // Edited in Zoho (quantity 1 -> 2); the platform's own tax and fee lines ride along.
+      zoho.invoiceDetails.set(zohoInvoiceId, {
+        ...fakeInvoiceDetail(zohoInvoiceId, invoice.number, contactId),
+        total: 213,
+        balance: 213,
+        sub_total: 213,
+        tax_total: 0,
+        line_items: [
+          { name: 'Consulting', rate: 100, quantity: 2 },
+          {
+            name: 'Tax',
+            description: 'Tax at the rate applied when this invoice was issued (5.00%)',
+            rate: 10,
+            quantity: 1,
+          },
+          {
+            name: 'Card processing fee',
+            description: 'Applied because this invoice was paid by card or digital wallet',
+            rate: 3,
+            quantity: 1,
+          },
+        ],
+      });
+      const applied = await svc.pullOneInvoice(scope, brandId, connection, {
+        ...fakeInvoiceListItem(zohoInvoiceId, invoice.number, contactId),
+        total: 213,
+        balance: 213,
+        last_modified_time: '2026-09-02T10:00:00+0000',
+      });
+      expect(applied).toBe(true);
+
+      const lines = await owner.lineItem.findMany({ where: { invoiceId: invoice.id } });
+      expect(lines.map((l) => [l.itemName, l.quantity])).toEqual([['Consulting', 20_000]]);
+      const after = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      expect(after.subtotalMinor).toBe(20000n);
+      expect(after.taxMinor).toBe(1000n);
+      expect(after.taxRateBpApplied).toBe(500);
+      expect(after.cardFeeMinor).toBe(300n);
+    });
+
     it('does nothing for an invoice with no Zoho id at all', async () => {
       const customer = await owner.customer.create({
         data: { brandId, type: 'BUSINESS', displayName: 'Local Only Co' },
@@ -442,7 +538,9 @@ describeWithDb('ZohoPullService', () => {
       true,
     );
     expect(touched).toBe(1);
-    const customer = await owner.customer.findFirst({ where: { brandId, zohoContactId: contactId } });
+    const customer = await owner.customer.findFirst({
+      where: { brandId, zohoContactId: contactId },
+    });
     expect(customer?.displayName).toBe('After Edit Co');
 
     // Unchanged on the next scan: no detail fetch at all.
