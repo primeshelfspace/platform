@@ -530,6 +530,11 @@ export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 
 export const updateUserRoleSchema = z.object({
   role: roleSchema,
+  /** Required when moving a user from an all-brand role (Owner/Admin) to a
+   * brand-scoped one — they hold no assignments, and a brand-scoped role
+   * with none is an account that can see nothing. Applied in the same
+   * transaction as the role change; enforced in UsersService. */
+  brandIds: z.array(idSchema).max(200).optional(),
 });
 export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>;
 

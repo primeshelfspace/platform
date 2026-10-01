@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -104,7 +105,7 @@ export class UsersService {
 
     const brandIds = coversAllBrands(input.role) ? [] : dedupe(input.brandIds);
     if (!coversAllBrands(input.role) && brandIds.length === 0) {
-      throw new ForbiddenException('this role needs at least one assigned brand');
+      throw new BadRequestException('this role needs at least one assigned brand');
     }
     if (
       !coversAllBrands(scope.role) &&
@@ -147,7 +148,19 @@ export class UsersService {
     return toManagedUser(created);
   }
 
-  async updateRole(scope: RequestScope, id: string, role: Role): Promise<ManagedUser> {
+  /**
+   * Changes a user's role, and — when given — their brands in the same
+   * transaction. Brands are mandatory when the move is from an all-brand
+   * role to a brand-scoped one: the user holds no assignment rows yet, and
+   * a brand-scoped account with none can see nothing at all (the same rule
+   * invite() applies to a brand-scoped invitee).
+   */
+  async updateRole(
+    scope: RequestScope,
+    id: string,
+    role: Role,
+    brandIds?: readonly string[],
+  ): Promise<ManagedUser> {
     if (id === scope.userId) {
       throw new ForbiddenException('you cannot change your own role');
     }
@@ -162,8 +175,13 @@ export class UsersService {
         await this.assertNotLastOwner(tx, existing.id);
       }
 
+      const becomesBrandScoped = coversAllBrands(existing.role) && !coversAllBrands(role);
+      if (becomesBrandScoped && !brandIds?.length) {
+        throw new BadRequestException('this role needs at least one assigned brand');
+      }
+
       try {
-        const updated = await tx.user.update({
+        await tx.user.update({
           where: { id: existing.id },
           data: {
             role,
@@ -173,12 +191,20 @@ export class UsersService {
             // silently resurrect stale brand access.
             ...(coversAllBrands(role) ? { assignments: { deleteMany: {} } } : {}),
           },
-          include: { assignments: true },
         });
-        return toManagedUser(updated);
+        if (!coversAllBrands(role) && brandIds !== undefined) {
+          await this.replaceAssignments(tx, scope, existing.id, dedupe(brandIds));
+        }
       } catch (error) {
         throw this.translateWriteError(error);
       }
+
+      return toManagedUser(
+        await tx.user.findUniqueOrThrow({
+          where: { id: existing.id },
+          include: { assignments: true },
+        }),
+      );
     });
   }
 
@@ -215,28 +241,7 @@ export class UsersService {
         throw new ForbiddenException('this role already covers every brand');
       }
 
-      if (coversAllBrands(scope.role)) {
-        await tx.user.update({
-          where: { id: existing.id },
-          data: {
-            assignments: { deleteMany: {}, create: deduped.map((brandId) => ({ brandId })) },
-          },
-        });
-      } else {
-        const administered = new Set(scope.assignedBrandIds);
-        if (deduped.some((brandId) => !administered.has(brandId))) {
-          throw new ForbiddenException('you may only assign brands you administer');
-        }
-        await tx.userBrandAssignment.deleteMany({
-          where: { userId: existing.id, brandId: { in: [...administered] } },
-        });
-        if (deduped.length) {
-          await tx.userBrandAssignment.createMany({
-            data: deduped.map((brandId) => ({ userId: existing.id, brandId })),
-            skipDuplicates: true,
-          });
-        }
-      }
+      await this.replaceAssignments(tx, scope, existing.id, deduped);
 
       const updated = await tx.user.findUniqueOrThrow({
         where: { id: existing.id },
@@ -244,6 +249,51 @@ export class UsersService {
       });
       return toManagedUser(updated);
     });
+  }
+
+  /**
+   * The one place a brand-scoped user's assignments are rewritten — shared by
+   * updateBrands and updateRole so the two can never apply different rules.
+   *
+   * An all-brand actor sees every assignment, so it replaces the whole set
+   * and may not leave it empty (an account that can see nothing). A Brand
+   * Admin only touches rows for brands they administer: a full replace would
+   * silently revoke assignments made by another Brand Admin for brands this
+   * one cannot see, which is also why emptying *their* slice is allowed —
+   * the user may still hold brands outside it.
+   */
+  private async replaceAssignments(
+    tx: ScopedClient,
+    scope: RequestScope,
+    userId: string,
+    brandIds: readonly string[],
+  ): Promise<void> {
+    if (coversAllBrands(scope.role)) {
+      if (brandIds.length === 0) {
+        throw new BadRequestException('this role needs at least one assigned brand');
+      }
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          assignments: { deleteMany: {}, create: brandIds.map((brandId) => ({ brandId })) },
+        },
+      });
+      return;
+    }
+
+    const administered = new Set(scope.assignedBrandIds);
+    if (brandIds.some((brandId) => !administered.has(brandId))) {
+      throw new ForbiddenException('you may only assign brands you administer');
+    }
+    await tx.userBrandAssignment.deleteMany({
+      where: { userId, brandId: { in: [...administered] } },
+    });
+    if (brandIds.length) {
+      await tx.userBrandAssignment.createMany({
+        data: brandIds.map((brandId) => ({ userId, brandId })),
+        skipDuplicates: true,
+      });
+    }
   }
 
   async updateStatus(scope: RequestScope, id: string, status: UserStatus): Promise<ManagedUser> {

@@ -137,6 +137,37 @@ export function mayAssignRole(actor: Role, target: Role): boolean {
   return can(actor, 'USERS', 'WRITE') && RANK[actor] >= RANK[target];
 }
 
+/**
+ * A role's effective permissions in a JSON-safe shape — what the API hands
+ * the client (GET /auth/me) so the UI renders from the server's decision
+ * rather than re-deriving it from a role string. Every resource is present;
+ * an empty array means no access.
+ */
+export type PermissionGrants = Readonly<Record<Resource, readonly Action[]>>;
+
+export function grantsFor(role: Role): PermissionGrants {
+  const out = {} as Record<Resource, readonly Action[]>;
+  for (const resource of RESOURCES) {
+    // ACTIONS order, not Set insertion order, so the payload is stable.
+    out[resource] = ACTIONS.filter((action) => PERMISSIONS[role][resource].has(action));
+  }
+  return out;
+}
+
+/** The client-side counterpart of can(): reads grants, never the matrix. */
+export function hasGrant(
+  grants: PermissionGrants | null | undefined,
+  resource: Resource,
+  action: Action,
+): boolean {
+  return grants?.[resource]?.includes(action) ?? false;
+}
+
+/** Every role this actor may hand out — the invite and role pickers' options. */
+export function assignableRolesFor(actor: Role): Role[] {
+  return ROLES.filter((target) => mayAssignRole(actor, target));
+}
+
 export interface AccessRequest {
   readonly role: Role;
   readonly resource: Resource;

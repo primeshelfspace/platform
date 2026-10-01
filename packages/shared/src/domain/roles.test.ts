@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ACTIONS,
   RESOURCES,
   ROLES,
   actionsFor,
+  assignableRolesFor,
   can,
+  grantsFor,
+  hasGrant,
   checkAccess,
   coversAllBrands,
   mayAssignRole,
@@ -123,6 +127,40 @@ describe('role assignment', () => {
     expect(mayAssignRole('BRAND_ADMIN', 'SALES_USER')).toBe(true);
     expect(mayAssignRole('MERCHANT_OWNER', 'MERCHANT_OWNER')).toBe(true);
     expect(mayAssignRole('FINANCE_USER', 'READ_ONLY')).toBe(false);
+  });
+});
+
+describe('permission grants (the shape /auth/me sends the client)', () => {
+  it('agrees with can() for every role, resource and action', () => {
+    for (const role of ROLES) {
+      const grants = grantsFor(role);
+      for (const resource of RESOURCES) {
+        for (const action of ACTIONS) {
+          expect(hasGrant(grants, resource, action)).toBe(can(role, resource, action));
+        }
+      }
+    }
+  });
+
+  it('survives a JSON round trip unchanged', () => {
+    const grants = grantsFor('FINANCE_USER');
+    expect(JSON.parse(JSON.stringify(grants))).toEqual(grants);
+  });
+
+  it('denies everything when no grants are present', () => {
+    expect(hasGrant(null, 'INVOICES', 'READ')).toBe(false);
+    expect(hasGrant(undefined, 'INVOICES', 'READ')).toBe(false);
+  });
+
+  it('lists only the roles an actor may assign', () => {
+    expect(assignableRolesFor('BRAND_ADMIN')).toEqual([
+      'BRAND_ADMIN',
+      'FINANCE_USER',
+      'SALES_USER',
+      'READ_ONLY',
+    ]);
+    expect(assignableRolesFor('MERCHANT_OWNER')).toEqual([...ROLES]);
+    expect(assignableRolesFor('FINANCE_USER')).toEqual([]);
   });
 });
 

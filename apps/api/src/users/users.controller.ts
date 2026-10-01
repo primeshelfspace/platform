@@ -62,7 +62,7 @@ export class UsersController {
     @Param('id', zodPipe(idSchema)) id: string,
     @Body(zodPipe(updateUserRoleSchema)) body: UpdateUserRoleInput,
   ): Promise<ManagedUser> {
-    return this.users.updateRole(scope, id, body.role);
+    return this.users.updateRole(scope, id, body.role, body.brandIds);
   }
 
   @Put(':id/brands')

@@ -1,6 +1,9 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import {
+  assignableRolesFor,
+  coversAllBrands,
+  grantsFor,
   forgotPasswordSchema,
   loginSchema,
   registerSchema,
@@ -8,8 +11,10 @@ import {
   setPasswordWithTokenSchema,
   type ForgotPasswordInput,
   type LoginInput,
+  type PermissionGrants,
   type RegisterInput,
   type RequestScope,
+  type Role,
   type SetPasswordInput,
   type SetPasswordWithTokenInput,
 } from '@fenwick/shared';
@@ -174,6 +179,12 @@ export class AuthController {
       role: scope.role,
       assignedBrandIds: scope.assignedBrandIds,
       mustResetPassword: profile?.mustResetPassword ?? false,
+      // Computed from the same matrix and the same scope the guard enforces
+      // on every request — the client renders from this and never derives
+      // permissions itself, so UI and API cannot disagree about a role.
+      permissions: grantsFor(scope.role),
+      allBrands: coversAllBrands(scope.role),
+      assignableRoles: assignableRolesFor(scope.role),
     };
   }
 
@@ -202,4 +213,10 @@ export interface CurrentUserResponse {
   role: string;
   assignedBrandIds: readonly string[];
   mustResetPassword: boolean;
+  /** Effective permissions, resource → actions. Empty array = no access. */
+  permissions: PermissionGrants;
+  /** True for Owner/Merchant Admin: every brand, no assignments needed. */
+  allBrands: boolean;
+  /** Roles this user may invite as or change others to (rank rule). */
+  assignableRoles: Role[];
 }

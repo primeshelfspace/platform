@@ -282,4 +282,50 @@ describeWithDb('UsersService', () => {
     });
     expect(rows.map((r) => r.brandId)).toEqual([brandBId]);
   });
+
+  describe('moving between all-brand and brand-scoped roles', () => {
+    async function createAdmin(): Promise<string> {
+      const row = await owner.user.create({
+        data: {
+          merchantId,
+          email: `demote-${randomUUID()}@users-fixture.test`,
+          name: 'Fixture Demotee',
+          passwordHash: 'unused',
+          role: 'MERCHANT_ADMIN',
+          status: 'ACTIVE',
+        },
+      });
+      return row.id;
+    }
+
+    it('refuses a demotion to a brand-scoped role without brands', async () => {
+      const id = await createAdmin();
+      await expect(users.updateRole(ownerAScope, id, 'SALES_USER')).rejects.toThrow(
+        /needs at least one assigned brand/,
+      );
+      // Rolled back: still an Admin, not a brand-less Sales user.
+      const row = await owner.user.findUniqueOrThrow({ where: { id } });
+      expect(row.role).toBe('MERCHANT_ADMIN');
+    });
+
+    it('demotes and assigns brands in one step', async () => {
+      const id = await createAdmin();
+      const updated = await users.updateRole(ownerAScope, id, 'FINANCE_USER', [brandBId]);
+      expect(updated.role).toBe('FINANCE_USER');
+      expect(updated.assignedBrandIds).toEqual([brandBId]);
+    });
+
+    it('clears assignments on promotion to an all-brand role', async () => {
+      const id = await createAdmin();
+      await users.updateRole(ownerAScope, id, 'SALES_USER', [brandAId]);
+      const promoted = await users.updateRole(ownerAScope, id, 'MERCHANT_ADMIN');
+      expect(promoted.assignedBrandIds).toEqual([]);
+    });
+
+    it('refuses an all-brand actor emptying a brand-scoped user’s brands', async () => {
+      await expect(users.updateBrands(ownerAScope, salesUserId, [])).rejects.toThrow(
+        /needs at least one assigned brand/,
+      );
+    });
+  });
 });
