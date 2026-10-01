@@ -128,7 +128,7 @@ describeWithDb('ZohoWebhookService', () => {
     expect(pull.pullOneCustomerNow).toHaveBeenCalledWith(brandA, contactId);
   });
 
-  it('drops a duplicate webhook delivery within the dedup window instead of pulling again', async () => {
+  it('passes a second contact update within 30s through, leaving redelivery to the pull version check', async () => {
     const contactId = `contact-${randomUUID()}`;
     await owner.customer.create({
       data: { brandId: brandA, displayName: 'Acme Co', zohoContactId: contactId },
@@ -136,11 +136,13 @@ describeWithDb('ZohoWebhookService', () => {
     const pull = fakePull();
     const service = new ZohoWebhookService(prisma, redis, pull);
 
+    // A 30s guard here used to drop a genuine second edit made in Zoho; a true
+    // redelivery is a no-op in pullOneCustomer's last_modified_time check.
     await service.handleContactEvent('status_updated', 'org-x', contactId);
     const second = await service.handleContactEvent('status_updated', 'org-x', contactId);
 
     expect(second.status).toBe(200);
-    expect(pull.pullOneCustomerNow).toHaveBeenCalledTimes(1);
+    expect(pull.pullOneCustomerNow).toHaveBeenCalledTimes(2);
   });
 
   // --- New records created natively in Zoho -----------------------------------
