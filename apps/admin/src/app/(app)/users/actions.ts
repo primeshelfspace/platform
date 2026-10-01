@@ -42,6 +42,7 @@ export async function inviteUserAction(
 
 export interface UpdateUserState {
   readonly error?: string;
+  readonly success?: boolean;
   readonly user?: ManagedUser;
 }
 
@@ -55,7 +56,7 @@ export async function updateUserRoleAction(
 
   try {
     const user = await updateUserRole(userId, role);
-    return { user };
+    return { success: true, user };
   } catch (error) {
     return { error: describeActionError(error, 'Could not change this role.') };
   }
@@ -70,7 +71,7 @@ export async function updateUserBrandsAction(
 
   try {
     const user = await updateUserBrands(userId, brandIds);
-    return { user };
+    return { success: true, user };
   } catch (error) {
     return { error: describeActionError(error, 'Could not update brand assignments.') };
   }
@@ -90,7 +91,7 @@ export async function updateUserStatusAction(
 
   try {
     const user = await updateUserStatus(userId, status);
-    return { user };
+    return { success: true, user };
   } catch (error) {
     return { error: describeActionError(error, 'Could not update this account.') };
   }

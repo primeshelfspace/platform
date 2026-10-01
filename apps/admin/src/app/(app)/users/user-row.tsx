@@ -81,7 +81,7 @@ export function UserRow({
       <td className="px-4 py-3">
         {editableRole ? (
           <form action={roleFormAction} className="inline-flex items-center gap-2">
-            <Select name="role" compact defaultValue={user.role}>
+            <Select key={user.role} name="role" compact defaultValue={user.role}>
               {assignableRoles.map((role) => (
                 <option key={role} value={role}>
                   {ROLE_LABELS[role]}
