@@ -406,6 +406,53 @@ describeWithDb('ZohoPullService', () => {
     await redis.invalidate(floorKey);
   });
 
+  it('applies a Zoho contact edit even when the brand cursor has already moved past it', async () => {
+    // The cursor advances on every pullBrand run, including runs where the
+    // contacts scan was floored — so by the next contact scan, an edit made
+    // in between is older than the cursor. It must still be applied.
+    const zoho = new FakeZohoBooksAdapter();
+    const contactId = `cursor-contact-${randomUUID()}`;
+    const firstVersion = '2026-09-01T10:00:00+0000';
+    zoho.contacts.set(contactId, {
+      ...fakeContact(contactId, 'Before Edit Co'),
+      last_modified_time: firstVersion,
+    });
+    zoho.listedContacts = [
+      { contact_id: contactId, contact_name: 'Before Edit Co', last_modified_time: firstVersion },
+    ];
+    const floorKey = `zoho:contacts-scanned:${brandId}`;
+    await redis.invalidate(floorKey);
+    const svc = service(zoho, redis);
+    await svc.pullCustomersIfDue(scope, brandId, connection, null, true);
+
+    const editedVersion = '2026-09-01T10:05:00+0000';
+    zoho.contacts.set(contactId, {
+      ...fakeContact(contactId, 'After Edit Co'),
+      last_modified_time: editedVersion,
+    });
+    zoho.listedContacts = [
+      { contact_id: contactId, contact_name: 'After Edit Co', last_modified_time: editedVersion },
+    ];
+    const cursorPastTheEdit = new Date('2026-09-01T10:14:00Z');
+    const touched = await svc.pullCustomersIfDue(
+      scope,
+      brandId,
+      connection,
+      cursorPastTheEdit,
+      true,
+    );
+    expect(touched).toBe(1);
+    const customer = await owner.customer.findFirst({ where: { brandId, zohoContactId: contactId } });
+    expect(customer?.displayName).toBe('After Edit Co');
+
+    // Unchanged on the next scan: no detail fetch at all.
+    const callsBefore = zoho.getContactCalls;
+    await svc.pullCustomersIfDue(scope, brandId, connection, cursorPastTheEdit, true);
+    expect(zoho.getContactCalls).toBe(callsBefore);
+
+    await redis.invalidate(floorKey);
+  });
+
   it('archives a customer whose Zoho contact is inactive, and re-activates it if Zoho flips back', async () => {
     const zoho = new FakeZohoBooksAdapter();
     const contactId = `status-contact-${randomUUID()}`;

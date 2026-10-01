@@ -116,11 +116,15 @@ export class ZohoWebhookService {
         return { status: 200 };
       }
       if (objectType === 'CUSTOMER') {
+        // No post-apply guard for contacts: pullOneCustomer's own
+        // last_modified_time check already turns a redelivery into a no-op,
+        // whereas a 30s guard here also dropped a genuine second edit made in
+        // Zoho within that window.
         await this.zohoPull.pullOneCustomerNow(existing.brandId, remoteId);
       } else {
         await this.zohoPull.pullOneInvoiceNow(existing.brandId, remoteId);
+        await this.redis.markSyncAction(existing.brandId, existing.id, action);
       }
-      await this.redis.markSyncAction(existing.brandId, existing.id, action);
       return { status: 200 };
     }
 

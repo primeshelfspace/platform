@@ -15,6 +15,7 @@ import { RedisService } from '../infra/redis/redis.service.js';
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
 import {
   ZohoBooksAdapter,
+  type ZohoContactListItem,
   type ZohoInvoiceDetail,
   type ZohoInvoiceListItem,
 } from '../adapters/accounting/zoho-books.adapter.js';
@@ -374,7 +375,7 @@ export class ZohoPullService {
     if (!force && (await this.redis.getJson<boolean>(floorKey))) {
       return 0;
     }
-    const { touched, seen } = await this.pullCustomers(scope, brandId, connection, cursor);
+    const { touched, seen } = await this.pullCustomers(scope, brandId, connection, cursor, force);
 
     // Contacts are the one entity whose normal pull is already a full scan
     // (there is no server-side modified-time filter to narrow it), so the
@@ -417,6 +418,7 @@ export class ZohoPullService {
     brandId: string,
     connection: AccountingConnection,
     cursor: Date | null,
+    force = false,
   ): Promise<{ touched: number; seen: Array<{ contactId: string; status: string | undefined }> }> {
     return this.recordPull(brandId, 'CUSTOMER', 'list', async () => {
       let page = 1;
@@ -431,10 +433,12 @@ export class ZohoPullService {
         for (const item of contacts) {
           seen.push({ contactId: item.contact_id, status: item.status });
         }
-        const due = contacts.filter(
-          (item) =>
-            !cursor || !item.last_modified_time || new Date(item.last_modified_time) > cursor,
+        const versions = await this.localContactVersions(
+          scope,
+          brandId,
+          contacts.map((item) => item.contact_id),
         );
+        const due = contacts.filter((item) => this.isContactDue(item, versions, cursor, force));
         // Counts records actually written, not records considered — an echo of
         // our own push is fetched and then skipped, and reporting it as pulled
         // would overstate what the run did.
@@ -450,6 +454,57 @@ export class ZohoPullService {
       }
       return { touched, seen };
     });
+  }
+
+  /** zohoContactId -> zohoSyncedVersion for this page's contacts that already
+   * exist locally. One query per page rather than per contact. */
+  private async localContactVersions(
+    scope: Scope,
+    brandId: string,
+    contactIds: string[],
+  ): Promise<Map<string, Date | null>> {
+    if (contactIds.length === 0) return new Map();
+    const rows = await this.prisma.withScope(scope, (tx) =>
+      tx.customer.findMany({
+        where: { brandId, zohoContactId: { in: contactIds } },
+        select: { zohoContactId: true, zohoSyncedVersion: true },
+      }),
+    );
+    return new Map(rows.map((row) => [row.zohoContactId!, row.zohoSyncedVersion]));
+  }
+
+  /**
+   * Whether a listed contact needs its detail fetched and applied.
+   *
+   * Judged per record against the version this platform last stored for it,
+   * NOT against the brand's lastPulledAt cursor. That cursor advances on every
+   * pullBrand run — including the many runs in which the contacts scan itself
+   * was skipped by CONTACTS_FULL_SCAN_FLOOR_SECONDS — so a contact edited in
+   * Zoho between two contact scans was already older than the cursor by the
+   * time the next scan saw it, and was filtered out permanently. Every edit
+   * made in Zoho more than a pull interval before the next contact scan was
+   * silently lost, and a manual "pull now" could not recover it either.
+   *
+   *  - no remote timestamp: cannot tell, so pull it (the old behaviour)
+   *  - not known locally: pull it, so contacts that exist only in Zoho (e.g.
+   *    created before a webhook was configured) are imported
+   *  - known with a stored version: pull only if Zoho's copy is newer
+   *  - known without one (rows from before versions were stamped on pull):
+   *    fall back to the cursor, except on a forced pull, which re-applies them
+   *    so a manual "pull now" can repair a record an earlier pass missed
+   */
+  private isContactDue(
+    item: ZohoContactListItem,
+    versions: Map<string, Date | null>,
+    cursor: Date | null,
+    force: boolean,
+  ): boolean {
+    const remote = this.parseZohoTimestamp(item.last_modified_time);
+    if (!remote) return true;
+    if (!versions.has(item.contact_id)) return true;
+    const stored = versions.get(item.contact_id);
+    if (stored) return remote > stored;
+    return force || !cursor || remote > cursor;
   }
 
   /** Also used as the cascade target when an invoice or payment references a
