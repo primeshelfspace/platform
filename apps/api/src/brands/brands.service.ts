@@ -17,11 +17,13 @@ export interface CreateBrandInput extends BrandInput {
 export type BrandWithLogo = Brand & { readonly logoUrl: string | null };
 
 /**
- * List is gated on BRANDS READ (FRS-001 §3.3: Owner and Merchant Admin only)
- * rather than a lighter "my assignments" read — that is a distinct
- * permission from "list every brand in the organisation" and deserves its
- * own resource/decision, not a quiet loosening of BRANDS; see the note left
- * for the reader in brands.controller.ts.
+ * List is gated on BRANDS READ, which every role holds (FRS-001 §3.3) — the
+ * row set itself is what narrows per role: RLS's `brand_scope` policy limits
+ * `brand.findMany()` to the caller's merchant and, for anything short of an
+ * all-brand role, to exactly the brands in their own `user_brand_assignment`
+ * rows. So Owner/Merchant Admin see every brand in the merchant, and a Brand
+ * Admin/Finance/Sales/Read Only user sees only what they are assigned —
+ * without this handler doing any of that filtering itself.
  *
  * Create always targets the calling user's own merchant — a brand has no
  * meaning outside the tenant that owns it, and nothing in this app lets one
