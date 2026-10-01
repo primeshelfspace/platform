@@ -108,14 +108,19 @@ export class ZohoWebhookController {
 
   // --- Sync Dashboard: Pending Brand Assignment queue -------------------------
 
+  /** Merchant-wide queue (the table's RLS policy scopes by merchant only) —
+   * a pending record has no brand yet, that is the whole point of it. */
   @Get('pending-assignments')
-  @RequirePermission('INTEGRATIONS', 'READ')
+  @RequirePermission('INTEGRATIONS', 'READ', { brandFrom: 'none' })
   listPending(@CurrentScope() scope: Scope): Promise<PendingBrandAssignmentRow[]> {
     return this.webhooks.listPendingAssignments(scope);
   }
 
+  /** The target brand travels in the body. Checked by the guard from there:
+   * the pull that follows runs under a system scope for that brand, so RLS
+   * would not stop a Brand Admin assigning into a brand they don't hold. */
   @Post('pending-assignments/:id/assign')
-  @RequirePermission('INTEGRATIONS', 'WRITE')
+  @RequirePermission('INTEGRATIONS', 'WRITE', { brandFrom: 'body' })
   async assign(
     @Param('id', zodPipe(idSchema)) id: string,
     @Body(zodPipe(assignBodySchema)) body: z.infer<typeof assignBodySchema>,

@@ -130,6 +130,18 @@ function resolveBrandId(request: Request, requirement: PermissionRequirement): s
   if (from === 'none') return null;
 
   const key = requirement.brandKey ?? 'brandId';
+
+  // The default is "the brand is in the URL". A route that takes the default
+  // but has no such path segment would otherwise resolve null and skip the
+  // brand check entirely — silently letting a brand-scoped role act on any
+  // brand. That is a declaration bug, so fail closed instead: the route must
+  // say brandFrom 'none' (merchant-wide), 'query' or 'body' explicitly.
+  // (authorisation-coverage.test.ts catches the same mistake at build time.)
+  if (from === 'params' && !Object.prototype.hasOwnProperty.call(request.params ?? {}, key)) {
+    throw new ForbiddenException(
+      `route declares a brand check on params.${key} but has no such path parameter`,
+    );
+  }
   const source =
     from === 'params'
       ? (request.params as Record<string, unknown>)
