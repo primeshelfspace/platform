@@ -5,7 +5,6 @@ import { TopProgress } from './top-progress';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
-  Bell,
   ChevronDown,
   LayoutDashboard,
   LayoutGrid,
@@ -37,7 +36,6 @@ interface NavItem {
 const TOP_NAV: readonly NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/shop-payment-gateways', label: 'Shop Payment Gateways', icon: ShoppingBag },
-  { href: '/notifications', label: 'Notifications', icon: Bell },
 ];
 
 const BRAND_NAV: readonly NavItem[] = [
