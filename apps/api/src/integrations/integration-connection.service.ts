@@ -36,6 +36,9 @@ export interface ZohoConnectionStatus {
   readonly lastPulledAt: Date | null;
   readonly health: string | null;
   readonly pullFrequencyMinutes: number;
+  /** Whether the timed pull runs at all (ZOHO_SCHEDULED_PULL_ENABLED) —
+   * off means pullFrequencyMinutes has no effect and sync is webhook-driven. */
+  readonly scheduledPullEnabled: boolean;
   readonly customerSyncEnabled: boolean;
   readonly invoiceSyncEnabled: boolean;
 }
@@ -139,6 +142,7 @@ export class IntegrationConnectionService {
         lastPulledAt: null,
         health: null,
         ...DEFAULT_SYNC_SETTINGS,
+        scheduledPullEnabled: this.env.ZOHO_SCHEDULED_PULL_ENABLED,
       };
     }
     const config = row.config as unknown as ZohoConnectionConfig | null;
@@ -152,6 +156,7 @@ export class IntegrationConnectionService {
       lastPulledAt: row.lastPulledAt,
       health: row.health,
       pullFrequencyMinutes: row.pullFrequencyMinutes,
+      scheduledPullEnabled: this.env.ZOHO_SCHEDULED_PULL_ENABLED,
       customerSyncEnabled: row.customerSyncEnabled,
       invoiceSyncEnabled: row.invoiceSyncEnabled,
     };

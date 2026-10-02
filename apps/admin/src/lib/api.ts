@@ -1158,6 +1158,9 @@ export interface ZohoConnectionStatus {
   lastPulledAt: string | null;
   health: string | null;
   pullFrequencyMinutes: number;
+  /** False: no timed pull — sync is webhook-driven plus "Sync now", and
+   * pullFrequencyMinutes has no effect. */
+  scheduledPullEnabled: boolean;
   customerSyncEnabled: boolean;
   invoiceSyncEnabled: boolean;
 }

@@ -116,6 +116,13 @@ async function bootstrap(): Promise<void> {
         );
       }
 
+      // Zoho → platform sync is webhook-driven; the timed pull only runs when
+      // explicitly re-enabled (ZOHO_SCHEDULED_PULL_ENABLED). The tick itself
+      // stays, for the reaping above — that makes no Zoho calls.
+      if (!env.ZOHO_SCHEDULED_PULL_ENABLED) {
+        return { brandsConnected: 0, brandsEnqueued: 0, staleJobsReaped: reapedCount };
+      }
+
       const connections = await prisma.withoutScope(
         'scheduled-sync: listing brands with a live Zoho connection',
         (client) =>

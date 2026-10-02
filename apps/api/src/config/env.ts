@@ -109,10 +109,21 @@ const envSchema = z
      * mechanism it does offer is per-webhook static query/form parameters, so
      * this is set as one of those when the webhook is registered in Zoho
      * (Settings > Automation > Webhooks), alongside `organization_id` and
-     * `event` — see ZohoWebhookController. Unset means every webhook call is
-     * refused, matching how STRIPE_WEBHOOK_SECRET behaves unset.
+     * `event` — see ZohoWebhookController. Optional: per-organization tokens
+     * are derived from this when set, else from SESSION_SECRET
+     * (zoho-webhook-token.ts), and the value itself is still accepted as a
+     * token for webhooks registered before those existed.
      */
     ZOHO_WEBHOOK_SECRET: z.string().optional(),
+
+    /**
+     * Whether the every-minute 'scheduled-sync' tick pulls from Zoho at each
+     * brand's own frequency. Off by default: Zoho → platform sync is
+     * webhook-driven (ZohoWebhookController), plus the manual "Sync now"
+     * button. Turning this on restores the timed pull as a safety net for
+     * webhooks Zoho fails to deliver.
+     */
+    ZOHO_SCHEDULED_PULL_ENABLED: booleanish.default(false),
 
     API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
     ADMIN_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
