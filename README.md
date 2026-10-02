@@ -30,8 +30,8 @@ password, so signing in as each is how you exercise the permission matrix:
 password: sugrpay-dev-password
 ```
 
-| Email                            | Role           | Brands                     |
-| -------------------------------- | -------------- | -------------------------- |
+| Email                    | Role           | Brands                     |
+| ------------------------ | -------------- | -------------------------- |
 | owner@sugrpay.test       | MERCHANT_OWNER | all                        |
 | admin@sugrpay.test       | MERCHANT_ADMIN | all                        |
 | brand.admin@sugrpay.test | BRAND_ADMIN    | Solstice, Meridian         |

@@ -120,14 +120,9 @@ async function main(): Promise<void> {
     passwordHash,
     [solstice.id, meridian.id, cobalt.id],
   );
-  await createUser(
-    sugrpay.id,
-    'SALES_USER',
-    'sales@sugrpay.test',
-    'Tobias Vance',
-    passwordHash,
-    [solstice.id],
-  );
+  await createUser(sugrpay.id, 'SALES_USER', 'sales@sugrpay.test', 'Tobias Vance', passwordHash, [
+    solstice.id,
+  ]);
   await createUser(
     sugrpay.id,
     'READ_ONLY',

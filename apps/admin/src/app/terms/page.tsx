@@ -72,10 +72,7 @@ export default function TermsPage() {
 
           <Section title="9. Contact">
             Questions about these terms can be sent to{' '}
-            <a
-              href="mailto:legal@sugrpay.test"
-              className="font-medium text-[#0F172A] underline"
-            >
+            <a href="mailto:legal@sugrpay.test" className="font-medium text-[#0F172A] underline">
               legal@sugrpay.test
             </a>
             .

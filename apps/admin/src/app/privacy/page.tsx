@@ -68,10 +68,7 @@ export default function PrivacyPage() {
 
           <Section title="9. Contact">
             Questions about this policy can be sent to{' '}
-            <a
-              href="mailto:privacy@sugrpay.test"
-              className="font-medium text-[#0F172A] underline"
-            >
+            <a href="mailto:privacy@sugrpay.test" className="font-medium text-[#0F172A] underline">
               privacy@sugrpay.test
             </a>
             .
