@@ -210,7 +210,7 @@ describeWithDb('ZohoPullService', () => {
       {} as SystemScopeResolver,
       redis,
     ) as unknown as {
-      pullCustomersIfDue: (
+      pullAndReconcileCustomers: (
         scope: RequestScope,
         brandId: string,
         connection: AccountingConnection,
@@ -470,36 +470,39 @@ describeWithDb('ZohoPullService', () => {
     });
   });
 
-  it('floors the full contacts scan, but a forced pull always bypasses it', async () => {
+  it('scans contacts on every scheduled run, fetching only the ones that changed', async () => {
+    // No 15-minute floor any more: contact scans follow the brand's own sync
+    // frequency, so an edit made right after one scan lands on the next run.
     const zoho = new FakeZohoBooksAdapter();
-    const contactId = `floor-contact-${randomUUID()}`;
-    zoho.contacts.set(contactId, fakeContact(contactId, 'Floor Test Co'));
-    zoho.listedContacts = [{ contact_id: contactId, contact_name: 'Floor Test Co' }];
-
-    // Same key ZohoPullService.pullCustomersIfDue uses — cleared first so an
-    // earlier run against this same seeded brand can't leave the floor set.
-    const floorKey = `zoho:contacts-scanned:${brandId}`;
-    await redis.invalidate(floorKey);
-
+    const contactId = `every-run-contact-${randomUUID()}`;
+    const v1 = '2026-09-01T10:00:00+0000';
+    zoho.contacts.set(contactId, {
+      ...fakeContact(contactId, 'Every Run Co'),
+      last_modified_time: v1,
+    });
+    zoho.listedContacts = [
+      { contact_id: contactId, contact_name: 'Every Run Co', last_modified_time: v1 },
+    ];
     const svc = service(zoho, redis);
 
-    const first = await svc.pullCustomersIfDue(scope, brandId, connection, null, false);
-    expect(first).toBe(1);
+    expect(await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false)).toBe(1);
     expect(zoho.getContactCalls).toBe(1);
 
-    // Same brand, unforced, immediately after — the scan is floored, so this
-    // must not touch Zoho again.
-    const second = await svc.pullCustomersIfDue(scope, brandId, connection, null, false);
-    expect(second).toBe(0);
+    // Unchanged in Zoho: the scan runs, but no detail fetch.
+    expect(await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false)).toBe(0);
     expect(zoho.getContactCalls).toBe(1);
 
-    // force: true is what the on-demand "pull now" endpoint sets — it must
-    // get a real scan even though the floor is still active.
-    const third = await svc.pullCustomersIfDue(scope, brandId, connection, null, true);
-    expect(third).toBe(1);
+    // Edited in Zoho, then the very next unforced run picks it up.
+    const v2 = '2026-09-01T10:01:00+0000';
+    zoho.contacts.set(contactId, {
+      ...fakeContact(contactId, 'Edited Co'),
+      last_modified_time: v2,
+    });
+    zoho.listedContacts = [
+      { contact_id: contactId, contact_name: 'Edited Co', last_modified_time: v2 },
+    ];
+    expect(await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false)).toBe(1);
     expect(zoho.getContactCalls).toBe(2);
-
-    await redis.invalidate(floorKey);
   });
 
   it('applies a Zoho contact edit even when the brand cursor has already moved past it', async () => {
@@ -516,10 +519,8 @@ describeWithDb('ZohoPullService', () => {
     zoho.listedContacts = [
       { contact_id: contactId, contact_name: 'Before Edit Co', last_modified_time: firstVersion },
     ];
-    const floorKey = `zoho:contacts-scanned:${brandId}`;
-    await redis.invalidate(floorKey);
     const svc = service(zoho, redis);
-    await svc.pullCustomersIfDue(scope, brandId, connection, null, true);
+    await svc.pullAndReconcileCustomers(scope, brandId, connection, null, true);
 
     const editedVersion = '2026-09-01T10:05:00+0000';
     zoho.contacts.set(contactId, {
@@ -530,7 +531,7 @@ describeWithDb('ZohoPullService', () => {
       { contact_id: contactId, contact_name: 'After Edit Co', last_modified_time: editedVersion },
     ];
     const cursorPastTheEdit = new Date('2026-09-01T10:14:00Z');
-    const touched = await svc.pullCustomersIfDue(
+    const touched = await svc.pullAndReconcileCustomers(
       scope,
       brandId,
       connection,
@@ -545,10 +546,8 @@ describeWithDb('ZohoPullService', () => {
 
     // Unchanged on the next scan: no detail fetch at all.
     const callsBefore = zoho.getContactCalls;
-    await svc.pullCustomersIfDue(scope, brandId, connection, cursorPastTheEdit, true);
+    await svc.pullAndReconcileCustomers(scope, brandId, connection, cursorPastTheEdit, true);
     expect(zoho.getContactCalls).toBe(callsBefore);
-
-    await redis.invalidate(floorKey);
   });
 
   it('archives a customer whose Zoho contact is inactive, and re-activates it if Zoho flips back', async () => {

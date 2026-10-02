@@ -43,23 +43,6 @@ export interface PullCounts {
  */
 const PULL_DETAIL_CONCURRENCY = 8;
 
-/**
- * Contacts have no server-side filter at all (see ZohoBooksAdapter's "Pull"
- * notes), so pullCustomers always pages through every contact the brand has,
- * regardless of whether any of them changed. Run on a brand set to
- * "Realtime" (pullFrequencyMinutes: 1), that full scan would otherwise
- * repeat every single minute for data that is realistically not moving that
- * fast — customer records change far less often than invoice/payment status
- * does, which is what "Realtime" is actually meant to keep fresh. This is a
- * floor under just that one scan, independent of the brand's own configured
- * frequency: at most one full contact scan per window, tracked in Redis
- * rather than a new column since it is a pacing decision, not sync state
- * anything else needs to read. A manual "pull now" (pullBrand's
- * forceFullScan) bypasses it — someone who just fixed a customer's
- * details in Zoho and asked for a pull right now should get one.
- */
-const CONTACTS_FULL_SCAN_FLOOR_SECONDS = 15 * 60;
-
 /** Whether a Zoho line item is one pushInvoice added for tax or the card fee,
  * rather than a real product line. Matched on name and description together
  * (and no tax_id) so a merchant's own line named "Tax" in Zoho is left alone. */
@@ -303,8 +286,18 @@ export class ZohoPullService {
   }
 
   /**
-   * @param forceFullScan Bypasses CONTACTS_FULL_SCAN_FLOOR_SECONDS — set by
-   * the on-demand "pull now" endpoint, never by the scheduled tick.
+   * Customers and invoices are both pulled on every run, so both follow the
+   * brand's own pullFrequencyMinutes (worker.ts only enqueues a brand once it
+   * is due). Contacts used to be floored to one full scan per 15 minutes on
+   * top of that, which left a brand set to "Realtime" seeing invoice changes
+   * within a minute but customer changes up to ~16 minutes late. The cost of
+   * a contact scan is one Zoho call per 200 contacts, plus one per contact
+   * that actually changed (isContactDue) — the frequency setting is where
+   * that trade-off is chosen.
+   *
+   * @param forceFullScan Set by the on-demand "pull now" endpoint: bypasses
+   * the hourly invoice-deletion floor, and re-applies customers that have no
+   * stored version yet (see isContactDue).
    */
   async pullBrand(brandId: string, forceFullScan = false): Promise<PullCounts> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-pull');
@@ -324,7 +317,7 @@ export class ZohoPullService {
     // per-brand rate limiter is still what caps how much of that time turns
     // into actual Zoho traffic, so this is free concurrency, not more load.
     const [customers, invoices] = await Promise.all([
-      this.pullCustomersIfDue(scope, brandId, connection, cursor, forceFullScan),
+      this.pullAndReconcileCustomers(scope, brandId, connection, cursor, forceFullScan),
       this.pullInvoices(scope, brandId, connection, cursor),
       // Deletion detection, on its own much coarser clock. Safe to run
       // alongside the two phases above: it only ever acts on records that
@@ -357,9 +350,8 @@ export class ZohoPullService {
   /**
    * FR-ZHO-webhook: a targeted, immediate pull of one contact, used by
    * ZohoWebhookService so an inbound event is reflected within seconds
-   * rather than waiting for the next scheduled pullBrand tick (which also
-   * floors a full contact scan to once per CONTACTS_FULL_SCAN_FLOOR_SECONDS —
-   * far too coarse for "near real-time"). Reuses pullOneCustomer as-is: same
+   * rather than waiting for the next scheduled pullBrand tick. Reuses
+   * pullOneCustomer as-is: same
    * echo suppression, same field mapping, same SyncJob audit trail, and the
    * same upsert-on-(brandId, zohoContactId) that creates the local row when
    * it does not exist yet (the "new record, single brand" routing case).
@@ -393,17 +385,13 @@ export class ZohoPullService {
     return this.pullOneInvoice(scope, brandId, connection, detail, detail);
   }
 
-  private async pullCustomersIfDue(
+  private async pullAndReconcileCustomers(
     scope: Scope,
     brandId: string,
     connection: AccountingConnection,
     cursor: Date | null,
     force: boolean,
   ): Promise<number> {
-    const floorKey = `zoho:contacts-scanned:${brandId}`;
-    if (!force && (await this.redis.getJson<boolean>(floorKey))) {
-      return 0;
-    }
     const { touched, seen } = await this.pullCustomers(scope, brandId, connection, cursor, force);
 
     // Contacts are the one entity whose normal pull is already a full scan
@@ -413,21 +401,14 @@ export class ZohoPullService {
     // mapWithConcurrency and recordPull both propagate, so a partial scan
     // throws rather than returning short. That completeness is exactly the
     // precondition for treating a contact's absence as meaningful.
-    // Also non-fatal, and for the same reason: archiving is secondary to having
-    // pulled the contacts in the first place, and must not cost us the floor key
-    // below (which would make every subsequent pull redo the full scan) or the
-    // cursor advance.
+    // Also non-fatal: archiving is secondary to having pulled the contacts in
+    // the first place, and must not cost the cursor advance.
     await this.reconcileContactPresence(scope, brandId, seen).catch((error: unknown) => {
       this.logger.warn(
         `contact presence reconciliation failed for brand ${brandId} (the pull itself was ` +
           `unaffected): ${error instanceof Error ? error.message : String(error)}`,
       );
     });
-
-    // Set after a successful scan regardless of `force`, so a manual pull
-    // now restarts the floor's own clock too, rather than leaving the next
-    // scheduled tick free to redundantly re-scan moments later.
-    await this.redis.setJson(floorKey, true, CONTACTS_FULL_SCAN_FLOOR_SECONDS);
     return touched;
   }
 
@@ -507,8 +488,8 @@ export class ZohoPullService {
    *
    * Judged per record against the version this platform last stored for it,
    * NOT against the brand's lastPulledAt cursor. That cursor advances on every
-   * pullBrand run — including the many runs in which the contacts scan itself
-   * was skipped by CONTACTS_FULL_SCAN_FLOOR_SECONDS — so a contact edited in
+   * pullBrand run — including, before contact scans followed the brand's own
+   * frequency, the many runs that skipped the contacts scan — so a contact edited in
    * Zoho between two contact scans was already older than the cursor by the
    * time the next scan saw it, and was filtered out permanently. Every edit
    * made in Zoho more than a pull interval before the next contact scan was

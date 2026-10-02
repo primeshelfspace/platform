@@ -146,10 +146,9 @@ export class ZohoConnectController {
    * configured frequency (worker.ts's 'scheduled-sync' handler); this
    * endpoint just lets it be triggered on demand instead of waiting.
    *
-   * force: true so someone who just fixed a customer's details in Zoho and
-   * clicked this button actually gets a fresh contact scan — the scheduled
-   * tick's own calls never set this, and are the ones
-   * CONTACTS_FULL_SCAN_FLOOR_SECONDS is there to pace.
+   * force: true also re-runs the hourly invoice-deletion check and re-applies
+   * customers with no stored version yet (ZohoPullService.pullBrand) — the
+   * scheduled tick's own calls never set it.
    */
   @Post('brands/:brandId/integrations/zoho/pull')
   @RequirePermission('INTEGRATIONS', 'WRITE')
