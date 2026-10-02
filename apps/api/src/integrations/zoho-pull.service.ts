@@ -302,7 +302,13 @@ export class ZohoPullService {
   async pullBrand(brandId: string, forceFullScan = false): Promise<PullCounts> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-pull');
     if (!scope) return { customers: 0, invoices: 0 };
-    const connection = await this.connections.buildAccountingConnection(scope, brandId);
+    let connection: AccountingConnection | null;
+    try {
+      connection = await this.connections.buildAccountingConnection(scope, brandId);
+    } catch (error) {
+      await this.recordConnectionFailure(scope, brandId, error);
+      throw error;
+    }
     if (!connection) return { customers: 0, invoices: 0 };
 
     const pullStartedAt = new Date();
@@ -345,6 +351,66 @@ export class ZohoPullService {
       `pull complete for brand ${brandId}: ${counts.customers} customers, ${counts.invoices} invoices`,
     );
     return counts;
+  }
+
+  /**
+   * The access-token refresh in buildAccountingConnection runs before any
+   * phase, so a failure there (Zoho revoking the refresh token: a reconnect
+   * from another brand, a password change, Zoho's per-client token limit)
+   * used to escape pullBrand with no SyncJob row and no markUnhealthy — the
+   * brand kept showing "Healthy", lastPulledAt stopped moving, and it silently
+   * never synced again. This makes that failure visible where an operator
+   * looks: the connection's health and its Connection Log.
+   *
+   * The scheduler retries every tick (lastPulledAt does not advance), so the
+   * log row is rate-limited to one per hour per brand; health is updated
+   * every time, which is idempotent.
+   */
+  private async recordConnectionFailure(
+    scope: Scope,
+    brandId: string,
+    error: unknown,
+  ): Promise<void> {
+    const integrationError = error instanceof IntegrationError ? error : null;
+    const message =
+      integrationError?.providerMessage ??
+      integrationError?.message ??
+      (error instanceof Error ? error.message : String(error));
+    this.logger.warn(`Zoho pull could not start for brand ${brandId}: ${message}`);
+    try {
+      if (integrationError?.errorClass === 'AUTHENTICATION') {
+        await this.connections.markUnhealthy(scope, brandId, message);
+      }
+      const throttleKey = `zoho:pull-connection-failure-logged:${brandId}`;
+      if (await this.redis.getJson<boolean>(throttleKey)) return;
+      await this.redis.setJson(throttleKey, true, 60 * 60);
+      await this.prisma.withoutScope(
+        `recording pull connection failure for brand ${brandId}`,
+        (client) =>
+          client.syncJob.create({
+            data: {
+              brandId,
+              provider: 'ZOHO_BOOKS',
+              direction: 'PULL',
+              objectType: 'CONNECTION',
+              objectId: 'token refresh',
+              status: 'FAILED',
+              errorClass: integrationError?.errorClass ?? 'PERMANENT',
+              lastError:
+                integrationError?.errorClass === 'AUTHENTICATION'
+                  ? `${message} — Zoho rejected this brand's saved login. Disconnect and connect Zoho Books again.`
+                  : message,
+              completedAt: new Date(),
+            },
+          }),
+      );
+    } catch (recordError) {
+      // Never let recording why we failed replace what failed.
+      this.logger.warn(
+        `could not record pull connection failure for brand ${brandId}: ` +
+          `${recordError instanceof Error ? recordError.message : String(recordError)}`,
+      );
+    }
   }
 
   /**
