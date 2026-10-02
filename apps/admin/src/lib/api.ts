@@ -1208,6 +1208,27 @@ export function getZohoActivity(brandId: string): Promise<ZohoActivityEntry[]> {
   return apiFetch<ZohoActivityEntry[]>(`/brands/${brandId}/integrations/zoho/activity`);
 }
 
+/** Mirrors ZohoWebhookSetup (zoho-connect.controller.ts). The URLs carry the
+ * organization's webhook token, so this is only served to INTEGRATIONS WRITE. */
+export interface ZohoWebhookDelivery {
+  at: string;
+  objectType: 'CUSTOMER' | 'INVOICE';
+  event: string;
+  remoteId: string;
+  outcome: string;
+}
+
+export interface ZohoWebhookSetup {
+  organizationId: string;
+  contactsUrl: string;
+  invoicesUrl: string;
+  lastDelivery: ZohoWebhookDelivery | null;
+}
+
+export function getZohoWebhookSetup(brandId: string): Promise<ZohoWebhookSetup> {
+  return apiFetch<ZohoWebhookSetup>(`/brands/${brandId}/integrations/zoho/webhook-setup`);
+}
+
 // --- Zoho Books Sandbox (config testing on the connected org) ----------------
 //
 // Not a separate test environment with its own credentials — see

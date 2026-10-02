@@ -7,7 +7,24 @@ import { ZohoPullService } from './zoho-pull.service.js';
 import type { ZohoConnectionConfig } from './integration-connection.service.js';
 
 export type ZohoWebhookObjectType = 'CUSTOMER' | 'INVOICE';
-export type ZohoWebhookEvent = 'created' | 'status_updated';
+/** 'unspecified' is a webhook URL with no `event` parameter — the
+ * recommended single URL on a "Created or Edited" rule. Routing never depends
+ * on the event; it is recorded for the delivery log only. */
+export type ZohoWebhookEvent = 'created' | 'status_updated' | 'unspecified';
+
+export interface ZohoWebhookDelivery {
+  readonly at: string;
+  readonly objectType: ZohoWebhookObjectType;
+  readonly event: ZohoWebhookEvent;
+  readonly remoteId: string;
+  readonly outcome: string;
+}
+
+const DELIVERY_LOG_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+function deliveryKey(organizationId: string): string {
+  return `zoho:webhook-last-delivery:${organizationId}`;
+}
 
 export interface ZohoWebhookResult {
   /** What the caller (ZohoWebhookController) should answer Zoho with. */
@@ -98,83 +115,97 @@ export class ZohoWebhookService {
     remoteId: string;
     rawPayload?: unknown;
   }): Promise<ZohoWebhookResult> {
-    const { objectType, event, organizationId, remoteId, rawPayload } = input;
+    const outcome = await this.route(input);
+    await this.recordDelivery(input.organizationId, {
+      at: new Date().toISOString(),
+      objectType: input.objectType,
+      event: input.event,
+      remoteId: input.remoteId,
+      outcome: outcome.description,
+    });
+    return { status: outcome.status };
+  }
+
+  private async route(input: {
+    objectType: ZohoWebhookObjectType;
+    event: ZohoWebhookEvent;
+    organizationId: string;
+    remoteId: string;
+    rawPayload?: unknown;
+  }): Promise<{ status: 200 | 404; description: string }> {
+    const { objectType, organizationId, remoteId, rawPayload } = input;
     const action = objectType === 'CUSTOMER' ? 'customer' : 'invoice';
 
     // 1. Existing records are resolved by their stored Zoho id — never by
     // organization_id, which the record was not even tagged with at
     // creation time (FR-ZHO-webhook "Inbound — Updates to existing
     // records"). Unscoped: which brand this belongs to is exactly what this
-    // lookup exists to discover.
-    const existing = await this.findLocalRecord(objectType, remoteId);
+    // lookup exists to discover. Every match, not the first: two brands
+    // connected to one Zoho organization each hold their own copy of that
+    // organization's contacts (and the scheduled pull imports them into
+    // both), and updating only whichever row a findFirst happened to return
+    // left the other brand's copy stale until its next contact scan.
+    const existing = await this.findLocalRecords(objectType, remoteId);
 
-    if (existing) {
-      if (await this.redis.hasSyncAction(existing.brandId, existing.id, action)) {
-        this.logger.debug(
-          `dropping duplicate Zoho webhook for ${objectType} ${existing.id} (brand ${existing.brandId})`,
-        );
-        return { status: 200 };
+    if (existing.length > 0) {
+      let applied = 0;
+      let lastFailure: string | null = null;
+      for (const record of existing) {
+        // Only an echo of this platform's own push is dropped here — that is
+        // what ZohoSyncService marks just before calling Zoho. A redelivery of
+        // a webhook already applied is not guarded separately: the pull's own
+        // last_modified_time check makes it a no-op, while a post-apply guard
+        // also dropped a genuine second edit made in Zoho within its window.
+        if (await this.redis.hasSyncAction(record.brandId, record.id, action)) {
+          this.logger.debug(
+            `dropping echo of own push for ${objectType} ${record.id} (brand ${record.brandId})`,
+          );
+          continue;
+        }
+        const failure = await this.pull(objectType, record.brandId, remoteId);
+        if (failure) lastFailure = failure;
+        else applied++;
       }
-      if (objectType === 'CUSTOMER') {
-        // No post-apply guard for contacts: pullOneCustomer's own
-        // last_modified_time check already turns a redelivery into a no-op,
-        // whereas a 30s guard here also dropped a genuine second edit made in
-        // Zoho within that window.
-        await this.zohoPull.pullOneCustomerNow(existing.brandId, remoteId);
-      } else {
-        await this.zohoPull.pullOneInvoiceNow(existing.brandId, remoteId);
-        await this.redis.markSyncAction(existing.brandId, existing.id, action);
-      }
-      return { status: 200 };
+      let description: string;
+      if (lastFailure) description = `failed — ${lastFailure}`;
+      else if (applied > 0) description = `updated in ${applied} brand${applied === 1 ? '' : 's'}`;
+      else description = 'ignored — echo of a change this platform just pushed';
+      return { status: 200, description };
     }
 
-    // 2. No local record. An update naming an id this platform has never
-    // seen is unresolvable — logged for manual review, never silently
-    // applied to a guessed brand — regardless of how many brands the
-    // organization maps to (FR-ZHO-webhook's own edge case, stated
-    // unconditionally under "Updates to existing records").
-    if (event === 'status_updated') {
-      await this.recordForManualReview(
-        objectType,
-        organizationId,
-        remoteId,
-        'ORPHANED_UPDATE',
-        undefined,
-        rawPayload,
-      );
-      return { status: 200 };
-    }
-
-    // 3. Created natively in Zoho. This is the one place organization_id is
-    // allowed to participate in routing at all.
+    // 2. Not on this platform yet — whether Zoho called it a creation or an
+    // edit. An edit to a record never imported (it predates the connection,
+    // or the webhook was registered after it was created) used to be parked
+    // as an ORPHANED_UPDATE that nothing could resolve, while the very next
+    // scheduled contact scan imported the same record anyway. Routing it the
+    // same way as a creation reaches that outcome immediately instead.
+    // organization_id participates in routing only here.
     const candidates = await this.candidateBrands(organizationId);
     if (candidates.length === 0) {
       this.logger.error(
         `zoho webhook: organization ${organizationId} is not connected to any brand on this ` +
           `platform — Connection Health issue (${objectType} ${remoteId})`,
       );
-      return { status: 404 };
+      return { status: 404, description: 'rejected — organization not connected to any brand' };
     }
     if (candidates.length === 1) {
       const brandId = candidates[0]!.brandId;
       // Keyed by the Zoho remote id, not a local id — none exists yet for a
-      // record created natively in Zoho. Guards a plain redelivery of the
-      // same contact.created/invoice.created event against calling Zoho
-      // twice for it, the same "any event" duplicate check the existing-
-      // record branch above applies, just before a local id exists to key on.
+      // record created natively in Zoho. Guards a redelivery of the same
+      // creation against importing (and calling Zoho for) it twice while the
+      // first import is still in flight.
       if (await this.redis.hasSyncAction(brandId, remoteId, action)) {
         this.logger.debug(
           `dropping duplicate Zoho webhook for new ${objectType} ${remoteId} (brand ${brandId})`,
         );
-        return { status: 200 };
-      }
-      if (objectType === 'CUSTOMER') {
-        await this.zohoPull.pullOneCustomerNow(brandId, remoteId);
-      } else {
-        await this.zohoPull.pullOneInvoiceNow(brandId, remoteId);
+        return { status: 200, description: 'ignored — duplicate delivery' };
       }
       await this.redis.markSyncAction(brandId, remoteId, action);
-      return { status: 200 };
+      const failure = await this.pull(objectType, brandId, remoteId);
+      return {
+        status: 200,
+        description: failure ? `failed — ${failure}` : 'imported as a new record',
+      };
     }
     // Multiple brands share this organization — never guess.
     await this.recordForManualReview(
@@ -185,22 +216,74 @@ export class ZohoWebhookService {
       candidates,
       rawPayload,
     );
-    return { status: 200 };
+    return {
+      status: 200,
+      description: `queued for brand assignment — organization is shared by ${candidates.length} brands`,
+    };
   }
 
-  private async findLocalRecord(
+  /**
+   * Runs the targeted pull, returning why it failed rather than throwing.
+   * Answered 200 either way: the scheduled pull is the safety net for
+   * anything a webhook could not apply, and a 5xx would only have Zoho
+   * redeliver into the same failure (a deleted record, a revoked token). The
+   * failure is still visible — in the SyncJob the pull recorded, the delivery
+   * log, and the server log.
+   */
+  private async pull(
+    objectType: ZohoWebhookObjectType,
+    brandId: string,
+    remoteId: string,
+  ): Promise<string | null> {
+    try {
+      if (objectType === 'CUSTOMER') {
+        await this.zohoPull.pullOneCustomerNow(brandId, remoteId);
+      } else {
+        await this.zohoPull.pullOneInvoiceNow(brandId, remoteId);
+      }
+      return null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `zoho webhook: could not pull ${objectType} ${remoteId} for brand ${brandId}: ${message}`,
+      );
+      return message.slice(0, 300);
+    }
+  }
+
+  // --- Delivery log -----------------------------------------------------------
+
+  /** Last accepted delivery per organization, shown on the Zoho integration
+   * panel so "is Zoho actually calling us?" can be answered without server
+   * logs. Only authenticated deliveries reach the service, so this cannot be
+   * written by an arbitrary caller. Non-fatal by design. */
+  private async recordDelivery(organizationId: string, entry: ZohoWebhookDelivery): Promise<void> {
+    await this.redis
+      .setJson(deliveryKey(organizationId), entry, DELIVERY_LOG_TTL_SECONDS)
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `could not record zoho webhook delivery: ${error instanceof Error ? error.message : error}`,
+        );
+      });
+  }
+
+  async lastDelivery(organizationId: string): Promise<ZohoWebhookDelivery | null> {
+    return (await this.redis.getJson<ZohoWebhookDelivery>(deliveryKey(organizationId))) ?? null;
+  }
+
+  private async findLocalRecords(
     objectType: ZohoWebhookObjectType,
     remoteId: string,
-  ): Promise<{ id: string; brandId: string } | null> {
+  ): Promise<Array<{ id: string; brandId: string }>> {
     return this.prisma.withoutScope(
       `zoho webhook: resolving ${objectType.toLowerCase()} ${remoteId} by its stored Zoho id`,
       (client) =>
         objectType === 'CUSTOMER'
-          ? client.customer.findFirst({
+          ? client.customer.findMany({
               where: { zohoContactId: remoteId },
               select: { id: true, brandId: true },
             })
-          : client.invoice.findFirst({
+          : client.invoice.findMany({
               where: { zohoInvoiceId: remoteId },
               select: { id: true, brandId: true },
             }),

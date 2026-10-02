@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronRight,
+  Copy,
   Link2,
   Loader2,
   RefreshCw,
@@ -19,6 +20,7 @@ import type {
   ZohoSandbox,
   ZohoSandboxChange,
   ZohoSyncSettingsPatch,
+  ZohoWebhookSetup,
 } from '@/lib/api';
 import { Toggle } from '@/components/ui/toggle';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
@@ -28,6 +30,7 @@ import {
   deleteZohoSandboxAction,
   disconnectZohoAction,
   getZohoSandboxChangesAction,
+  getZohoWebhookSetupAction,
   listZohoSandboxesAction,
   pushZohoSandboxToProductionAction,
   rebuildZohoSandboxAction,
@@ -450,6 +453,9 @@ function ZohoDetail({
             </section>
           </div>
 
+          {/* The URLs carry the organization's webhook token — WRITE only. */}
+          {canWrite && <ZohoWebhookSection brandId={brandId} />}
+
           {/* Every sandbox control (create, rebuild, push, delete) is a write. */}
           {canWrite && <ZohoSandboxSection brandId={brandId} />}
 
@@ -589,6 +595,120 @@ function ZohoDetail({
  * have it enabled, which this section surfaces inline rather than failing
  * the whole Integrations tab.
  */
+/**
+ * Real-time sync setup: the exact webhook URLs to paste into Zoho Books, with
+ * this organization's token already in them, and the last delivery Zoho
+ * actually made — which is what answers "are webhooks working?" without
+ * anyone reading server logs.
+ */
+function ZohoWebhookSection({ brandId }: { brandId: string }) {
+  const [setup, setSetup] = useState<ZohoWebhookSetup | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    const result = await getZohoWebhookSetupAction(brandId);
+    setLoading(false);
+    if (result.ok) setSetup(result.data);
+    else setLoadError(result.error);
+  }, [brandId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function copy(text: string, what: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${what} webhook URL copied`);
+    } catch {
+      toast.error('Could not copy — select the URL and copy it manually.');
+    }
+  }
+
+  const last = setup?.lastDelivery ?? null;
+
+  return (
+    <section className="rounded-xl border border-border bg-surface shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border px-5 py-4 sm:px-6">
+        <div>
+          <h3 className="text-base font-bold text-ink-strong">Real-time Webhooks</h3>
+          <p className="mt-1 text-sm text-ink-muted">
+            Without these, changes made in Zoho Books arrive on the next scheduled sync instead of
+            within seconds. In Zoho Books go to Settings → Automation → Webhooks, create one webhook
+            per URL below (method POST, no body changes needed), then attach each to a
+            &ldquo;Created or Edited&rdquo; workflow rule on Contacts and Invoices.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-border bg-surface px-4 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted disabled:opacity-60"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
+          Refresh
+        </button>
+      </div>
+
+      <div className="space-y-4 px-5 py-4 sm:px-6">
+        {loadError ? (
+          <p className="text-sm text-danger">{loadError}</p>
+        ) : !setup ? (
+          <p className="text-sm text-ink-muted">Loading…</p>
+        ) : (
+          <>
+            {(
+              [
+                ['Contacts', setup.contactsUrl],
+                ['Invoices', setup.invoicesUrl],
+              ] as const
+            ).map(([label, url]) => (
+              <div key={label}>
+                <p className="text-sm font-bold text-ink-strong">{label}</p>
+                <div className="mt-1 flex min-w-0 items-center gap-2">
+                  <code className="min-w-0 flex-1 truncate rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs text-ink-strong">
+                    {url}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => void copy(url, label)}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-[10px] border border-border bg-surface px-3 py-2 text-sm font-bold text-ink-strong hover:bg-surface-muted"
+                  >
+                    <Copy className="h-4 w-4" aria-hidden />
+                    Copy
+                  </button>
+                </div>
+              </div>
+            ))}
+            <p className="text-xs text-ink-muted">
+              These URLs contain a secret token for this Zoho organization — treat them like a
+              password and only paste them into Zoho Books.
+            </p>
+            <div className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm">
+              {last ? (
+                <>
+                  <span className="font-bold text-ink-strong">Last webhook received:</span>{' '}
+                  {formatSyncedAt(last.at)} —{' '}
+                  {last.objectType === 'CUSTOMER' ? 'contact' : 'invoice'} {last.remoteId},{' '}
+                  {last.outcome}
+                </>
+              ) : (
+                <>
+                  <span className="font-bold text-ink-strong">No webhook received yet.</span> After
+                  setting them up, press &ldquo;Test&rdquo; on a webhook in Zoho, then Refresh here.
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ZohoSandboxSection({ brandId }: { brandId: string }) {
   const [sandboxes, setSandboxes] = useState<ZohoSandbox[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

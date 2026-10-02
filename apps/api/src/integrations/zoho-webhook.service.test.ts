@@ -219,7 +219,7 @@ describeWithDb('ZohoWebhookService', () => {
     expect(pull.pullOneCustomerNow).not.toHaveBeenCalled();
   });
 
-  it('logs an orphaned update for manual review instead of guessing a brand, even when the organization is known', async () => {
+  it('imports an edit to a never-seen record when its organization maps to exactly one brand', async () => {
     const organizationId = `org-${randomUUID()}`;
     await connectZoho(brandA, organizationId);
     const contactId = `contact-${randomUUID()}`; // never seen locally
@@ -229,11 +229,47 @@ describeWithDb('ZohoWebhookService', () => {
     const result = await service.handleContactEvent('status_updated', organizationId, contactId);
 
     expect(result.status).toBe(200);
-    expect(pull.pullOneCustomerNow).not.toHaveBeenCalled();
+    expect(pull.pullOneCustomerNow).toHaveBeenCalledWith(brandA, contactId);
+    expect(await service.listPendingAssignments(scope)).toHaveLength(0);
+  });
 
-    const pending = await service.listPendingAssignments(scope);
-    expect(pending).toHaveLength(1);
-    expect(pending[0]).toMatchObject({ reason: 'ORPHANED_UPDATE', status: 'PENDING' });
+  it('updates every brand holding a copy of the record when two brands share an organization', async () => {
+    const contactId = `contact-${randomUUID()}`;
+    await owner.customer.create({
+      data: { brandId: brandA, displayName: 'Shared Co', zohoContactId: contactId },
+    });
+    await owner.customer.create({
+      data: { brandId: brandB, displayName: 'Shared Co', zohoContactId: contactId },
+    });
+    const pull = fakePull();
+    const service = new ZohoWebhookService(prisma, redis, pull);
+
+    await service.handleContactEvent('unspecified', 'org-x', contactId);
+
+    expect(pull.pullOneCustomerNow).toHaveBeenCalledWith(brandA, contactId);
+    expect(pull.pullOneCustomerNow).toHaveBeenCalledWith(brandB, contactId);
+  });
+
+  it('records the last delivery per organization, including a pull that failed', async () => {
+    const organizationId = `org-${randomUUID()}`;
+    await connectZoho(brandA, organizationId);
+    const pull = {
+      pullOneCustomerNow: vi.fn().mockResolvedValue(true),
+      pullOneInvoiceNow: vi.fn().mockRejectedValue(new Error('invoice not found in Zoho')),
+    } as unknown as ZohoPullService;
+    const service = new ZohoWebhookService(prisma, redis, pull);
+    const invoiceId = `invoice-${randomUUID()}`;
+
+    const result = await service.handleInvoiceEvent('created', organizationId, invoiceId);
+
+    // Answered 200 — the scheduled pull is the safety net, a 5xx would only
+    // make Zoho redeliver into the same failure.
+    expect(result.status).toBe(200);
+    expect(await service.lastDelivery(organizationId)).toMatchObject({
+      objectType: 'INVOICE',
+      remoteId: invoiceId,
+      outcome: 'failed — invoice not found in Zoho',
+    });
   });
 
   // --- Assignment --------------------------------------------------------------

@@ -8,6 +8,7 @@ import {
   disconnectPaymentGateway,
   disconnectZoho,
   getZohoSandboxChanges,
+  getZohoWebhookSetup,
   listZohoSandboxes,
   pushZohoSandboxToProduction,
   rebuildZohoSandbox,
@@ -22,6 +23,7 @@ import {
   type ZohoSandbox,
   type ZohoSandboxChange,
   type ZohoSyncSettingsPatch,
+  type ZohoWebhookSetup,
 } from '@/lib/api';
 import { describeActionError } from '@/lib/form';
 
@@ -102,6 +104,18 @@ export async function disconnectPaymentGatewayAction(
     return { ok: true, data: result };
   } catch (error) {
     return { ok: false, error: describeActionError(error, 'Could not disconnect this gateway.') };
+  }
+}
+
+// --- Zoho Books webhooks ------------------------------------------------------
+
+export async function getZohoWebhookSetupAction(
+  brandId: string,
+): Promise<ActionResult<ZohoWebhookSetup>> {
+  try {
+    return { ok: true, data: await getZohoWebhookSetup(brandId) };
+  } catch (error) {
+    return { ok: false, error: describeActionError(error, 'Could not load webhook setup.') };
   }
 }
 

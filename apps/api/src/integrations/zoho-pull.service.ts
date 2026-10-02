@@ -373,22 +373,24 @@ export class ZohoPullService {
   }
 
   /**
-   * FR-ZHO-webhook, invoice side. Unlike contacts, this cannot target the one
-   * changed invoice directly — invoices are pulled list-only now (no
-   * per-invoice GET), and Zoho's list endpoint has no "by id" filter to ask
-   * for just this record. This runs an immediate incremental list-scan for
-   * the brand instead (the same call the scheduled tick makes, just run right
-   * now rather than waiting for it), which picks up the invoice the webhook
-   * named along with anything else modified since the last pull.
+   * FR-ZHO-webhook, invoice side: the one invoice the webhook named, fetched
+   * by id. GET /invoices/{id} returns a superset of the list item the regular
+   * pull works from, so it goes through the same pullOneInvoice — same echo
+   * check, customer cascade, currency refusal and SyncJob — and its detail is
+   * reused for the line-item refresh rather than fetched twice.
+   *
+   * This used to run a brand-wide incremental list scan from lastPulledAt
+   * instead, which made the webhook only as fresh as that cursor and spent a
+   * list call (or several pages) per event. A targeted read costs one call
+   * and does not depend on the cursor at all.
    */
-  async pullOneInvoiceNow(brandId: string, _invoiceId: string): Promise<boolean> {
+  async pullOneInvoiceNow(brandId: string, invoiceId: string): Promise<boolean> {
     const scope = await this.systemScope.forBrand(brandId, 'zoho-webhook');
     if (!scope) return false;
     const connection = await this.connections.buildAccountingConnection(scope, brandId);
     if (!connection) return false;
-    const cursor = await this.connections.getLastPulledAt(scope, brandId);
-    const touched = await this.pullInvoices(scope, brandId, connection, cursor);
-    return touched > 0;
+    const detail = await this.zoho.getInvoice(connection, invoiceId);
+    return this.pullOneInvoice(scope, brandId, connection, detail, detail);
   }
 
   private async pullCustomersIfDue(
@@ -917,6 +919,9 @@ export class ZohoPullService {
     brandId: string,
     connection: AccountingConnection,
     item: ZohoInvoiceListItem,
+    /** Already-fetched detail for this invoice (the webhook path fetches it
+     * up front), so the line-item refresh below does not fetch it again. */
+    prefetchedDetail?: ZohoInvoiceDetail,
   ): Promise<boolean> {
     const invoiceId = item.invoice_id;
     return this.recordPull(
@@ -986,7 +991,7 @@ export class ZohoPullService {
         // the next pull retries the invoice, instead of treating it as already
         // up to date with stale line items.
         if (existing && existing._count.lineItems > 0) {
-          const detail = await this.zoho.getInvoice(connection, invoiceId);
+          const detail = prefetchedDetail ?? (await this.zoho.getInvoice(connection, invoiceId));
           await this.applyInvoiceDetail(scope, existing.id, detail, currency);
         }
 

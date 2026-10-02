@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   Inject,
   Logger,
@@ -16,41 +17,56 @@ import { idSchema, type Scope } from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { ENV, type Env } from '../config/env.js';
 import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisation.js';
+import { isValidZohoWebhookToken } from './zoho-webhook-token.js';
 import {
   ZohoWebhookService,
   type PendingBrandAssignmentRow,
   type ZohoWebhookEvent,
 } from './zoho-webhook.service.js';
 
-const WEBHOOK_EVENTS: readonly ZohoWebhookEvent[] = ['created', 'status_updated'];
+/**
+ * `event` query values accepted, onto what the service is told. Zoho's
+ * workflow rules are "Created", "Edited" and "Created or Edited"; the event is
+ * a static query parameter on the webhook URL (Zoho's own body is not relied
+ * on for it), so the aliases are just whatever someone may plausibly have
+ * typed. A missing event is fine — one URL on a "Created or Edited" rule is
+ * the recommended setup, and routing does not depend on which one it was.
+ */
+const EVENT_ALIASES: Record<string, ZohoWebhookEvent> = {
+  created: 'created',
+  create: 'created',
+  status_updated: 'status_updated',
+  updated: 'status_updated',
+  update: 'status_updated',
+  edited: 'status_updated',
+  created_or_edited: 'unspecified',
+  created_or_updated: 'unspecified',
+};
 
 const assignBodySchema = z.object({ brandId: idSchema });
 
 /**
  * FR-ZHO-webhook. Zoho Books signs no request the way Stripe does; the
- * mechanism it does document is per-webhook static query/form parameters
- * (https://www.zoho.com/books/api/v3/webhooks/), so `token` and
- * `organization_id` are configured as static query parameters on each
- * webhook definition registered in Zoho (Settings > Automation > Webhooks),
- * alongside `event` naming which of the two events on that entity this URL
- * represents.
+ * mechanism it does document is per-webhook static query parameters
+ * (https://www.zoho.com/books/api/v3/webhooks/), so `organization_id` and
+ * `token` are configured as query parameters on the webhook URL registered in
+ * Zoho (Settings > Automation > Webhooks). The exact URLs, with each
+ * organization's own token filled in, are served to the admin app by
+ * ZohoConnectController.webhookSetup — nobody has to assemble them by hand:
  *
- * One webhook definition per (entity, event) pair is expected — four in
- * total — each pointed at:
- *   POST /webhooks/zoho/contacts?event=created&organization_id=…&token=…
- *   POST /webhooks/zoho/contacts?event=status_updated&organization_id=…&token=…
- *   POST /webhooks/zoho/invoices?event=created&organization_id=…&token=…
- *   POST /webhooks/zoho/invoices?event=status_updated&organization_id=…&token=…
- * rather than one URL fanning out multiple event types, so routing never
- * depends on parsing an event name out of Zoho's own body — Zoho's public
- * docs do not confirm that body shape, but the URL is entirely this
- * platform's own choice and is therefore reliable regardless.
+ *   POST /webhooks/zoho/contacts?organization_id=…&token=…
+ *   POST /webhooks/zoho/invoices?organization_id=…&token=…
  *
- * Body shape is read defensively (`body.contact ?? body`,
- * `body.invoice ?? body`) since Zoho's webhook payload is configurable
- * per-definition and not documented down to the exact field, but every
- * shape Zoho could plausibly send carries the entity's own id under
- * contact_id/invoice_id.
+ * The token may also arrive as an `X-Zoho-Webhook-Token` header, for anyone
+ * who would rather keep it out of the URL (Zoho supports custom headers).
+ *
+ * Body shape is read defensively, because Zoho's payload depends on how each
+ * webhook was configured: JSON (`{"contact": {...}}` or a bare object), a
+ * form post (fields, or the whole entity JSON-encoded under `JSONString`), or
+ * raw JSON sent as text/plain (main.ts parses text bodies for this). Every
+ * shape carries the entity's own id under contact_id/invoice_id — that id is
+ * all the platform takes from the body; the record itself is always re-read
+ * from Zoho's API, so nothing in a webhook body is trusted as data.
  */
 @Controller('webhooks/zoho')
 export class ZohoWebhookController {
@@ -69,13 +85,16 @@ export class ZohoWebhookController {
     @Query('organization_id') organizationId: string | undefined,
     @Query('token') token: string | undefined,
     @Body() body: unknown,
+    @Headers('x-zoho-webhook-token') headerToken?: string,
   ): Promise<{ received: boolean }> {
-    this.verify(token);
+    const payload = this.normalizeBody(body);
+    const org = this.requireOrganizationId(organizationId, payload, 'contact');
+    this.verify(org, token ?? headerToken, 'contacts');
     const parsedEvent = this.parseEvent(event);
-    const org = this.requireOrganizationId(organizationId);
-    const contactId = this.extractId(body, 'contact', 'contact_id');
+    const contactId = this.extractId(payload, 'contact', 'contact_id');
 
-    const result = await this.webhooks.handleContactEvent(parsedEvent, org, contactId, body);
+    this.logger.log(`zoho webhook: contact ${contactId} (${parsedEvent}) from organization ${org}`);
+    const result = await this.webhooks.handleContactEvent(parsedEvent, org, contactId, payload);
     if (result.status === 404) {
       // Thrown, not returned: NotFoundException is what actually sets the
       // response status to 404 — @HttpCode(200) above only governs the
@@ -93,13 +112,16 @@ export class ZohoWebhookController {
     @Query('organization_id') organizationId: string | undefined,
     @Query('token') token: string | undefined,
     @Body() body: unknown,
+    @Headers('x-zoho-webhook-token') headerToken?: string,
   ): Promise<{ received: boolean }> {
-    this.verify(token);
+    const payload = this.normalizeBody(body);
+    const org = this.requireOrganizationId(organizationId, payload, 'invoice');
+    this.verify(org, token ?? headerToken, 'invoices');
     const parsedEvent = this.parseEvent(event);
-    const org = this.requireOrganizationId(organizationId);
-    const invoiceId = this.extractId(body, 'invoice', 'invoice_id');
+    const invoiceId = this.extractId(payload, 'invoice', 'invoice_id');
 
-    const result = await this.webhooks.handleInvoiceEvent(parsedEvent, org, invoiceId, body);
+    this.logger.log(`zoho webhook: invoice ${invoiceId} (${parsedEvent}) from organization ${org}`);
+    const result = await this.webhooks.handleInvoiceEvent(parsedEvent, org, invoiceId, payload);
     if (result.status === 404) {
       throw new NotFoundException('organization is not connected to any brand on this platform');
     }
@@ -130,35 +152,79 @@ export class ZohoWebhookController {
     return { ok: true };
   }
 
-  private verify(token: string | undefined): void {
-    if (!this.env.ZOHO_WEBHOOK_SECRET || token !== this.env.ZOHO_WEBHOOK_SECRET) {
-      this.logger.warn('zoho webhook: rejected — missing or incorrect token');
+  private verify(organizationId: string, token: string | undefined, route: string): void {
+    if (!isValidZohoWebhookToken(this.env, organizationId, token)) {
+      // Never logs the token itself — only whether one was present.
+      this.logger.warn(
+        `zoho webhook: rejected ${route} for organization ${organizationId} — ` +
+          `${token ? 'token does not match this organization' : 'no token supplied'}. ` +
+          `Copy the webhook URL again from Brand Settings > Integrations > Zoho Books.`,
+      );
       throw new BadRequestException('invalid webhook token');
     }
   }
 
   private parseEvent(event: string | undefined): ZohoWebhookEvent {
-    if (!event || !WEBHOOK_EVENTS.includes(event as ZohoWebhookEvent)) {
+    if (!event) return 'unspecified';
+    const parsed = EVENT_ALIASES[event.trim().toLowerCase()];
+    if (!parsed) {
       throw new BadRequestException(
-        `unknown or missing event (expected one of ${WEBHOOK_EVENTS.join(', ')})`,
+        `unknown event "${event}" (expected created or status_updated, or omit it)`,
       );
     }
-    return event as ZohoWebhookEvent;
+    return parsed;
   }
 
-  private requireOrganizationId(organizationId: string | undefined): string {
-    if (!organizationId) throw new BadRequestException('missing organization_id');
-    return organizationId;
+  /** Query parameter first (the documented setup); the payload's own
+   * organization_id as a fallback, for a webhook whose URL left it out. */
+  private requireOrganizationId(
+    organizationId: string | undefined,
+    payload: unknown,
+    entityKey: string,
+  ): string {
+    const fromBody =
+      this.stringField(payload, 'organization_id') ??
+      this.stringField(this.entity(payload, entityKey), 'organization_id');
+    const org = organizationId || fromBody;
+    if (!org) throw new BadRequestException('missing organization_id');
+    return org;
+  }
+
+  /** Raw-JSON text bodies and form posts carrying `JSONString` both become
+   * the object they encode; anything else is passed through as-is. */
+  private normalizeBody(body: unknown): unknown {
+    if (typeof body === 'string') return this.tryParseJson(body) ?? body;
+    if (body && typeof body === 'object') {
+      const encoded = (body as Record<string, unknown>)['JSONString'];
+      if (typeof encoded === 'string') return this.tryParseJson(encoded) ?? body;
+    }
+    return body;
+  }
+
+  private tryParseJson(text: string): unknown {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private entity(body: unknown, entityKey: string): unknown {
+    return body && typeof body === 'object' && entityKey in body
+      ? (body as Record<string, unknown>)[entityKey]
+      : body;
+  }
+
+  private stringField(record: unknown, key: string): string | undefined {
+    if (!record || typeof record !== 'object') return undefined;
+    const value = (record as Record<string, unknown>)[key];
+    if (typeof value === 'number') return String(value);
+    return typeof value === 'string' && value ? value : undefined;
   }
 
   private extractId(body: unknown, entityKey: string, idKey: string): string {
-    const record =
-      body && typeof body === 'object' && entityKey in body
-        ? (body as Record<string, unknown>)[entityKey]
-        : body;
-    const id =
-      record && typeof record === 'object' ? (record as Record<string, unknown>)[idKey] : undefined;
-    if (typeof id !== 'string' || !id) {
+    const id = this.stringField(this.entity(body, entityKey), idKey);
+    if (!id) {
       throw new BadRequestException(`webhook body carries no ${idKey}`);
     }
     return id;

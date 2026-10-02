@@ -33,6 +33,18 @@ import {
 } from './integration-connection.service.js';
 import { signOAuthState, verifyOAuthState } from './oauth-state.js';
 import { ZohoSyncService, type BackfillCounts } from './zoho-sync.service.js';
+import { zohoWebhookToken } from './zoho-webhook-token.js';
+import { ZohoWebhookService, type ZohoWebhookDelivery } from './zoho-webhook.service.js';
+
+export interface ZohoWebhookSetup {
+  readonly organizationId: string;
+  /** Paste into Zoho: Settings > Automation > Webhooks, method POST, one
+   * webhook per URL, each attached to a "Created or Edited" workflow rule on
+   * that module. */
+  readonly contactsUrl: string;
+  readonly invoicesUrl: string;
+  readonly lastDelivery: ZohoWebhookDelivery | null;
+}
 
 /**
  * FR-ZHO-001. The connect leg is authenticated and brand-scoped as normal;
@@ -52,7 +64,40 @@ export class ZohoConnectController {
     private readonly systemScope: SystemScopeResolver,
     private readonly sync: ZohoSyncService,
     private readonly queue: QueueService,
+    private readonly webhooks?: ZohoWebhookService,
   ) {}
+
+  /**
+   * The exact webhook URLs to register in Zoho for this brand's organization,
+   * with its own token already in them (see zoho-webhook-token.ts), plus the
+   * last delivery Zoho actually made — so whether webhooks are working is
+   * visible here rather than only in server logs.
+   *
+   * WRITE, not READ: the URLs carry the token, which is a credential.
+   */
+  @Get('brands/:brandId/integrations/zoho/webhook-setup')
+  @RequirePermission('INTEGRATIONS', 'WRITE')
+  async webhookSetup(
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @CurrentScope() scope: Scope,
+  ): Promise<ZohoWebhookSetup> {
+    const organizationId = await this.connections.getZohoOrganizationId(scope, brandId);
+    if (!organizationId) {
+      throw new BadRequestException('connect Zoho Books first — there is no organization yet');
+    }
+    const url = (entity: 'contacts' | 'invoices') => {
+      const built = new URL(`/webhooks/zoho/${entity}`, this.env.API_PUBLIC_URL);
+      built.searchParams.set('organization_id', organizationId);
+      built.searchParams.set('token', zohoWebhookToken(this.env, organizationId));
+      return built.toString();
+    };
+    return {
+      organizationId,
+      contactsUrl: url('contacts'),
+      invoicesUrl: url('invoices'),
+      lastDelivery: (await this.webhooks?.lastDelivery(organizationId)) ?? null,
+    };
+  }
 
   @Get('brands/:brandId/integrations/zoho/status')
   @RequirePermission('INTEGRATIONS', 'READ')

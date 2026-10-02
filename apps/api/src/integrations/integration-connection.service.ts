@@ -112,6 +112,19 @@ export class IntegrationConnectionService {
     await this.redis.cache.del(this.tokenCacheKey(brandId));
   }
 
+  /** The connected Zoho organization's id, or null when the brand is not
+   * connected — what the webhook setup URLs are built for. */
+  async getZohoOrganizationId(scope: Scope, brandId: string): Promise<string | null> {
+    const row = await this.prisma.withScope(scope, (tx) =>
+      tx.integrationConnection.findUnique({
+        where: { brandId_provider: { brandId, provider: 'ZOHO_BOOKS' } },
+        select: { status: true, config: true },
+      }),
+    );
+    if (row?.status !== 'CONNECTED') return null;
+    return (row.config as unknown as ZohoConnectionConfig | null)?.organizationId ?? null;
+  }
+
   async getStatus(scope: Scope, brandId: string): Promise<ZohoConnectionStatus> {
     const row = await this.prisma.withScope(scope, (tx) =>
       tx.integrationConnection.findUnique({

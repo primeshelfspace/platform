@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { getEnv } from './config/env.js';
 import { QueueService } from './infra/queue/queue.service.js';
@@ -24,7 +25,7 @@ async function bootstrap(): Promise<void> {
   const env = getEnv();
   const logger = new Logger('bootstrap');
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Gateway webhook signatures are computed over the exact bytes sent, not
     // over a re-serialised JSON body — rawBody exposes those bytes on
     // request.rawBody while the parsed body remains available as usual.
@@ -34,6 +35,11 @@ async function bootstrap(): Promise<void> {
         ? ['error', 'warn', 'log', 'debug', 'verbose']
         : ['error', 'warn', 'log'],
   });
+
+  // Zoho Books can be configured to send a webhook's raw JSON as text/plain,
+  // which neither of Nest's default parsers (json, urlencoded) reads — the
+  // body would arrive empty. ZohoWebhookController parses the text itself.
+  app.useBodyParser('text', { type: 'text/plain' });
 
   // Validation is per-handler with ZodValidationPipe rather than a global
   // ValidationPipe: Zod is the stack's validation layer and the schemas are
