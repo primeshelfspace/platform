@@ -30,5 +30,5 @@ ALTER TABLE "password_reset_token"
 -- only a digest, an expiry, and which user it belongs to.
 --
 -- The ALTER DEFAULT PRIVILEGES in that same migration already grants
--- fenwick_app SELECT/INSERT/UPDATE/DELETE on tables created later, so no
+-- sugrpay_app SELECT/INSERT/UPDATE/DELETE on tables created later, so no
 -- explicit GRANT is needed here.

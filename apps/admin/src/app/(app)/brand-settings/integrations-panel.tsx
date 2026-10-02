@@ -12,7 +12,7 @@ import {
   RefreshCw,
   Unlink,
 } from 'lucide-react';
-import { toast } from '@fenwick/ui/toast';
+import { toast } from '@sugrpay/ui/toast';
 import type {
   ZohoActivityEntry,
   ZohoConnectionStatus,

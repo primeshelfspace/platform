@@ -12,7 +12,7 @@ import {
   type PullChangesInput,
   type PullChangesResult,
   type RemoteRef,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 
 /**
  * FakeAccounting — in-memory AccountingPort for local development and tests

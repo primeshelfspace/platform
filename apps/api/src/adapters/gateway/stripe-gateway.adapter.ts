@@ -11,7 +11,7 @@ import {
   type PaymentIntentStatus,
   type RefundInput,
   type RefundResult,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
 import { StripeAccountService } from '../../integrations/stripe-account.service.js';
 

@@ -5,8 +5,8 @@
  * with no fields treated as "present" instead of null.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { isSupportedCurrency, minorUnitExponent } from '@fenwick/shared';
-import type { AccountingConnection } from '@fenwick/shared';
+import { isSupportedCurrency, minorUnitExponent } from '@sugrpay/shared';
+import type { AccountingConnection } from '@sugrpay/shared';
 import type { Env } from '../../config/env.js';
 import type { RedisService } from '../../infra/redis/redis.service.js';
 import { ZohoBooksAdapter } from './zoho-books.adapter.js';

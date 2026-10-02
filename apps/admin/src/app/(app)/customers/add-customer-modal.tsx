@@ -1,7 +1,7 @@
 'use client';
 
 import { forwardRef, useActionState, useEffect, useRef, useState } from 'react';
-import { COUNTRIES, emailSchema, phoneSchema, regionsFor } from '@fenwick/shared';
+import { COUNTRIES, emailSchema, phoneSchema, regionsFor } from '@sugrpay/shared';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import { Modal } from '@/components/ui/modal';

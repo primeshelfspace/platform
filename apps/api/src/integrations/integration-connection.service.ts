@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { AccountingConnection, Scope } from '@fenwick/shared';
+import type { AccountingConnection, Scope } from '@sugrpay/shared';
 import { decryptCredential, encryptCredential } from '../common/credential-encryption.js';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';

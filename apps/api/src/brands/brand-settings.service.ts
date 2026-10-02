@@ -19,7 +19,7 @@ import {
   type PaymentPageDisplayInput,
   type Scope,
   type StoragePort,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService, type ScopedClient } from '../infra/prisma/prisma.service.js';
 import { brandLogoAttachment, LOGO_CID } from '../common/logo-upload.js';
@@ -516,12 +516,12 @@ export function formatBrandAddress(address: Prisma.JsonValue): string {
   return [line1, cityLine].filter(Boolean).join('\n');
 }
 
-/** `"Prime Shelf Space Inc. <billing@localhost>"` -> name and address. Mirrors
+/** `"Sugrpay <billing@localhost>"` -> name and address. Mirrors
  * AuthMailService's own parseFrom — duplicated rather than shared because a
  * third caller isn't due yet and the two are one line each. Exported for
  * InvoicesService's resend, which sends through this same MAIL_FROM. */
 export function parseFrom(value: string): { name: string; address: string } {
   const match = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(value);
   if (match?.[1] && match[2]) return { name: match[1].trim(), address: match[2].trim() };
-  return { name: 'Prime Shelf Space Inc.', address: value.trim() };
+  return { name: 'Sugrpay', address: value.trim() };
 }

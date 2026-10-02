@@ -1,5 +1,5 @@
 import { Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { dashboardQuerySchema, idSchema, type DashboardQuery, type Scope } from '@fenwick/shared';
+import { dashboardQuerySchema, idSchema, type DashboardQuery, type Scope } from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import {

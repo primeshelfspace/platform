@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { emailSchema } from '@fenwick/shared';
+import { emailSchema } from '@sugrpay/shared';
 import { requestPasswordReset } from '@/lib/api';
 
 export interface ForgotPasswordState {

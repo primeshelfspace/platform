@@ -17,7 +17,7 @@ import {
   type Role,
   type SetPasswordInput,
   type SetPasswordWithTokenInput,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisation.js';
 import { AuthService, type AuthenticatedUser } from './auth.service.js';

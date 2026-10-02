@@ -1,4 +1,4 @@
-# Fenwick — Multi-Brand Invoicing & Payment Platform
+# Sugrpay — Multi-Brand Invoicing & Payment Platform
 
 Monorepo for the platform specified in `docs/`. This is the framework and its
 connections: tenancy, money, ports and adapters, queues, and the two web
@@ -27,17 +27,17 @@ below assume the defaults, so substitute your own if you have changed them.
 password, so signing in as each is how you exercise the permission matrix:
 
 ```
-password: fenwick-dev-password
+password: sugrpay-dev-password
 ```
 
 | Email                            | Role           | Brands                     |
 | -------------------------------- | -------------- | -------------------------- |
-| owner@fenwickholdings.test       | MERCHANT_OWNER | all                        |
-| admin@fenwickholdings.test       | MERCHANT_ADMIN | all                        |
-| brand.admin@fenwickholdings.test | BRAND_ADMIN    | Solstice, Meridian         |
-| finance@fenwickholdings.test     | FINANCE_USER   | Solstice, Meridian, Cobalt |
-| sales@fenwickholdings.test       | SALES_USER     | Solstice                   |
-| readonly@fenwickholdings.test    | READ_ONLY      | Solstice, Cobalt           |
+| owner@sugrpay.test       | MERCHANT_OWNER | all                        |
+| admin@sugrpay.test       | MERCHANT_ADMIN | all                        |
+| brand.admin@sugrpay.test | BRAND_ADMIN    | Solstice, Meridian         |
+| finance@sugrpay.test     | FINANCE_USER   | Solstice, Meridian, Cobalt |
+| sales@sugrpay.test       | SALES_USER     | Solstice                   |
+| readonly@sugrpay.test    | READ_ONLY      | Solstice, Cobalt           |
 
 The admin app is a back-end-for-front-end: `POST /auth/login` returns the
 session token, the app stores it in its own httpOnly cookie, and replays it

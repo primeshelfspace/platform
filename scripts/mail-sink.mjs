@@ -28,7 +28,7 @@ const smtp = net.createServer((socket) => {
   let message = { from: '', to: [], data: '' };
 
   const send = (line) => socket.write(`${line}\r\n`);
-  send('220 fenwick-mail-sink ESMTP ready');
+  send('220 sugrpay-mail-sink ESMTP ready');
 
   socket.on('data', (chunk) => {
     buffer += chunk.toString('utf8');
@@ -54,7 +54,7 @@ const smtp = net.createServer((socket) => {
 
       const upper = line.toUpperCase();
       if (upper.startsWith('EHLO') || upper.startsWith('HELO')) {
-        send('250-fenwick-mail-sink');
+        send('250-sugrpay-mail-sink');
         send('250-8BITMIME');
         send('250 SIZE 26214400');
       } else if (upper.startsWith('MAIL FROM')) {
@@ -138,7 +138,7 @@ const ui = http.createServer((req, res) => {
     .join('');
 
   res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-  res.end(`<!doctype html><meta charset="utf-8"><title>Fenwick mail sink</title>
+  res.end(`<!doctype html><meta charset="utf-8"><title>Sugrpay mail sink</title>
 <style>
   body{font:14px/1.5 ui-sans-serif,system-ui;margin:2rem;background:#EDF1EE;color:#16261F}
   h1{font-size:1.1rem;letter-spacing:.02em}
@@ -147,7 +147,7 @@ const ui = http.createServer((req, res) => {
   a{color:#2D6A6A}
   .empty{padding:2rem;background:#fff;border-radius:8px;color:#5B6B63}
 </style>
-<h1>Fenwick mail sink <small style="font-weight:400;color:#5B6B63">— captured outbound mail</small></h1>
+<h1>Sugrpay mail sink <small style="font-weight:400;color:#5B6B63">— captured outbound mail</small></h1>
 ${rows ? `<table><tr><th>Subject</th><th>To</th><th>Received</th></tr>${rows}</table>` : '<div class="empty">No messages captured yet.</div>'}
 <p><a href="/clear">Clear all</a></p>`);
 });

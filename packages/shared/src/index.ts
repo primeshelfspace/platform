@@ -1,5 +1,5 @@
 /**
- * @fenwick/shared — the workspace package the admin app, the payment app and
+ * @sugrpay/shared — the workspace package the admin app, the payment app and
  * the API all depend on (TSD-001 §3.3): design tokens, the money module,
  * shared types, validation schemas and the port interfaces.
  *

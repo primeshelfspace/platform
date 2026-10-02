@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useTransition } from 'react';
 import { AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
-import { toast } from '@fenwick/ui/toast';
+import { toast } from '@sugrpay/ui/toast';
 import { retrySyncJobAction } from '../../app/(app)/dashboard-actions';
 import type { NeedsAttentionItem, NeedsAttentionResult } from '@/lib/api';
 import { useCan } from '@/hooks/use-permissions';

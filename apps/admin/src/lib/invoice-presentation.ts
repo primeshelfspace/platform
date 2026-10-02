@@ -8,7 +8,7 @@
  * folded in here — it colours SyncJob states (QUEUED/RUNNING/FAILED), a
  * different vocabulary that only looks similar.
  */
-import type { InvoiceStatus } from '@fenwick/shared';
+import type { InvoiceStatus } from '@sugrpay/shared';
 
 /** Tailwind text colour for an invoice status. */
 export function invoiceStatusTone(status: string): string {

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { BrandTheme } from '@/components/brand-theme';
 import { redirect } from 'next/navigation';
-import { DEFAULT_BRAND_CURRENCY } from '@fenwick/shared';
+import { DEFAULT_BRAND_CURRENCY } from '@sugrpay/shared';
 import { ApiError, listBrands, listCustomers, getCurrentUser } from '@/lib/api';
 import { hasPermission } from '@/lib/permissions';
 import { InvoiceForm } from './invoice-form';

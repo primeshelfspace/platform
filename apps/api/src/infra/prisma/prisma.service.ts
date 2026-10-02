@@ -6,7 +6,7 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
-import { type Scope, databaseScopeSettings } from '@fenwick/shared';
+import { type Scope, databaseScopeSettings } from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
 
 /** The transactional client handed to a scoped unit of work. */
@@ -35,7 +35,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
    * Owner-role connection, used only by withoutScope. app_merchant_id() and
    * friends return NULL with no scope set, and every RLS policy here reads
    * "NULL means deny" — so running unscoped work on the app's own DATABASE_URL
-   * connection (fenwick_app, RLS-bound) doesn't bypass RLS, it just makes every
+   * connection (sugrpay_app, RLS-bound) doesn't bypass RLS, it just makes every
    * protected table return nothing. Table owners bypass RLS by construction;
    * DIRECT_DATABASE_URL already exists for Prisma's migration tooling and is
    * the same owner role, so it doubles as the one true escape hatch.

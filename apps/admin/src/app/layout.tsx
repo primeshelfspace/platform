@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
-import { Toaster } from '@fenwick/ui/toast';
+import { Toaster } from '@sugrpay/ui/toast';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Prime Shelf Space Inc.',
+  title: 'Sugrpay',
   description: 'Multi-brand invoicing and payment administration.',
 };
 

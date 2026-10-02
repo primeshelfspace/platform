@@ -57,15 +57,19 @@ jobs:
             git reset --hard FETCH_HEAD
 
             pnpm install --frozen-lockfile
-            pnpm --filter @fenwick/shared build
+            pnpm --filter @sugrpay/shared build
 
             # Reads DIRECT_DATABASE_URL from this box's own .env, same as a
             # manual run — no DB credential is duplicated into GitHub secrets.
-            pnpm --filter @fenwick/api db:migrate
+            pnpm --filter @sugrpay/api db:migrate
 
-            pnpm --filter @fenwick/api build
-            pnpm --filter @fenwick/admin build
-            pnpm --filter @fenwick/payment build
+            pnpm --filter @sugrpay/api build
+            pnpm --filter @sugrpay/admin build
+            pnpm --filter @sugrpay/payment build
 
-            pm2 reload ecosystem.config.cjs --update-env
+            # Processes started before the Fenwick -> Sugrpay rename still run
+            # `--filter @fenwick/*`, and reload never refreshes a process's
+            # args — so recreate them once; every later deploy just reloads.
+            if pm2 jlist | grep -q '@fenwick/'; then pm2 delete ecosystem.config.cjs; fi
+            pm2 startOrReload ecosystem.config.cjs --update-env
             pm2 save

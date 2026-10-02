@@ -6,7 +6,7 @@ import {
   type CustomerInput,
   type CustomerListQuery,
   type Scope,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import type { Customer } from '@prisma/client';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';

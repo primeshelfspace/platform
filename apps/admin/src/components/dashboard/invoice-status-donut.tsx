@@ -2,8 +2,8 @@
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { PieChart as PieChartIcon } from 'lucide-react';
-import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
-import { palette } from '@fenwick/shared/tokens';
+import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
+import { palette } from '@sugrpay/shared/tokens';
 import type { DashboardStatusBucket, DashboardStatusBucketName } from '@/lib/api';
 
 /** Status colours, reused verbatim from the same statusTone vocabulary the

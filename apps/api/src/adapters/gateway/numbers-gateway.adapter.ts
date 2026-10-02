@@ -8,7 +8,7 @@ import {
   type PaymentIntent,
   type RefundInput,
   type RefundResult,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
 
 /**

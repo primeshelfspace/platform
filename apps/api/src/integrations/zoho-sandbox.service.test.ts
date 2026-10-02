@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IntegrationError, type AccountingConnection, type Scope } from '@fenwick/shared';
+import { IntegrationError, type AccountingConnection, type Scope } from '@sugrpay/shared';
 import type { ZohoBooksAdapter } from '../adapters/accounting/zoho-books.adapter.js';
 import type { IntegrationConnectionService } from './integration-connection.service.js';
 import { ZohoSandboxService } from './zoho-sandbox.service.js';

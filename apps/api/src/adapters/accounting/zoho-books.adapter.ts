@@ -15,7 +15,7 @@ import {
   type PullChangesInput,
   type PullChangesResult,
   type RemoteRef,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 

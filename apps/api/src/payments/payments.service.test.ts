@@ -2,12 +2,12 @@
  * PaymentsService against a real database and the real FakeGatewayAdapter —
  * this is the highest-stakes code in the platform (TDD-001 §8.3), so it is
  * exercised end to end rather than mocked. Needs a migrated, seeded database:
- *   pnpm setup:local && pnpm --filter @fenwick/api test
+ *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@fenwick/shared';
+import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
 import { LocalDiskAdapter } from '../adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../config/load-env.js';

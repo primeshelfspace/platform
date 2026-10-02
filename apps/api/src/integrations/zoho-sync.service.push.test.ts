@@ -16,7 +16,7 @@
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AccountingConnection, RequestScope } from '@fenwick/shared';
+import type { AccountingConnection, RequestScope } from '@sugrpay/shared';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';

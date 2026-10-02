@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Pagination } from '@fenwick/ui/pagination';
+import { Pagination } from '@sugrpay/ui/pagination';
 import {
   ArrowLeft,
   Calendar,
@@ -19,7 +19,7 @@ import {
   Unlink,
   X,
 } from 'lucide-react';
-import { toast } from '@fenwick/ui/toast';
+import { toast } from '@sugrpay/ui/toast';
 import type {
   PaymentGatewayProvider,
   PaymentGatewaySummary,

@@ -9,7 +9,7 @@
  * forwarded — see lib/session.ts.
  */
 
-import type { BusinessType, InvoiceStatus, PermissionGrants, Role } from '@fenwick/shared';
+import type { BusinessType, InvoiceStatus, PermissionGrants, Role } from '@sugrpay/shared';
 import { readSessionToken } from './session';
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
@@ -247,7 +247,7 @@ export function setPassword(newPassword: string): Promise<{ ok: true }> {
 // --- Users & Roles (FR-USR) --------------------------------------------------
 //
 // Role -> permission mapping is not fetched from anywhere — it's the fixed
-// matrix in @fenwick/shared (ROLES/RESOURCES/actionsFor), imported directly
+// matrix in @sugrpay/shared (ROLES/RESOURCES/actionsFor), imported directly
 // wherever the UI needs to show or check it. What's dynamic, and what these
 // calls manage, is which role and which brands a given user holds.
 

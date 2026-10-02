@@ -1,5 +1,5 @@
 {
-  "name": "@fenwick/admin",
+  "name": "@sugrpay/admin",
   "version": "0.1.0",
   "private": true,
   "description": "Authenticated admin application for merchant staff.",
@@ -11,8 +11,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@fenwick/shared": "workspace:*",
-    "@fenwick/ui": "workspace:*",
+    "@sugrpay/shared": "workspace:*",
+    "@sugrpay/ui": "workspace:*",
     "lucide-react": "^0.469.0",
     "next": "^15.1.3",
     "react": "^18.3.1",

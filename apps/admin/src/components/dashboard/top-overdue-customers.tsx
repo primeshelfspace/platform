@@ -1,5 +1,5 @@
 import { Users } from 'lucide-react';
-import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
+import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
 import type { TopOverdueCustomer } from '@/lib/api';
 
 function initials(name: string): string {

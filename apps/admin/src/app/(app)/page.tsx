@@ -1,5 +1,5 @@
 import { NoBrandsState } from '@/components/no-brands-state';
-import { toCurrencyCode } from '@fenwick/shared/money';
+import { toCurrencyCode } from '@sugrpay/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
 import { BrandScopeSelect } from '@/components/dashboard/brand-scope-select';
 import { ByBrandCards } from '@/components/dashboard/by-brand-cards';

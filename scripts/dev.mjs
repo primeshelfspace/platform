@@ -206,17 +206,17 @@ await reclaim();
 
 // Once, before anything imports it, so the apps never start against a stale
 // dist. The watch below keeps it fresh from here on.
-step('building @fenwick/shared');
-const built = await runToCompletion(['--filter', '@fenwick/shared', 'build']);
+step('building @sugrpay/shared');
+const built = await runToCompletion(['--filter', '@sugrpay/shared', 'build']);
 if (built !== 0) {
-  fail('@fenwick/shared failed to build — fix that before the apps start');
+  fail('@sugrpay/shared failed to build — fix that before the apps start');
   process.exit(built);
 }
-ok('@fenwick/shared built');
+ok('@sugrpay/shared built');
 
 step('starting apps + shared watch');
 log();
-const dev = pnpm(['--parallel', '--filter', './apps/*', '--filter', '@fenwick/shared', 'dev']);
+const dev = pnpm(['--parallel', '--filter', './apps/*', '--filter', '@sugrpay/shared', 'dev']);
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {

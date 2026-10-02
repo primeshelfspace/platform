@@ -8,8 +8,8 @@ import type {
   AccountingPayment,
   IntegrationError as IntegrationErrorType,
   Scope,
-} from '@fenwick/shared';
-import { IntegrationError, isSupportedCurrency } from '@fenwick/shared';
+} from '@sugrpay/shared';
+import { IntegrationError, isSupportedCurrency } from '@sugrpay/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
 import { RedisService } from '../infra/redis/redis.service.js';

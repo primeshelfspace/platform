@@ -13,7 +13,7 @@ import { cookies, headers } from 'next/headers';
  * browser. No script on this page can read it, so an XSS bug cannot lift a
  * session out of it.
  */
-export const SESSION_COOKIE = 'fenwick_admin_session';
+export const SESSION_COOKIE = 'sugrpay_admin_session';
 
 /** Where an unauthenticated request is sent, and the key it comes back on. */
 export const LOGIN_PATH = '/login';

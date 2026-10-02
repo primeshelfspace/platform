@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { requireOnboardingStep } from '@/lib/onboarding';
 import { LogoutButton } from './logout-button';
 
-export const metadata: Metadata = { title: 'Setup In Progress — Prime Shelf Space Inc.' };
+export const metadata: Metadata = { title: 'Setup In Progress — Sugrpay' };
 export const dynamic = 'force-dynamic';
 
 /**

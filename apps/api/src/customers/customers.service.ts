@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type Customer, type CustomerContactPerson } from '@prisma/client';
-import type { CustomerInput, CustomerListQuery, Scope } from '@fenwick/shared';
+import type { CustomerInput, CustomerListQuery, Scope } from '@sugrpay/shared';
 import { PrismaService, type ScopedClient } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
 
@@ -34,7 +34,7 @@ export interface CustomerListResult {
 
 /** Payment statuses that count as "collected" for the list view's Payments
  * column — mirrors the settled/terminal split invoices.service.ts already
- * draws using PAYABLE_STATUSES (@fenwick/shared) and the rest. */
+ * draws using PAYABLE_STATUSES (@sugrpay/shared) and the rest. */
 const COLLECTED_PAYMENT_STATUSES = ['SETTLED'] as const;
 
 /**

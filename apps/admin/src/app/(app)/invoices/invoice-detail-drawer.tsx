@@ -18,9 +18,9 @@ import {
   Share2,
   X,
 } from 'lucide-react';
-import { toast } from '@fenwick/ui/toast';
-import { formatDateForDisplay } from '@fenwick/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
+import { toast } from '@sugrpay/ui/toast';
+import { formatDateForDisplay } from '@sugrpay/shared';
+import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
 import type { Brand, InvoiceActivityEntry, InvoiceDetail } from '@/lib/api';
 import {
   invoiceDetailStatus,

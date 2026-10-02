@@ -1,4 +1,4 @@
-import { ACTIONS, RESOURCES, ROLES, actionsFor, type Action } from '@fenwick/shared';
+import { ACTIONS, RESOURCES, ROLES, actionsFor, type Action } from '@sugrpay/shared';
 import { ROLE_LABELS } from './role-labels';
 
 const ACTION_LETTER: Record<Action, string> = {
@@ -10,7 +10,7 @@ const ACTION_LETTER: Record<Action, string> = {
 
 /**
  * Read-only view of the permission matrix (FRS-001 §3.3) — every cell is
- * computed straight from @fenwick/shared, nothing is fetched. The matrix is a
+ * computed straight from @sugrpay/shared, nothing is fetched. The matrix is a
  * fixed business rule, not user-editable data (see the design note in
  * domain/roles.ts): this panel exists so an admin can see exactly what a role
  * can do before assigning it, not to let anyone change it.

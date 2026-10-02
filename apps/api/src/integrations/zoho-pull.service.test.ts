@@ -12,13 +12,13 @@
  * like it does.
  *
  * Needs a migrated, seeded database:
- *   pnpm setup:local && pnpm --filter @fenwick/api test
+ *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { IntegrationError } from '@fenwick/shared';
-import type { AccountingConnection, RequestScope } from '@fenwick/shared';
+import { IntegrationError } from '@sugrpay/shared';
+import type { AccountingConnection, RequestScope } from '@sugrpay/shared';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';

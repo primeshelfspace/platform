@@ -8,7 +8,7 @@
  */
 import { UnauthorizedException } from '@nestjs/common';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { RequestScope } from '@fenwick/shared';
+import type { RequestScope } from '@sugrpay/shared';
 import type { PrismaService } from '../infra/prisma/prisma.service.js';
 import type { RedisService } from '../infra/redis/redis.service.js';
 import { AuthService } from './auth.service.js';
@@ -167,8 +167,8 @@ function makeUser(overrides: Partial<UserRow> & { passwordHash: string }): UserR
   return {
     id: 'user-1',
     merchantId: 'merchant-1',
-    email: 'dana@fenwick.test',
-    name: 'Dana Fenwick',
+    email: 'dana@sugrpay.test',
+    name: 'Dana Sugrpay',
     role: 'MERCHANT_OWNER',
     status: 'ACTIVE',
     failedLogins: 0,
@@ -188,7 +188,7 @@ describe('AuthService.login', () => {
   let auth: AuthService;
 
   const attempt = {
-    email: 'dana@fenwick.test',
+    email: 'dana@sugrpay.test',
     password: PASSWORD,
     sourceIp: '198.51.100.7',
     userAgent: 'vitest',
@@ -217,7 +217,7 @@ describe('AuthService.login', () => {
     const result = await auth.login(attempt);
 
     expect(result.token).toBe('token-for-user-1');
-    expect(result.user.email).toBe('dana@fenwick.test');
+    expect(result.user.email).toBe('dana@sugrpay.test');
     expect(users[0]!.failedLogins).toBe(0);
     expect(users[0]!.lockedUntil).toBeNull();
     expect(users[0]!.lastLoginAt).toBeInstanceOf(Date);
@@ -227,7 +227,7 @@ describe('AuthService.login', () => {
   // FR-AUTH-003: an attacker must not be able to tell these four apart.
   it('gives the same message for an unknown address and a wrong password', async () => {
     const unknown = await auth
-      .login({ ...attempt, email: 'nobody@fenwick.test' })
+      .login({ ...attempt, email: 'nobody@sugrpay.test' })
       .catch((e: Error) => e);
     const wrong = await auth.login({ ...attempt, password: 'wrong' }).catch((e: Error) => e);
 
@@ -239,7 +239,7 @@ describe('AuthService.login', () => {
   it('does not record an audit row for an address that matches no user', async () => {
     // audit_log.merchant_id is NOT NULL and there is no merchant to attribute
     // it to; the attempt goes to the application log instead.
-    await expect(auth.login({ ...attempt, email: 'nobody@fenwick.test' })).rejects.toThrow();
+    await expect(auth.login({ ...attempt, email: 'nobody@sugrpay.test' })).rejects.toThrow();
     expect(audit).toHaveLength(0);
   });
 
@@ -477,10 +477,10 @@ describe('AuthService.requestPasswordReset', () => {
       fakeRedis(),
     );
 
-    await auth.requestPasswordReset('dana@fenwick.test', context);
+    await auth.requestPasswordReset('dana@sugrpay.test', context);
 
     expect(issued).toEqual(['user-1']);
-    expect(sent).toEqual([{ to: 'dana@fenwick.test', isNewAccount: false }]);
+    expect(sent).toEqual([{ to: 'dana@sugrpay.test', isNewAccount: false }]);
     expect(audit.at(-1)).toMatchObject({
       action: 'AUTH_PASSWORD_RESET_REQUEST',
       outcome: 'SUCCESS',
@@ -502,7 +502,7 @@ describe('AuthService.requestPasswordReset', () => {
     );
 
     await expect(
-      auth.requestPasswordReset('nobody@fenwick.test', context),
+      auth.requestPasswordReset('nobody@sugrpay.test', context),
     ).resolves.toBeUndefined();
 
     expect(issued).toEqual([]);
@@ -525,7 +525,7 @@ describe('AuthService.requestPasswordReset', () => {
       fakeRedis(),
     );
 
-    await auth.requestPasswordReset('dana@fenwick.test', context);
+    await auth.requestPasswordReset('dana@sugrpay.test', context);
 
     expect(issued).toEqual([]);
     expect(sent).toEqual([]);
@@ -558,7 +558,7 @@ describe('AuthService.requestPasswordReset', () => {
       fakeRedis(),
     );
 
-    await auth.requestPasswordReset('dana@fenwick.test', context);
+    await auth.requestPasswordReset('dana@sugrpay.test', context);
 
     expect(issued).toEqual(['user-1', 'user-2']);
     expect(sent).toHaveLength(2);
@@ -578,7 +578,7 @@ describe('AuthService.requestPasswordReset', () => {
       fakeRedis({ allow: false }),
     );
 
-    await expect(auth.requestPasswordReset('dana@fenwick.test', context)).resolves.toBeUndefined();
+    await expect(auth.requestPasswordReset('dana@sugrpay.test', context)).resolves.toBeUndefined();
 
     expect(issued).toEqual([]);
     expect(sent).toEqual([]);

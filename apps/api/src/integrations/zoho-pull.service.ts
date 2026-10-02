@@ -8,7 +8,7 @@ import {
   type CurrencyCode,
   type InvoiceStatus,
   type Scope,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { mapWithConcurrency } from '../common/concurrency.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { RedisService } from '../infra/redis/redis.service.js';

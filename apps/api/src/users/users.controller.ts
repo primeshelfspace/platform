@@ -12,7 +12,7 @@ import {
   type UpdateUserRoleInput,
   type UpdateUserStatusInput,
   type UserListQuery,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import { UsersService, type ManagedUser, type ManagedUserListResult } from './users.service.js';

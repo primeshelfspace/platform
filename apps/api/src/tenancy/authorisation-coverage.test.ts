@@ -19,7 +19,7 @@ import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { RequestMethod } from '@nestjs/common';
-import { ACTIONS, RESOURCES } from '@fenwick/shared';
+import { ACTIONS, RESOURCES } from '@sugrpay/shared';
 import { describe, expect, it } from 'vitest';
 import { PERMISSION_KEY, PUBLIC_KEY, type PermissionRequirement } from './authorisation.js';
 

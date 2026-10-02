@@ -4,24 +4,24 @@
 # turnover in a way a review checklist does not.
 
 # Default
-*                                       @fenwick/engineering
+*                                       @sugrpay/engineering
 
 # Money. A defect here is a financial defect, not a rendering glitch.
-/packages/shared/src/money/             @fenwick/engineering-leads @fenwick/security
+/packages/shared/src/money/             @sugrpay/engineering-leads @sugrpay/security
 
 # Authorisation, tenancy and the permission matrix.
-/packages/shared/src/domain/roles.ts    @fenwick/engineering-leads @fenwick/security
-/packages/shared/src/tenancy.ts         @fenwick/engineering-leads @fenwick/security
-/apps/api/src/tenancy/                  @fenwick/engineering-leads @fenwick/security
-/apps/api/src/auth/                     @fenwick/engineering-leads @fenwick/security
+/packages/shared/src/domain/roles.ts    @sugrpay/engineering-leads @sugrpay/security
+/packages/shared/src/tenancy.ts         @sugrpay/engineering-leads @sugrpay/security
+/apps/api/src/tenancy/                  @sugrpay/engineering-leads @sugrpay/security
+/apps/api/src/auth/                     @sugrpay/engineering-leads @sugrpay/security
 
 # Row-level security policies and grants.
-/apps/api/prisma/migrations/            @fenwick/engineering-leads @fenwick/security
+/apps/api/prisma/migrations/            @sugrpay/engineering-leads @sugrpay/security
 
 # The public payment application. Every dependency change here is a PCI scope
 # question, so the dependency manifest gets the same treatment as the code.
-/apps/payment/                          @fenwick/engineering-leads @fenwick/security
-/apps/payment/package.json              @fenwick/engineering-leads @fenwick/security
+/apps/payment/                          @sugrpay/engineering-leads @sugrpay/security
+/apps/payment/package.json              @sugrpay/engineering-leads @sugrpay/security
 
 # Gateway adapters.
-/apps/api/src/adapters/gateway/         @fenwick/engineering-leads @fenwick/security
+/apps/api/src/adapters/gateway/         @sugrpay/engineering-leads @sugrpay/security

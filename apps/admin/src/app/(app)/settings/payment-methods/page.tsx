@@ -50,7 +50,7 @@ export default async function PaymentMethodsPage({
       <PageContainer>
         <header className="mb-8">
           <p className="text-sm uppercase tracking-widest text-ink-subtle">
-            {activeBrand ? activeBrand.displayName : 'Fenwick Holdings Inc.'}
+            {activeBrand ? activeBrand.displayName : 'Sugrpay'}
           </p>
           <h1 className="mt-1 text-2xl font-semibold text-ink-strong">Payment methods</h1>
           <p className="mt-2 text-ink-muted">

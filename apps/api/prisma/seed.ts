@@ -21,7 +21,7 @@ import {
   type InvoiceStatus,
   type PaymentMethod,
   type Role,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { hashPassword } from '../src/auth/password.js';
 
 const prisma = new PrismaClient({
@@ -30,7 +30,7 @@ const prisma = new PrismaClient({
   },
 });
 
-const DEV_PASSWORD = 'fenwick-dev-password';
+const DEV_PASSWORD = 'sugrpay-dev-password';
 /** Fixed so a developer's saved requests keep working across re-seeds. */
 const DEV_SESSION_TOKEN = 'dev0000000000000000000000000000000000000000000000000000000000dev';
 
@@ -47,16 +47,16 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Merchant one — three brands, in three time zones, three theme colours.
   // -------------------------------------------------------------------------
-  const fenwick = await prisma.merchant.create({
+  const sugrpay = await prisma.merchant.create({
     data: {
-      name: 'Fenwick Holdings Inc.',
-      contactEmail: 'ops@fenwickholdings.test',
+      name: 'Sugrpay Holdings Inc.',
+      contactEmail: 'ops@sugrpay.test',
       address: address('1 Harbour Street', 'Boston', 'MA', '02110'),
       plan: 'standard',
     },
   });
 
-  const solstice = await createBrand(fenwick.id, {
+  const solstice = await createBrand(sugrpay.id, {
     legalName: 'Solstice Kitchenware LLC',
     displayName: 'Solstice Kitchenware',
     themeColor: '#2D6A6A',
@@ -66,7 +66,7 @@ async function main(): Promise<void> {
     defaultTaxRateBp: 600,
   });
 
-  const meridian = await createBrand(fenwick.id, {
+  const meridian = await createBrand(sugrpay.id, {
     legalName: 'Meridian Outfitters Inc.',
     displayName: 'Meridian Outfitters',
     themeColor: '#C97A2B',
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
     defaultTaxRateBp: 875,
   });
 
-  const cobalt = await createBrand(fenwick.id, {
+  const cobalt = await createBrand(sugrpay.id, {
     legalName: 'Cobalt Studio Supply Co.',
     displayName: 'Cobalt Studio Supply',
     themeColor: '#3A6FA8',
@@ -89,49 +89,49 @@ async function main(): Promise<void> {
   // One user per role. Brand assignments are deliberately partial: the brand
   // admin cannot reach Cobalt, and the sales user can reach only Solstice.
   const owner = await createUser(
-    fenwick.id,
+    sugrpay.id,
     'MERCHANT_OWNER',
-    'owner@fenwickholdings.test',
-    'Dana Fenwick',
+    'owner@sugrpay.test',
+    'Dana Sugrpay',
     passwordHash,
     [],
   );
   await createUser(
-    fenwick.id,
+    sugrpay.id,
     'MERCHANT_ADMIN',
-    'admin@fenwickholdings.test',
+    'admin@sugrpay.test',
     'Roman Ilves',
     passwordHash,
     [],
   );
   await createUser(
-    fenwick.id,
+    sugrpay.id,
     'BRAND_ADMIN',
-    'brand.admin@fenwickholdings.test',
+    'brand.admin@sugrpay.test',
     'Priya Raghunathan',
     passwordHash,
     [solstice.id, meridian.id],
   );
   await createUser(
-    fenwick.id,
+    sugrpay.id,
     'FINANCE_USER',
-    'finance@fenwickholdings.test',
+    'finance@sugrpay.test',
     'Marta Oyelaran',
     passwordHash,
     [solstice.id, meridian.id, cobalt.id],
   );
   await createUser(
-    fenwick.id,
+    sugrpay.id,
     'SALES_USER',
-    'sales@fenwickholdings.test',
+    'sales@sugrpay.test',
     'Tobias Vance',
     passwordHash,
     [solstice.id],
   );
   await createUser(
-    fenwick.id,
+    sugrpay.id,
     'READ_ONLY',
-    'readonly@fenwickholdings.test',
+    'readonly@sugrpay.test',
     'Junia Sørensen',
     passwordHash,
     [solstice.id, cobalt.id],
@@ -139,7 +139,7 @@ async function main(): Promise<void> {
 
   // -------------------------------------------------------------------------
   // Merchant two — exists solely so isolation has something to isolate from.
-  // Any query that returns one of these rows to a Fenwick user is a defect.
+  // Any query that returns one of these rows to a Sugrpay user is a defect.
   // -------------------------------------------------------------------------
   const northgate = await prisma.merchant.create({
     data: {

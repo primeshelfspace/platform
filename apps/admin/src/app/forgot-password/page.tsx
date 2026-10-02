@@ -6,7 +6,7 @@ import { getCurrentUser } from '@/lib/api';
 import { readSessionToken } from '@/lib/session';
 import { ForgotPasswordForm } from './forgot-password-form';
 
-export const metadata: Metadata = { title: 'Reset your password — Prime Shelf Space Inc.' };
+export const metadata: Metadata = { title: 'Reset your password — Sugrpay' };
 export const dynamic = 'force-dynamic';
 
 /**

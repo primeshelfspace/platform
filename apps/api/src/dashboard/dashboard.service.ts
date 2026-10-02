@@ -6,7 +6,7 @@ import {
   toCurrencyCode,
   type CurrencyCode,
   type Scope,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { PrismaService, type ScopedClient } from '../infra/prisma/prisma.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
 

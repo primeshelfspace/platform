@@ -5,19 +5,19 @@ import { toast, toastStore } from './store.js';
 import { ToastCard } from './toast-card.js';
 
 /**
- * Entering/exiting animation and reduced-motion handling for `.fenwick-toast`.
+ * Entering/exiting animation and reduced-motion handling for `.sugrpay-toast`.
  * Shipped as an injected `<style>` tag rather than requiring each app to add
  * it to its own globals.css — the whole point of centralizing this here is
  * that mounting `<Toaster>` is the only integration step an app needs.
  */
 const TOAST_STYLES = `
-@keyframes fenwick-toast-in {
+@keyframes sugrpay-toast-in {
   from { opacity: 0; transform: translateY(-8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-.fenwick-toast { animation: fenwick-toast-in 180ms ease-out both; }
+.sugrpay-toast { animation: sugrpay-toast-in 180ms ease-out both; }
 @media (prefers-reduced-motion: reduce) {
-  .fenwick-toast { animation: none; }
+  .sugrpay-toast { animation: none; }
 }
 `;
 

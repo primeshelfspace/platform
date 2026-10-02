@@ -7,12 +7,12 @@
  * something a mocked Prisma can demonstrate — RLS, the transaction boundary
  * and the append-only audit row are all database behaviour. Needs a
  * migrated, seeded database:
- *   pnpm setup:local && pnpm --filter @fenwick/api test
+ *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { RequestScope } from '@fenwick/shared';
+import type { RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
 import { LocalDiskAdapter } from '../adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../config/load-env.js';

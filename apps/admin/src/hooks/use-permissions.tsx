@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, createContext, useContext } from 'react';
-import { type Action, type PermissionGrants, type Resource, hasGrant } from '@fenwick/shared';
+import { type Action, type PermissionGrants, type Resource, hasGrant } from '@sugrpay/shared';
 
 /**
  * The signed-in user's permissions, as GET /auth/me returned them, made

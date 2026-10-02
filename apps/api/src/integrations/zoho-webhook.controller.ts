@@ -12,7 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { idSchema, type Scope } from '@fenwick/shared';
+import { idSchema, type Scope } from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { ENV, type Env } from '../config/env.js';
 import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisation.js';

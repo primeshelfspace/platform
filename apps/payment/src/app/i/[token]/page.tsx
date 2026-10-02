@@ -1,5 +1,5 @@
-import { isPayable, terminalStatusLabel } from '@fenwick/shared';
-import { brandThemeVariables } from '@fenwick/shared/tokens';
+import { isPayable, terminalStatusLabel } from '@sugrpay/shared';
+import { brandThemeVariables } from '@sugrpay/shared/tokens';
 import { lookupInvoice } from '@/lib/invoice';
 import { AmountDueProvider } from './amount-due-context';
 import { PaymentPageShell } from './payment-page-shell';

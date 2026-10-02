@@ -4,7 +4,7 @@
  * the real policies, as the real non-owner application role.
  *
  * They need a migrated, seeded database. Run:
- *   pnpm setup:local && pnpm --filter @fenwick/api test
+ *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -23,7 +23,7 @@ describeWithDb('row-level security', () => {
   const app = new PrismaClient({ datasources: { db: { url: appUrl! } } });
   const owner = new PrismaClient({ datasources: { db: { url: ownerUrl! } } });
 
-  let fenwickId = '';
+  let sugrpayId = '';
   let northgateId = '';
   let solsticeId = '';
 
@@ -31,13 +31,13 @@ describeWithDb('row-level security', () => {
     // Read the fixtures as the owner: the app role cannot see them yet, which
     // is the point.
     const merchants = await owner.merchant.findMany({ select: { id: true, name: true } });
-    fenwickId = merchants.find((m) => m.name.startsWith('Fenwick'))?.id ?? '';
+    sugrpayId = merchants.find((m) => m.name.startsWith('Sugrpay'))?.id ?? '';
     northgateId = merchants.find((m) => m.name.startsWith('Northgate'))?.id ?? '';
 
     const brands = await owner.brand.findMany({ select: { id: true, displayName: true } });
     solsticeId = brands.find((b) => b.displayName === 'Solstice Kitchenware')?.id ?? '';
 
-    if (!fenwickId || !northgateId || !solsticeId) {
+    if (!sugrpayId || !northgateId || !solsticeId) {
       throw new Error('seed data missing — run pnpm db:seed');
     }
   });
@@ -68,7 +68,7 @@ describeWithDb('row-level security', () => {
 
   it('shows every brand in the merchant to an all-brand role', async () => {
     const counts = await withScope(
-      { merchantId: fenwickId, allBrands: true, brandIds: [] },
+      { merchantId: sugrpayId, allBrands: true, brandIds: [] },
       async (tx) => ({
         brands: await tx.brand.count(),
         invoices: await tx.invoice.count(),
@@ -79,7 +79,7 @@ describeWithDb('row-level security', () => {
   });
 
   it('never leaks another merchant to an all-brand role', async () => {
-    const leaked = await withScope({ merchantId: fenwickId, allBrands: true, brandIds: [] }, (tx) =>
+    const leaked = await withScope({ merchantId: sugrpayId, allBrands: true, brandIds: [] }, (tx) =>
       tx.merchant.count({ where: { id: northgateId } }),
     );
     expect(leaked).toBe(0);
@@ -87,7 +87,7 @@ describeWithDb('row-level security', () => {
 
   it('restricts a brand-scoped role to its assignments', async () => {
     const counts = await withScope(
-      { merchantId: fenwickId, allBrands: false, brandIds: [solsticeId] },
+      { merchantId: sugrpayId, allBrands: false, brandIds: [solsticeId] },
       async (tx) => ({
         brands: await tx.brand.count(),
         invoices: await tx.invoice.count(),
@@ -130,19 +130,19 @@ describeWithDb('row-level security', () => {
     });
 
     const visible = await withScope(
-      { merchantId: fenwickId, allBrands: false, brandIds: [solsticeId] },
+      { merchantId: sugrpayId, allBrands: false, brandIds: [solsticeId] },
       (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),
     );
     expect(visible).toBe(1);
 
     const wrongBrand = await withScope(
-      { merchantId: fenwickId, allBrands: false, brandIds: [] },
+      { merchantId: sugrpayId, allBrands: false, brandIds: [] },
       (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),
     );
     expect(wrongBrand).toBe(0);
 
     // Even an all-brand role gets nothing: app_brand_visible requires the
-    // brand to belong to the *caller's* merchant, and Solstice is Fenwick's.
+    // brand to belong to the *caller's* merchant, and Solstice is Sugrpay's.
     const wrongMerchant = await withScope(
       { merchantId: northgateId, allBrands: true, brandIds: [] },
       (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),

@@ -5,7 +5,7 @@
 -- forgotten predicate return nothing instead of someone else's data.
 --
 -- It only works because the runtime connection uses a NON-owner role: a table
--- owner bypasses RLS entirely. DATABASE_URL is fenwick_app; migrations run as
+-- owner bypasses RLS entirely. DATABASE_URL is sugrpay_app; migrations run as
 -- the owner over DIRECT_DATABASE_URL.
 
 -- ---------------------------------------------------------------------------
@@ -14,13 +14,13 @@
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fenwick_app') THEN
-    CREATE ROLE fenwick_app LOGIN PASSWORD 'fenwick_app';
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sugrpay_app') THEN
+    CREATE ROLE sugrpay_app LOGIN PASSWORD 'sugrpay_app';
   END IF;
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO fenwick_app;
+GRANT USAGE ON SCHEMA public TO sugrpay_app;
 
 -- ---------------------------------------------------------------------------
 -- Scope accessors
@@ -115,27 +115,27 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 
 REVOKE ALL ON FUNCTION app_resolve_session(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app_resolve_session(text) TO fenwick_app;
+GRANT EXECUTE ON FUNCTION app_resolve_session(text) TO sugrpay_app;
 
 -- ---------------------------------------------------------------------------
 -- Grants
 -- ---------------------------------------------------------------------------
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO fenwick_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO fenwick_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO sugrpay_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sugrpay_app;
 
 -- Append-only: no UPDATE or DELETE grant is issued on the audit log, so the
 -- guarantee holds even if application code is wrong (TDD-001 §5.2).
-REVOKE UPDATE, DELETE ON audit_log FROM fenwick_app;
+REVOKE UPDATE, DELETE ON audit_log FROM sugrpay_app;
 
 -- Future tables created by later migrations inherit the same grants.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO fenwick_app;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO sugrpay_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT USAGE, SELECT ON SEQUENCES TO fenwick_app;
+  GRANT USAGE, SELECT ON SEQUENCES TO sugrpay_app;
 
 -- The migration bookkeeping table is not application data.
-REVOKE ALL ON "_prisma_migrations" FROM fenwick_app;
+REVOKE ALL ON "_prisma_migrations" FROM sugrpay_app;
 
 -- ---------------------------------------------------------------------------
 -- Policies

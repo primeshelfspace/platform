@@ -43,10 +43,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # Everything downstream imports its types.
-      - run: pnpm --filter @fenwick/shared build
-      - run: pnpm --filter @fenwick/ui build
+      - run: pnpm --filter @sugrpay/shared build
+      - run: pnpm --filter @sugrpay/ui build
 
-      - run: pnpm --filter @fenwick/api db:generate
+      - run: pnpm --filter @sugrpay/api db:generate
 
       - name: Type check
         run: pnpm typecheck
@@ -71,12 +71,12 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @fenwick/shared build
+      - run: pnpm --filter @sugrpay/shared build
 
       # NFR-TST-001: 90% coverage on the calculation and state machine modules,
       # enforced by the thresholds in vitest.config.ts.
       - name: Money and domain tests with coverage gate
-        run: pnpm --filter @fenwick/shared exec vitest run --coverage
+        run: pnpm --filter @sugrpay/shared exec vitest run --coverage
 
   integration:
     name: Integration (PostgreSQL, RLS active)
@@ -86,12 +86,12 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: fenwick
-          POSTGRES_PASSWORD: fenwick
-          POSTGRES_DB: fenwick
+          POSTGRES_USER: sugrpay
+          POSTGRES_PASSWORD: sugrpay
+          POSTGRES_DB: sugrpay
         ports: ['5432:5432']
         options: >-
-          --health-cmd "pg_isready -U fenwick"
+          --health-cmd "pg_isready -U sugrpay"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -107,8 +107,8 @@ jobs:
     env:
       APP_ENV: ci
       NODE_ENV: test
-      DATABASE_URL: postgresql://fenwick_app:fenwick_app@localhost:5432/fenwick?schema=public
-      DIRECT_DATABASE_URL: postgresql://fenwick:fenwick@localhost:5432/fenwick?schema=public
+      DATABASE_URL: postgresql://sugrpay_app:sugrpay_app@localhost:5432/sugrpay?schema=public
+      DIRECT_DATABASE_URL: postgresql://sugrpay:sugrpay@localhost:5432/sugrpay?schema=public
       REDIS_URL: redis://localhost:6379
       SESSION_SECRET: ci-session-secret-not-used-outside-ci-0000
       CREDENTIAL_ENCRYPTION_KEY: Y2ktb25seS0zMi1ieXRlLWtleS1mb3ItdGVzdHMhISE= # gitleaks:allow — fake, CI-only, decodes to plain ASCII, see SESSION_SECRET above for the equivalent
@@ -126,17 +126,17 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @fenwick/shared build
+      - run: pnpm --filter @sugrpay/shared build
 
       # migrate deploy creates the non-owner role and installs the RLS policies.
       - name: Migrate and seed
         run: |
-          pnpm --filter @fenwick/api db:migrate
-          pnpm --filter @fenwick/api db:seed
+          pnpm --filter @sugrpay/api db:migrate
+          pnpm --filter @sugrpay/api db:seed
 
-      # These run as fenwick_app, so the policies are genuinely in force.
+      # These run as sugrpay_app, so the policies are genuinely in force.
       - name: Tenant isolation tests
-        run: pnpm --filter @fenwick/api test
+        run: pnpm --filter @sugrpay/api test
 
   authorisation-matrix:
     name: Authorisation matrix
@@ -150,13 +150,13 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @fenwick/shared build
+      - run: pnpm --filter @sugrpay/shared build
 
       # NFR-SEC-012 requires the full cross product of role × endpoint × brand
       # assignment. The matrix and its unit tests exist; the endpoint half is
       # generated once there are protected endpoints to enumerate.
       - name: Permission matrix tests
-        run: pnpm --filter @fenwick/shared exec vitest run src/domain/roles.test.ts
+        run: pnpm --filter @sugrpay/shared exec vitest run src/domain/roles.test.ts
 
   build:
     name: Build
@@ -170,12 +170,12 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @fenwick/shared build
-      - run: pnpm --filter @fenwick/ui build
-      - run: pnpm --filter @fenwick/api db:generate
-      - run: pnpm --filter @fenwick/api build
-      - run: pnpm --filter @fenwick/admin build
-      - run: pnpm --filter @fenwick/payment build
+      - run: pnpm --filter @sugrpay/shared build
+      - run: pnpm --filter @sugrpay/ui build
+      - run: pnpm --filter @sugrpay/api db:generate
+      - run: pnpm --filter @sugrpay/api build
+      - run: pnpm --filter @sugrpay/admin build
+      - run: pnpm --filter @sugrpay/payment build
 
       # NFR-PRF-013: the payment application's first load is budgeted at 400 KB
       # compressed. Failing the build is the only version of this budget that

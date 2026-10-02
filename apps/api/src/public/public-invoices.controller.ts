@@ -22,7 +22,7 @@ import {
   publicTokenSchema,
   renderInvoicePdfHtml,
   toCurrencyCode,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { Public } from '../tenancy/authorisation.js';
 import { PaymentsService, type PaymentAttemptResult } from '../payments/payments.service.js';

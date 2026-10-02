@@ -9,11 +9,11 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import { type Action, type RequestScope, type Resource, checkAccess } from '@fenwick/shared';
+import { type Action, type RequestScope, type Resource, checkAccess } from '@sugrpay/shared';
 import { SESSION_COOKIE, SessionService } from '../auth/session.service.js';
 
-export const PERMISSION_KEY = 'fenwick:permission';
-export const PUBLIC_KEY = 'fenwick:public';
+export const PERMISSION_KEY = 'sugrpay:permission';
+export const PUBLIC_KEY = 'sugrpay:public';
 
 export interface PermissionRequirement {
   readonly resource: Resource;

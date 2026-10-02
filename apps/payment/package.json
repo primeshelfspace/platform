@@ -1,5 +1,5 @@
 {
-  "name": "@fenwick/payment",
+  "name": "@sugrpay/payment",
   "version": "0.1.0",
   "private": true,
   "description": "Public payment application. Anonymous, hardened, minimal dependency tree.",
@@ -13,8 +13,8 @@
   "//": "EVERY dependency added here is a PCI scope question (TDD-001 §3.3). This list is reviewed as a security artefact, not a build detail. Do not add a package without saying why in the pull request.",
   "//stripe": "@stripe/stripe-js + @stripe/react-stripe-js: Stripe Elements collects card data directly into Stripe's own iframe, so it never touches this app's JS context or our server — this is what keeps PCI scope at SAQ A instead of SAQ D.",
   "dependencies": {
-    "@fenwick/shared": "workspace:*",
-    "@fenwick/ui": "workspace:*",
+    "@sugrpay/shared": "workspace:*",
+    "@sugrpay/ui": "workspace:*",
     "@stripe/react-stripe-js": "^2.9.0",
     "@stripe/stripe-js": "^4.10.0",
     "next": "^15.1.3",

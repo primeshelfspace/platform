@@ -5,7 +5,7 @@ import {
   STORAGE_PORT,
   type PublicScope,
   type StoragePort,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import {
   formatBrandAddress,
   toInvoicePdfSettings,

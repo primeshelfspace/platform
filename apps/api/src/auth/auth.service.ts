@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
-import type { RegisterInput, RequestScope, Role } from '@fenwick/shared';
+import type { RegisterInput, RequestScope, Role } from '@sugrpay/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { RedisService } from '../infra/redis/redis.service.js';
 import { hashPassword, verifyPassword } from './password.js';

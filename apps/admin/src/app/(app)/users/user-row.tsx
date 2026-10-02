@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, type FormEvent } from 'react';
-import { coversAllBrands, type Role } from '@fenwick/shared';
+import { coversAllBrands, type Role } from '@sugrpay/shared';
 import { Select } from '@/components/ui/select';
 import { useFormStatusToast } from '@/hooks/use-form-status-toast';
 import type { ManagedUser } from '@/lib/api';

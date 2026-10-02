@@ -1,8 +1,8 @@
 {
-  "name": "fenwick-invoicing",
+  "name": "sugrpay-invoicing",
   "version": "0.1.0",
   "private": true,
-  "description": "Fenwick Holdings Inc. — Multi-Brand Invoicing & Payment Platform",
+  "description": "Sugrpay — Multi-Brand Invoicing & Payment Platform",
   "packageManager": "pnpm@11.10.0",
   "engines": {
     "node": ">=22.0.0",
@@ -13,18 +13,18 @@
     "services:up": "node scripts/services.mjs up",
     "services:down": "node scripts/services.mjs down",
     "dev": "node scripts/dev.mjs",
-    "dev:apps": "pnpm --parallel --filter \"./apps/*\" --filter @fenwick/shared --filter @fenwick/ui dev",
-    "build": "pnpm --filter @fenwick/shared --filter @fenwick/ui build && pnpm --parallel --filter \"./apps/*\" build",
+    "dev:apps": "pnpm --parallel --filter \"./apps/*\" --filter @sugrpay/shared --filter @sugrpay/ui dev",
+    "build": "pnpm --filter @sugrpay/shared --filter @sugrpay/ui build && pnpm --parallel --filter \"./apps/*\" build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
     "test": "pnpm -r test",
-    "db:generate": "pnpm --filter @fenwick/api db:generate",
-    "db:migrate": "pnpm --filter @fenwick/api db:migrate",
-    "db:reset": "pnpm --filter @fenwick/api db:reset",
-    "db:seed": "pnpm --filter @fenwick/api db:seed",
-    "db:studio": "pnpm --filter @fenwick/api db:studio"
+    "db:generate": "pnpm --filter @sugrpay/api db:generate",
+    "db:migrate": "pnpm --filter @sugrpay/api db:migrate",
+    "db:reset": "pnpm --filter @sugrpay/api db:reset",
+    "db:seed": "pnpm --filter @sugrpay/api db:seed",
+    "db:studio": "pnpm --filter @sugrpay/api db:studio"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -4,7 +4,7 @@ const nextConfig = {
 
   // The shared packages ship compiled CommonJS; transpiling them here keeps
   // the module graph consistent with the app's ESM output.
-  transpilePackages: ['@fenwick/shared', '@fenwick/ui'],
+  transpilePackages: ['@sugrpay/shared', '@sugrpay/ui'],
 
   // Every Brand Settings save posts the logo file through a server action
   // (see saveLogo in brand-settings/actions.ts), and Next's default server

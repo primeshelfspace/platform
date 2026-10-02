@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import type { CompanyDetailsInput, Scope, StoragePort } from '@fenwick/shared';
-import { storageKeys, STORAGE_PORT } from '@fenwick/shared';
+import type { CompanyDetailsInput, Scope, StoragePort } from '@sugrpay/shared';
+import { storageKeys, STORAGE_PORT } from '@sugrpay/shared';
 import { logoExtensionFor, storeLogo, type LogoUpload } from '../common/logo-upload.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 

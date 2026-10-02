@@ -11,9 +11,9 @@ import {
   normalizeWebsiteDomain,
   checkBusinessEmail,
   emailSchema,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 
-import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@fenwick/shared';
+import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@sugrpay/shared';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import {

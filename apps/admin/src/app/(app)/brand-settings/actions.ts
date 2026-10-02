@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { isBusinessType } from '@fenwick/shared';
+import { isBusinessType } from '@sugrpay/shared';
 import {
   sendEmailReceiptTest,
   updateBrand,

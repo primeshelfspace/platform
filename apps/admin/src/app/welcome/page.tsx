@@ -6,7 +6,7 @@ import { getCurrentUser } from '@/lib/api';
 import { readSessionToken } from '@/lib/session';
 
 export const metadata: Metadata = {
-  title: 'Fenwick — Multi-Brand Invoicing & Payments',
+  title: 'Sugrpay — Multi-Brand Invoicing & Payments',
   description:
     'Issue invoices and take payments across every brand you operate, from one account. Per-brand numbering, branding, Stripe accounts and books.',
 };
@@ -39,7 +39,7 @@ export default async function WelcomePage() {
           <div className="[&>svg]:mx-0">
             <LogoMark size={36} />
           </div>
-          <span className="text-[15px] font-semibold tracking-tight text-[#0F172A]">Fenwick</span>
+          <span className="text-[15px] font-semibold tracking-tight text-[#0F172A]">Sugrpay</span>
         </div>
         <Link
           href="/login"
@@ -122,7 +122,7 @@ export default async function WelcomePage() {
 
       <footer className="border-t border-[#E2E8F0]">
         <div className="mx-auto flex max-w-[1100px] flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-[#64748B] sm:flex-row">
-          <span>&copy; {new Date().getFullYear()} Fenwick Holdings Inc.</span>
+          <span>&copy; {new Date().getFullYear()} Sugrpay.com</span>
           <Link href="/login" className="hover:text-[#0F172A]">
             Sign in
           </Link>

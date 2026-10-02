@@ -14,7 +14,7 @@ import { c, log, step, ok, warn, run, runOrExit, portOpen } from './lib/proc.mjs
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const started = Date.now();
 
-log(`${c.bold}Fenwick — local environment setup${c.reset}\n`);
+log(`${c.bold}Sugrpay — local environment setup${c.reset}\n`);
 
 // 1. Environment file -------------------------------------------------------
 step('environment file');
@@ -32,18 +32,18 @@ runOrExit(process.execPath, [path.join(ROOT, 'scripts', 'services.mjs'), 'up'], 
 
 // 3. Shared package build (api and both web apps import its types) ----------
 log();
-step('building @fenwick/shared');
-runOrExit('pnpm', ['--filter', '@fenwick/shared', 'build'], { cwd: ROOT });
+step('building @sugrpay/shared');
+runOrExit('pnpm', ['--filter', '@sugrpay/shared', 'build'], { cwd: ROOT });
 ok('shared package built');
 
 // 4. Database ---------------------------------------------------------------
 log();
 step('applying migrations');
-runOrExit('pnpm', ['--filter', '@fenwick/api', 'db:migrate'], { cwd: ROOT });
+runOrExit('pnpm', ['--filter', '@sugrpay/api', 'db:migrate'], { cwd: ROOT });
 ok('schema up to date');
 
 step('seeding multi-brand dataset');
-runOrExit('pnpm', ['--filter', '@fenwick/api', 'db:seed'], { cwd: ROOT });
+runOrExit('pnpm', ['--filter', '@sugrpay/api', 'db:seed'], { cwd: ROOT });
 ok('seed data loaded');
 
 // 5. Browser binaries -------------------------------------------------------

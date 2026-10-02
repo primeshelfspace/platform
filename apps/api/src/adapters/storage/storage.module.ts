@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { STORAGE_PORT } from '@fenwick/shared';
+import { STORAGE_PORT } from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
 import { LocalDiskAdapter } from './local-disk.adapter.js';
 import { S3Adapter } from './s3.adapter.js';

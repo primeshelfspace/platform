@@ -2,7 +2,7 @@
  * Shared Tailwind class strings for form fields.
  *
  * This app has two visual systems for inputs: the design-token one
- * (border-border, bg-surface, text-ink-strong — see @fenwick/shared/tokens),
+ * (border-border, bg-surface, text-ink-strong — see @sugrpay/shared/tokens),
  * and an older raw-hex one that most of the admin app's forms still use.
  * Unifying the two is a design decision, not a mechanical dedup, so this file
  * only consolidates exact, verified duplicates — it does not migrate anyone

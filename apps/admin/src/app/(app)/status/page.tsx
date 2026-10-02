@@ -1,5 +1,5 @@
 import { Activity, CircleCheck, CircleX, Plug } from 'lucide-react';
-import { BRAND_COLOUR_PRESETS, assessBrandColour } from '@fenwick/shared/tokens';
+import { BRAND_COLOUR_PRESETS, assessBrandColour } from '@sugrpay/shared/tokens';
 import { BrandTheme } from '@/components/brand-theme';
 import { API_URL, getHealth, type HealthResponse } from '@/lib/api';
 import { PageContainer } from '@/components/page-container';
@@ -22,7 +22,7 @@ export default async function StatusPage() {
   return (
     <PageContainer>
       <header className="mb-10">
-        <p className="text-sm uppercase tracking-widest text-ink-subtle">Fenwick Holdings Inc.</p>
+        <p className="text-sm uppercase tracking-widest text-ink-subtle">Sugrpay</p>
         <h1 className="mt-1 text-2xl font-semibold text-ink-strong">System status</h1>
         <p className="mt-2 max-w-2xl text-ink-muted">
           Live dependency and theming diagnostics, not customer-facing data.

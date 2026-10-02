@@ -6,7 +6,7 @@ import {
   DEFAULT_BRAND_CURRENCY,
   DEFAULT_BRAND_THEME_COLOR,
   DEFAULT_BRAND_TIMEZONE,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import {
   ApiError,
   completeMultiBrandOnboarding,

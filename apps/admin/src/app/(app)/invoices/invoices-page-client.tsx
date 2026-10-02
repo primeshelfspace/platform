@@ -7,10 +7,10 @@ import { NoBrandsState } from '@/components/no-brands-state';
 import { useCan } from '@/hooks/use-permissions';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown, Info, Plus, ScrollText, Search, Send, X } from 'lucide-react';
-import { toast } from '@fenwick/ui/toast';
-import { Pagination } from '@fenwick/ui/pagination';
-import { formatDateForDisplay } from '@fenwick/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
+import { toast } from '@sugrpay/ui/toast';
+import { Pagination } from '@sugrpay/ui/pagination';
+import { formatDateForDisplay } from '@sugrpay/shared';
+import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
 import type {
   Brand,
   Invoice,

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
-import type { Scope } from '@fenwick/shared';
+import type { Scope } from '@sugrpay/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { RedisService } from '../infra/redis/redis.service.js';
 import { ZohoPullService } from './zoho-pull.service.js';

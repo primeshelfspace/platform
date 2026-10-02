@@ -1,6 +1,6 @@
 'use client';
 
-/** Inline rather than pulled from an icon library — @fenwick/ui has zero
+/** Inline rather than pulled from an icon library — @sugrpay/ui has zero
  * runtime dependencies beyond React, and the payment app (this package's
  * other consumer) doesn't carry lucide-react. */
 function ChevronLeftIcon() {

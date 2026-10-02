@@ -8,7 +8,7 @@ import {
   type RenderPreviewInput,
   type SendMailInput,
   type SendMailResult,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
 
 /**
@@ -79,12 +79,12 @@ export class SmtpMailAdapter implements MailPort {
           ...(a.cid ? { cid: a.cid, contentDisposition: 'inline' as const } : {}),
         })),
         headers: {
-          'X-Fenwick-Template': input.messageTag.templateKey,
+          'X-Sugrpay-Template': input.messageTag.templateKey,
           // Both omitted rather than sent empty when absent: platform-level
           // mail (a set-password link) predates any brand or invoice.
-          ...(input.messageTag.brandId ? { 'X-Fenwick-Brand': input.messageTag.brandId } : {}),
+          ...(input.messageTag.brandId ? { 'X-Sugrpay-Brand': input.messageTag.brandId } : {}),
           ...(input.messageTag.invoiceId
-            ? { 'X-Fenwick-Invoice': input.messageTag.invoiceId }
+            ? { 'X-Sugrpay-Invoice': input.messageTag.invoiceId }
             : {}),
         },
       });
@@ -118,7 +118,7 @@ export class SmtpMailAdapter implements MailPort {
   }
 
   verifySignature(payload: string | Buffer, headers: Readonly<Record<string, string>>): boolean {
-    const provided = headers['x-fenwick-signature'];
+    const provided = headers['x-sugrpay-signature'];
     if (!provided) return false;
     const expected = createHmac('sha256', this.env.SESSION_SECRET).update(payload).digest('hex');
     const a = Buffer.from(provided);

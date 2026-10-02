@@ -6,7 +6,7 @@ import type {
   RenderPreviewInput,
   SendMailInput,
   SendMailResult,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 
 /**
  * ConsoleMailAdapter — logs instead of sending. Used in CI and in unit tests,

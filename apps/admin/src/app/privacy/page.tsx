@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LogoMark } from '@/components/logo-mark';
 
-export const metadata: Metadata = { title: 'Privacy Policy — Prime Shelf Space Inc.' };
+export const metadata: Metadata = { title: 'Privacy Policy — Sugrpay' };
 export const dynamic = 'force-dynamic';
 
 /**
@@ -26,7 +26,7 @@ export default function PrivacyPage() {
         <div className="space-y-8 text-[15px] leading-relaxed text-[#334155]">
           <Section title="1. What we collect">
             Account details you give us directly (name, email, company and brand information), and
-            the invoice, customer and payment records you create while using Fenwick.
+            the invoice, customer and payment records you create while using Sugrpay.
           </Section>
 
           <Section title="2. How we use it">
@@ -69,10 +69,10 @@ export default function PrivacyPage() {
           <Section title="9. Contact">
             Questions about this policy can be sent to{' '}
             <a
-              href="mailto:privacy@fenwickholdings.test"
+              href="mailto:privacy@sugrpay.test"
               className="font-medium text-[#0F172A] underline"
             >
-              privacy@fenwickholdings.test
+              privacy@sugrpay.test
             </a>
             .
           </Section>

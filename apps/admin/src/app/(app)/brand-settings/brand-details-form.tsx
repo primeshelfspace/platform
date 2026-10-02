@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
-import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS, COUNTRIES, regionsFor } from '@fenwick/shared';
+import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS, COUNTRIES, regionsFor } from '@sugrpay/shared';
 import type { Brand, CustomerAddress } from '@/lib/api';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';

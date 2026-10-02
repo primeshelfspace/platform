@@ -4,7 +4,7 @@
  * rank/brand-scoping rules this service owns are database and business-rule
  * behaviour a mocked Prisma can't demonstrate. Needs a migrated, seeded
  * database:
- *   pnpm setup:local && pnpm --filter @fenwick/api test
+ *   pnpm setup:local && pnpm --filter @sugrpay/api test
  *
  * Runs against a throwaway merchant/brands/users created in beforeAll, never
  * against the seeded fixtures in prisma/seed.ts — the last-owner and
@@ -14,7 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { RequestScope } from '@fenwick/shared';
+import type { RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv } from '../config/env.js';

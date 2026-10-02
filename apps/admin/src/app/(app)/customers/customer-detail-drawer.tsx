@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { formatDateForDisplay } from '@fenwick/shared';
-import { formatMinorForDisplay, type CurrencyCode } from '@fenwick/shared/money';
+import { formatDateForDisplay } from '@sugrpay/shared';
+import { formatMinorForDisplay, type CurrencyCode } from '@sugrpay/shared/money';
 import type { CustomerAddress, CustomerWithContacts, Invoice } from '@/lib/api';
 
 const TABS = [

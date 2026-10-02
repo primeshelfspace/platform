@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
-import { Toaster } from '@fenwick/ui/toast';
+import { Toaster } from '@sugrpay/ui/toast';
 import './globals.css';
 
 export const metadata: Metadata = {

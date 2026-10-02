@@ -30,11 +30,11 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LOCAL_DIR = path.join(ROOT, '.local');
 const PID_FILE = path.join(LOCAL_DIR, 'mail-sink.pid');
 
-const DB_NAME = 'fenwick';
-const DB_OWNER = 'fenwick';
-const DB_OWNER_PASSWORD = 'fenwick';
-const DB_APP_ROLE = 'fenwick_app';
-const DB_APP_PASSWORD = 'fenwick_app';
+const DB_NAME = 'sugrpay';
+const DB_OWNER = 'sugrpay';
+const DB_OWNER_PASSWORD = 'sugrpay';
+const DB_APP_ROLE = 'sugrpay_app';
+const DB_APP_PASSWORD = 'sugrpay_app';
 
 const action = process.argv[2] ?? 'up';
 
@@ -195,7 +195,7 @@ async function down() {
 
 async function status() {
   const checks = [
-    ['postgres', 5432, 'postgresql://localhost:5432/fenwick'],
+    ['postgres', 5432, 'postgresql://localhost:5432/sugrpay'],
     ['redis', 6379, 'redis://localhost:6379'],
     ['mail (smtp)', 1025, 'smtp://localhost:1025'],
     ['mail (ui)', 1080, 'http://localhost:1080'],

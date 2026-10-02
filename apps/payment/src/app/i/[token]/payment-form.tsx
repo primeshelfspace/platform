@@ -6,7 +6,7 @@ import {
   formatMinorForDisplay,
   incursCardFee,
   toCurrencyCode,
-} from '@fenwick/shared/money';
+} from '@sugrpay/shared/money';
 import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
 import { useAmountDue } from './amount-due-context';

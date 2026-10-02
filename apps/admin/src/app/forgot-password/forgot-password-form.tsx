@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useId, useState } from 'react';
-import { emailSchema } from '@fenwick/shared';
+import { emailSchema } from '@sugrpay/shared';
 import {
   FIELD_INVALID_BORDER as invalidBorder,
   FIELD_VALID_BORDER_SECONDARY as validBorder,

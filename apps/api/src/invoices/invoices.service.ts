@@ -33,7 +33,7 @@ import {
   type RecordManualPaymentInput,
   type Scope,
   type StoragePort,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import {
   formatBrandAddress,
   parseFrom,

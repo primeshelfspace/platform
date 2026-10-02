@@ -2,8 +2,8 @@
 
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { BarChart3 } from 'lucide-react';
-import { formatMinorCompact, formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
-import { palette } from '@fenwick/shared/tokens';
+import { formatMinorCompact, formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
+import { palette } from '@sugrpay/shared/tokens';
 import type { DashboardTrendPoint } from '@/lib/api';
 
 /** Fixed two-series order, never cycled: Invoiced then Collected, same order

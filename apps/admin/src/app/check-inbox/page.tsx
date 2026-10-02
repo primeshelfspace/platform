@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { LogoMark } from '@/components/logo-mark';
 
-export const metadata: Metadata = { title: 'Check your inbox — Prime Shelf Space Inc.' };
+export const metadata: Metadata = { title: 'Check your inbox — Sugrpay' };
 export const dynamic = 'force-dynamic';
 
 /**

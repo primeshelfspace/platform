@@ -3,7 +3,7 @@ import type {
   MailDeliveryEvent,
   RenderPreviewInput,
   SendMailInput,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 
 /**
  * Zero-op stand-in for tests that need an InvoicesService instance but have

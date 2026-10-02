@@ -11,7 +11,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { IntegrationError, idSchema, type Scope } from '@fenwick/shared';
+import { IntegrationError, idSchema, type Scope } from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { ENV, type Env } from '../config/env.js';
 import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisation.js';

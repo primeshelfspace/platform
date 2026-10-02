@@ -14,7 +14,7 @@ import type {
   SignedUrlOptions,
   StoragePort,
   StoredObject,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
 
 /**

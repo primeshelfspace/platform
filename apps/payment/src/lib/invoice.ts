@@ -7,7 +7,7 @@
  * (TDD-001 §12.1 step 4).
  */
 
-import { type InvoiceStatus, publicTokenSchema } from '@fenwick/shared';
+import { type InvoiceStatus, publicTokenSchema } from '@sugrpay/shared';
 import { API_URL } from './env';
 
 /** Brand Settings > Branding > Invoice PDF — the same settings the admin's

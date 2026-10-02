@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import type { RequestScope, Role } from '@fenwick/shared';
+import type { RequestScope, Role } from '@sugrpay/shared';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 
 /**
@@ -15,7 +15,7 @@ import { PrismaService } from '../infra/prisma/prisma.service.js';
  * `app_resolve_session` definer function, which returns exactly what the guard
  * needs and nothing else, keeping the `user` table protected by RLS as normal.
  */
-export const SESSION_COOKIE = 'fenwick_session';
+export const SESSION_COOKIE = 'sugrpay_session';
 const SESSION_TTL_HOURS = 12;
 
 interface ResolvedSessionRow {

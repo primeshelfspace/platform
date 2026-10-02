@@ -79,7 +79,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
   // means step was null, which only happens once merchant.onboardingComplete
   // is true — so merchant is always set by this point; the fallback name is
   // for TypeScript's benefit, not a real runtime path.
-  const companyName = merchant?.companyDetails?.legalName ?? 'Prime Shelf Space Inc.';
+  const companyName = merchant?.companyDetails?.legalName ?? 'Sugrpay';
 
   return (
     <Suspense fallback={null}>

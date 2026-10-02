@@ -1,4 +1,4 @@
-// Fenwick Multi-Brand Invoicing — data model (TDD-001 §5).
+// Sugrpay Multi-Brand Invoicing — data model (TDD-001 §5).
 //
 // Conventions that are load-bearing, not stylistic:
 //   *_minor   BigInt   money as signed 64-bit integer minor units (§5.3, NFR-INT-001).

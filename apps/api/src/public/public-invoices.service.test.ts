@@ -3,12 +3,12 @@
  * resolution here is the entire security model of the anonymous payment
  * path, so it is exercised against real RLS rather than mocked. Needs a
  * migrated, seeded database:
- *   pnpm setup:local && pnpm --filter @fenwick/api test
+ *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@fenwick/shared';
+import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
 import { loadEnv } from '../config/load-env.js';
 import { getEnv } from '../config/env.js';
@@ -61,7 +61,7 @@ describeWithDb('PublicInvoicesService', () => {
   let ownerScope: RequestScope;
   // Northgate is a different merchant entirely, not just a different brand
   // in the same one — creating its fixture needs its own owner scope, since
-  // ownerScope (Fenwick) is correctly refused write access to it by RLS.
+  // ownerScope (Sugrpay) is correctly refused write access to it by RLS.
   let northgateOwnerScope: RequestScope;
 
   beforeAll(async () => {

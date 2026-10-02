@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { toast } from '@fenwick/ui/toast';
-import { formatMinorForDisplay, minorUnitExponent, toCurrencyCode } from '@fenwick/shared/money';
+import { toast } from '@sugrpay/ui/toast';
+import { formatMinorForDisplay, minorUnitExponent, toCurrencyCode } from '@sugrpay/shared/money';
 import type { Brand, InvoiceDetail, ManualPaymentInput } from '@/lib/api';
 import { recordInvoicePaymentAction } from './actions';
 

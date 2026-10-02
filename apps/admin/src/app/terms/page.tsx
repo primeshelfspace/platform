@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LogoMark } from '@/components/logo-mark';
 
-export const metadata: Metadata = { title: 'Terms and Conditions — Prime Shelf Space Inc.' };
+export const metadata: Metadata = { title: 'Terms and Conditions — Sugrpay' };
 export const dynamic = 'force-dynamic';
 
 /**
@@ -25,13 +25,13 @@ export default function TermsPage() {
 
         <div className="space-y-8 text-[15px] leading-relaxed text-[#334155]">
           <Section title="1. Acceptance of these terms">
-            By creating an account or otherwise using Fenwick, you agree to these terms. If you are
+            By creating an account or otherwise using Sugrpay, you agree to these terms. If you are
             accepting them on behalf of a company, you are confirming you have the authority to bind
             that company.
           </Section>
 
-          <Section title="2. What Fenwick provides">
-            Fenwick lets you issue invoices and take payments across one or more brands from a
+          <Section title="2. What Sugrpay provides">
+            Sugrpay lets you issue invoices and take payments across one or more brands from a
             single account. Features described as in progress or partial in our documentation are
             provided on that basis, and we will not represent them as complete.
           </Section>
@@ -45,22 +45,22 @@ export default function TermsPage() {
           <Section title="4. Payments and fees">
             Card and bank transactions are processed by our payment providers, not by us directly.
             Fees applicable to your account are disclosed before they are charged. You are
-            responsible for any taxes owed on amounts you invoice through Fenwick.
+            responsible for any taxes owed on amounts you invoice through Sugrpay.
           </Section>
 
           <Section title="5. Acceptable use">
-            You will not use Fenwick to invoice for unlawful goods or services, to commit fraud, or
+            You will not use Sugrpay to invoice for unlawful goods or services, to commit fraud, or
             to attempt to gain unauthorized access to any part of the platform.
           </Section>
 
           <Section title="6. Termination">
-            You may stop using Fenwick at any time. We may suspend or terminate access for a
+            You may stop using Sugrpay at any time. We may suspend or terminate access for a
             material breach of these terms, including non-payment or unlawful use, and will give
             notice where practical.
           </Section>
 
           <Section title="7. Disclaimers and liability">
-            Fenwick is provided on an &ldquo;as is&rdquo; basis. To the extent permitted by law, we
+            Sugrpay is provided on an &ldquo;as is&rdquo; basis. To the extent permitted by law, we
             are not liable for indirect or consequential losses arising from your use of the
             platform.
           </Section>
@@ -73,10 +73,10 @@ export default function TermsPage() {
           <Section title="9. Contact">
             Questions about these terms can be sent to{' '}
             <a
-              href="mailto:legal@fenwickholdings.test"
+              href="mailto:legal@sugrpay.test"
               className="font-medium text-[#0F172A] underline"
             >
-              legal@fenwickholdings.test
+              legal@sugrpay.test
             </a>
             .
           </Section>

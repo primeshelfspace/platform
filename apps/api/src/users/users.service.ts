@@ -15,7 +15,7 @@ import {
   type Role,
   type UserListQuery,
   type UserStatus,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { PrismaService, type ScopedClient } from '../infra/prisma/prisma.service.js';
 import { hashPassword } from '../auth/password.js';
 import { PasswordResetService } from '../auth/password-reset.service.js';

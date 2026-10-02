@@ -13,7 +13,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * What this does buy is that an unauthenticated request never renders a page or
  * spends a server round trip discovering it should not have.
  */
-const SESSION_COOKIE = 'fenwick_admin_session';
+const SESSION_COOKIE = 'sugrpay_admin_session';
 /**
  * Reachable with no session at all.
  *

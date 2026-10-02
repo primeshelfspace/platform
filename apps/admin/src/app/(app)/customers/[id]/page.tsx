@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { ArrowLeft, ScrollText } from 'lucide-react';
-import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
+import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
 import { BrandTheme } from '@/components/brand-theme';
 import { PageContainer } from '@/components/page-container';
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoice-presentation';

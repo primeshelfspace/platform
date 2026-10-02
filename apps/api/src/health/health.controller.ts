@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import { ACCOUNTING_PORT, PAYMENT_GATEWAY_PORT, STORAGE_PORT } from '@fenwick/shared';
-import type { AccountingPort, PaymentGatewayPort, StoragePort } from '@fenwick/shared';
+import { ACCOUNTING_PORT, PAYMENT_GATEWAY_PORT, STORAGE_PORT } from '@sugrpay/shared';
+import type { AccountingPort, PaymentGatewayPort, StoragePort } from '@sugrpay/shared';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { RedisService } from '../infra/redis/redis.service.js';

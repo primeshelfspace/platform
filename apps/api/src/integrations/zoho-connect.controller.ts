@@ -19,7 +19,7 @@ import {
   zohoSyncSettingsSchema,
   type Scope,
   type ZohoSyncSettingsInput,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { ENV, type Env } from '../config/env.js';
 import { ZohoBooksAdapter } from '../adapters/accounting/zoho-books.adapter.js';

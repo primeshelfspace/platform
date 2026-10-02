@@ -1,12 +1,12 @@
 /**
  * InvoicesService against a real database (TDD-001 §9.4, §5.3). Needs a
  * migrated, seeded database:
- *   pnpm setup:local && pnpm --filter @fenwick/api test
+ *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CustomerInput, InvoiceDraftInput, RequestScope } from '@fenwick/shared';
+import type { CustomerInput, InvoiceDraftInput, RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
 import { LocalDiskAdapter } from '../adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../config/load-env.js';

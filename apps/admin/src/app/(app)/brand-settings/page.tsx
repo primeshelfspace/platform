@@ -1,5 +1,5 @@
-import { formatDateForDisplay, terminalStatusLabel } from '@fenwick/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@fenwick/shared/money';
+import { formatDateForDisplay, terminalStatusLabel } from '@sugrpay/shared';
+import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
 import {
   ApiError,
   getCurrentUser,

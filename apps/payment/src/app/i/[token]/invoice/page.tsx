@@ -1,4 +1,4 @@
-import { brandThemeVariables } from '@fenwick/shared/tokens';
+import { brandThemeVariables } from '@sugrpay/shared/tokens';
 import { lookupInvoice } from '@/lib/invoice';
 import { InvoiceDocument } from '../invoice-document';
 import { Terminal, Unavailable } from '../states';

@@ -25,7 +25,7 @@ import {
   type ZohoSandboxChangesScopeInput,
   type ZohoSandboxCreateInput,
   type ZohoSandboxUpdateInput,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import {

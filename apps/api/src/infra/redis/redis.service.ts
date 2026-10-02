@@ -36,7 +36,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private createConnection(name: string, options: Record<string, unknown> = {}): Redis {
     const connection = new IORedis(this.env.REDIS_URL, {
       lazyConnect: false,
-      connectionName: `fenwick-${name}`,
+      connectionName: `sugrpay-${name}`,
       retryStrategy: (attempt) => Math.min(attempt * 200, 5_000),
       ...options,
     });

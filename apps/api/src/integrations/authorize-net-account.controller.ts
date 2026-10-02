@@ -14,7 +14,7 @@ import {
   IntegrationError,
   type AuthorizeNetConnectInput,
   type Scope,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
 import {

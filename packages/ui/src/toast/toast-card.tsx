@@ -35,7 +35,7 @@ export function ToastCard({ toast, onDismiss }: { toast: ToastRecord; onDismiss:
     <div
       role={role}
       aria-live={role === 'alert' ? 'assertive' : 'polite'}
-      className="fenwick-toast pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl
+      className="sugrpay-toast pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl
                  border border-border bg-surface p-4 shadow-lg"
     >
       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${iconBg}`}>

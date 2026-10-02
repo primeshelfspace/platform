@@ -10,7 +10,7 @@ import {
   type PaymentIntentStatus,
   type RefundInput,
   type RefundResult,
-} from '@fenwick/shared';
+} from '@sugrpay/shared';
 
 /**
  * FakeGateway — the local and test implementation of PaymentGatewayPort

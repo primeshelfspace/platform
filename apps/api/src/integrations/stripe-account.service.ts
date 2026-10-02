@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import Stripe from 'stripe';
-import { IntegrationError, type Scope } from '@fenwick/shared';
+import { IntegrationError, type Scope } from '@sugrpay/shared';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { signOAuthState, verifyOAuthState } from './oauth-state.js';

@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { IntegrationError, type Scope } from '@fenwick/shared';
+import { IntegrationError, type Scope } from '@sugrpay/shared';
 import { decryptCredential, encryptCredential } from '../common/credential-encryption.js';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
