@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import type { AccountingConnection, Scope } from '@sugrpay/shared';
+import type { AccountingConnection, Pagination, Scope } from '@sugrpay/shared';
 import { decryptCredential, encryptCredential } from '../common/credential-encryption.js';
 import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
@@ -64,6 +64,14 @@ export interface ZohoActivityEntry {
   readonly errorClass: string | null;
   readonly lastError: string | null;
   readonly updatedAt: Date;
+}
+
+/** Same envelope as the platform's other paginated lists. */
+export interface ZohoActivityPage {
+  readonly data: ZohoActivityEntry[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
 }
 
 /**
@@ -314,15 +322,39 @@ export class IntegrationConnectionService {
    * last N of them so that is visible on the page itself, not just in a
    * database query someone has to ask for.
    */
-  async getRecentActivity(scope: Scope, brandId: string, limit = 15): Promise<ZohoActivityEntry[]> {
-    const rows = await this.prisma.withScope(scope, (tx) =>
-      tx.syncJob.findMany({
-        where: { brandId, provider: 'ZOHO_BOOKS' },
-        orderBy: { updatedAt: 'desc' },
-        take: limit,
-      }),
+  async getRecentActivity(
+    scope: Scope,
+    brandId: string,
+    { page, pageSize }: Pagination,
+  ): Promise<ZohoActivityPage> {
+    const where = { brandId, provider: 'ZOHO_BOOKS' as const };
+    const [rows, total] = await this.prisma.withScope(scope, (tx) =>
+      Promise.all([
+        tx.syncJob.findMany({
+          where,
+          // id as a tiebreaker: a list scan and its per-record jobs often
+          // share an updatedAt, and without a total order the same row can
+          // appear on two pages (or neither) as the log is paged through.
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        tx.syncJob.count({ where }),
+      ]),
     );
-    return rows.map((row) => ({
+    return { data: rows.map((row) => this.toActivityEntry(row)), page, pageSize, total };
+  }
+
+  private toActivityEntry(row: {
+    direction: 'PUSH' | 'PULL';
+    objectType: string;
+    objectId: string | null;
+    status: string;
+    errorClass: string | null;
+    lastError: string | null;
+    updatedAt: Date;
+  }): ZohoActivityEntry {
+    return {
       direction: row.direction,
       objectType: row.objectType,
       objectId: row.objectId,
@@ -330,7 +362,7 @@ export class IntegrationConnectionService {
       errorClass: row.errorClass,
       lastError: row.lastError,
       updatedAt: row.updatedAt,
-    }));
+    };
   }
 
   /**

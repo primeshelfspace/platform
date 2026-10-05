@@ -18,7 +18,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const token = await readSessionToken();
   if (!token) return NextResponse.json({ message: 'not signed in' }, { status: 401 });
 
-  const upstream = await fetch(`${API_URL}/brands/${brandId}/integrations/zoho/activity`, {
+  // page/pageSize pass straight through; the API validates them.
+  const paging = new URLSearchParams();
+  for (const key of ['page', 'pageSize']) {
+    const value = request.nextUrl.searchParams.get(key);
+    if (value) paging.set(key, value);
+  }
+  const query = paging.toString() ? `?${paging.toString()}` : '';
+  const upstream = await fetch(`${API_URL}/brands/${brandId}/integrations/zoho/activity${query}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   });

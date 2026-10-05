@@ -1207,8 +1207,26 @@ export interface ZohoActivityEntry {
   updatedAt: string;
 }
 
-export function getZohoActivity(brandId: string): Promise<ZohoActivityEntry[]> {
-  return apiFetch<ZohoActivityEntry[]>(`/brands/${brandId}/integrations/zoho/activity`);
+/** Mirrors ZohoActivityPage (integration-connection.service.ts). */
+export interface ZohoActivityPage {
+  data: ZohoActivityEntry[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+/** The Connection Log's page size — shared by the server-rendered first page
+ * and the panel's own paging, so the two agree. */
+export const ZOHO_ACTIVITY_PAGE_SIZE = 10;
+
+export function getZohoActivity(
+  brandId: string,
+  page = 1,
+  pageSize = ZOHO_ACTIVITY_PAGE_SIZE,
+): Promise<ZohoActivityPage> {
+  return apiFetch<ZohoActivityPage>(
+    `/brands/${brandId}/integrations/zoho/activity?page=${page}&pageSize=${pageSize}`,
+  );
 }
 
 /** Mirrors ZohoWebhookSetup (zoho-connect.controller.ts). The URLs carry the

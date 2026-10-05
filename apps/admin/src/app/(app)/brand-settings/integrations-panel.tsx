@@ -13,9 +13,11 @@ import {
   RefreshCw,
   Unlink,
 } from 'lucide-react';
+import { Pagination } from '@sugrpay/ui/pagination';
 import { toast } from '@sugrpay/ui/toast';
 import type {
   ZohoActivityEntry,
+  ZohoActivityPage,
   ZohoConnectionStatus,
   ZohoSandbox,
   ZohoSandboxChange,
@@ -118,7 +120,7 @@ export function IntegrationsPanel({
   brandDisplayName: string;
   connectHref: string;
   initialStatus: ZohoConnectionStatus;
-  initialActivity: ZohoActivityEntry[];
+  initialActivity: ZohoActivityPage;
   /** Which integration's detail is drilled into, if any. */
   selected: 'zoho' | null;
 }) {
@@ -217,11 +219,14 @@ function ZohoDetail({
   brandDisplayName: string;
   connectHref: string;
   initialStatus: ZohoConnectionStatus;
-  initialActivity: ZohoActivityEntry[];
+  initialActivity: ZohoActivityPage;
   canWrite: boolean;
 }) {
   const [status, setStatus] = useState(initialStatus);
-  const [entries, setEntries] = useState(initialActivity);
+  const [activity, setActivity] = useState(initialActivity);
+  const [activityPage, setActivityPage] = useState(initialActivity.page);
+  const [activityPageSize, setActivityPageSize] = useState(initialActivity.pageSize);
+  const entries = activity.data;
   const [savingField, setSavingField] = useState<
     'pullFrequencyMinutes' | 'customerSyncEnabled' | 'invoiceSyncEnabled' | null
   >(null);
@@ -244,17 +249,28 @@ function ZohoDetail({
     };
   }, [confirmingDisconnect]);
 
+  // Polls whichever page is being viewed, so paging back through older
+  // entries is not yanked back to page 1 every few seconds. New entries
+  // arrive at the top of page 1 and shift later pages down, which is the
+  // expected behaviour of a newest-first log.
   const refreshActivity = useCallback(async () => {
     try {
-      const response = await fetch(`/settings/zoho/activity?brandId=${brandId}`, {
-        cache: 'no-store',
-      });
+      const response = await fetch(
+        `/settings/zoho/activity?brandId=${brandId}&page=${activityPage}&pageSize=${activityPageSize}`,
+        { cache: 'no-store' },
+      );
       if (!response.ok) return;
-      setEntries((await response.json()) as ZohoActivityEntry[]);
+      setActivity((await response.json()) as ZohoActivityPage);
     } catch {
       // A missed poll just tries again on the next tick.
     }
-  }, [brandId]);
+  }, [brandId, activityPage, activityPageSize]);
+
+  // Page/size changes fetch straight away rather than waiting for the poll.
+  useEffect(() => {
+    if (activityPage === activity.page && activityPageSize === activity.pageSize) return;
+    void refreshActivity();
+  }, [activityPage, activityPageSize, activity.page, activity.pageSize, refreshActivity]);
 
   useEffect(() => {
     if (!status.connected) return;
@@ -290,6 +306,7 @@ function ZohoDetail({
         toast.error(body?.message ?? 'Could not queue a resync.');
       } else {
         toast.success('Resync queued — watch the log below.');
+        setActivityPage(1);
         void refreshActivity();
       }
     } catch (error) {
@@ -547,6 +564,22 @@ function ZohoDetail({
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {activity.total > 0 && (
+              <div className="border-t border-border px-5 py-3 sm:px-6">
+                <Pagination
+                  page={activityPage}
+                  pageSize={activityPageSize}
+                  total={activity.total}
+                  onPageChange={setActivityPage}
+                  onPageSizeChange={(size) => {
+                    setActivityPageSize(size);
+                    setActivityPage(1);
+                  }}
+                  pageSizeOptions={[10, 25, 50, 100]}
+                  itemLabel="entries"
+                />
               </div>
             )}
           </section>

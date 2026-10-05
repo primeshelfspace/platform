@@ -25,7 +25,7 @@ import {
   type PaymentPageDisplaySettings,
   type PaymentTransaction,
   type PaymentTransactionListResponse,
-  type ZohoActivityEntry,
+  type ZohoActivityPage,
   type ZohoConnectionStatus,
 } from '@/lib/api';
 import { PaymentGatewaysPanel } from '@/app/(app)/settings/integrations/payment-gateways-panel';
@@ -307,7 +307,7 @@ export default async function BrandSettingsPage({
   } | null = null;
   let integrationsProps: {
     status: ZohoConnectionStatus;
-    activity: ZohoActivityEntry[];
+    activity: ZohoActivityPage;
   } | null = null;
   let integrationsError: string | null = null;
   if (brand && activeTab === 'integrations') {

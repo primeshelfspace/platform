@@ -16,6 +16,8 @@ import type { Response } from 'express';
 import {
   IntegrationError,
   idSchema,
+  paginationSchema,
+  type Pagination,
   zohoSyncSettingsSchema,
   type Scope,
   type ZohoSyncSettingsInput,
@@ -28,7 +30,7 @@ import { CurrentScope, Public, RequirePermission } from '../tenancy/authorisatio
 import { SystemScopeResolver } from '../tenancy/system-scope.js';
 import {
   IntegrationConnectionService,
-  type ZohoActivityEntry,
+  type ZohoActivityPage,
   type ZohoConnectionStatus,
 } from './integration-connection.service.js';
 import { signOAuthState, verifyOAuthState } from './oauth-state.js';
@@ -112,9 +114,10 @@ export class ZohoConnectController {
   @RequirePermission('INTEGRATIONS', 'READ')
   activity(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Query(zodPipe(paginationSchema)) pagination: Pagination,
     @CurrentScope() scope: Scope,
-  ): Promise<ZohoActivityEntry[]> {
-    return this.connections.getRecentActivity(scope, brandId);
+  ): Promise<ZohoActivityPage> {
+    return this.connections.getRecentActivity(scope, brandId, pagination);
   }
 
   /**
