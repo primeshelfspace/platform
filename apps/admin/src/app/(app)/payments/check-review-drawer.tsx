@@ -19,8 +19,18 @@ const STATUS_BADGE: Record<
   CheckSubmissionDetail['status'],
   { dot: string; text: string; pill: string; label: string }
 > = {
-  PENDING: { dot: 'bg-warning', text: 'text-warning', pill: 'bg-warning-surface', label: 'Pending Verification' },
-  APPROVED: { dot: 'bg-success', text: 'text-success', pill: 'bg-success-surface', label: 'Approved' },
+  PENDING: {
+    dot: 'bg-warning',
+    text: 'text-warning',
+    pill: 'bg-warning-surface',
+    label: 'Pending Verification',
+  },
+  APPROVED: {
+    dot: 'bg-success',
+    text: 'text-success',
+    pill: 'bg-success-surface',
+    label: 'Approved',
+  },
   REJECTED: { dot: 'bg-danger', text: 'text-danger', pill: 'bg-danger-surface', label: 'Rejected' },
 };
 
@@ -79,7 +89,9 @@ export function CheckReviewDrawer({
         if (result.ok) setDetail(result.data);
         else setError(result.error);
       })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load this check.'))
+      .catch((cause) =>
+        setError(cause instanceof Error ? cause.message : 'Could not load this check.'),
+      )
       .finally(() => setLoading(false));
   }, [open, checkId, brandId]);
 
@@ -92,7 +104,8 @@ export function CheckReviewDrawer({
       return;
     }
     setSubmitting(decision);
-    const action = decision === 'approve' ? approveCheckSubmissionAction : rejectCheckSubmissionAction;
+    const action =
+      decision === 'approve' ? approveCheckSubmissionAction : rejectCheckSubmissionAction;
     const result = await action(brandId, detail.id, { note: note.trim() || undefined });
     setSubmitting(null);
     if (!result.ok) {

@@ -960,5 +960,4 @@ export class ZohoBooksAdapter implements AccountingPort {
   decimalToMinor(amount: number, currency: CurrencyCode): number {
     return Math.round(amount * 10 ** minorUnitExponent(currency));
   }
-
 }

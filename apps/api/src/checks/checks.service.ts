@@ -22,7 +22,9 @@ const CHECK_IMAGE_URL_TTL_SECONDS = 15 * 60;
 
 type CheckSubmissionRow = Prisma.CheckSubmissionGetPayload<{
   include: {
-    invoice: { select: { number: true; currency: true; customer: { select: { displayName: true } } } };
+    invoice: {
+      select: { number: true; currency: true; customer: { select: { displayName: true } } };
+    };
   };
 }>;
 
@@ -96,7 +98,9 @@ export class ChecksService {
         tx.checkSubmission.findMany({
           where,
           include: {
-            invoice: { select: { number: true, currency: true, customer: { select: { displayName: true } } } },
+            invoice: {
+              select: { number: true, currency: true, customer: { select: { displayName: true } } },
+            },
           },
           orderBy: { createdAt: 'desc' },
           skip: (query.page - 1) * query.pageSize,
@@ -116,8 +120,12 @@ export class ChecksService {
   async getDetail(scope: Scope, brandId: string, id: string): Promise<CheckSubmissionDetail> {
     const row = await this.findOrThrow(scope, brandId, id);
     const [frontImageUrl, backImageUrl] = await Promise.all([
-      this.storage.getSignedUrl(row.frontImageKey, { expiresInSeconds: CHECK_IMAGE_URL_TTL_SECONDS }),
-      this.storage.getSignedUrl(row.backImageKey, { expiresInSeconds: CHECK_IMAGE_URL_TTL_SECONDS }),
+      this.storage.getSignedUrl(row.frontImageKey, {
+        expiresInSeconds: CHECK_IMAGE_URL_TTL_SECONDS,
+      }),
+      this.storage.getSignedUrl(row.backImageKey, {
+        expiresInSeconds: CHECK_IMAGE_URL_TTL_SECONDS,
+      }),
     ]);
     return {
       ...this.toListRow(row),
@@ -135,10 +143,18 @@ export class ChecksService {
    * recorded payment's would), then closes the submission out. Not wrapped in
    * one transaction with recordManualPayment — see reviewedBy guard below for
    * why a races-with-itself double approval still can't double the money. */
-  async approve(scope: Scope, brandId: string, id: string, input: ReviewCheckSubmissionInput): Promise<void> {
+  async approve(
+    scope: Scope,
+    brandId: string,
+    id: string,
+    input: ReviewCheckSubmissionInput,
+  ): Promise<void> {
     const submission = await this.requirePending(scope, brandId, id);
     await this.invoices.recordManualPayment(scope, brandId, submission.invoiceId, {
-      amount: formatMinor(Number(submission.amountMinor), toCurrencyCode(submission.invoice.currency)),
+      amount: formatMinor(
+        Number(submission.amountMinor),
+        toCurrencyCode(submission.invoice.currency),
+      ),
       method: 'CHECK',
       paidAt: new Date(),
       reference: submission.checkNumber,
@@ -150,7 +166,12 @@ export class ChecksService {
     await this.finishReview(scope, brandId, id, 'APPROVED', input.note ?? null);
   }
 
-  async reject(scope: Scope, brandId: string, id: string, input: ReviewCheckSubmissionInput): Promise<void> {
+  async reject(
+    scope: Scope,
+    brandId: string,
+    id: string,
+    input: ReviewCheckSubmissionInput,
+  ): Promise<void> {
     if (!input.note) {
       throw new ConflictException('a reason is required to reject a check');
     }
@@ -158,12 +179,18 @@ export class ChecksService {
     await this.finishReview(scope, brandId, id, 'REJECTED', input.note);
   }
 
-  private async findOrThrow(scope: Scope, brandId: string, id: string): Promise<CheckSubmissionRow> {
+  private async findOrThrow(
+    scope: Scope,
+    brandId: string,
+    id: string,
+  ): Promise<CheckSubmissionRow> {
     const row = await this.prisma.withScope(scope, (tx) =>
       tx.checkSubmission.findFirst({
         where: { id, brandId },
         include: {
-          invoice: { select: { number: true, currency: true, customer: { select: { displayName: true } } } },
+          invoice: {
+            select: { number: true, currency: true, customer: { select: { displayName: true } } },
+          },
         },
       }),
     );
@@ -171,7 +198,11 @@ export class ChecksService {
     return row;
   }
 
-  private async requirePending(scope: Scope, brandId: string, id: string): Promise<CheckSubmissionRow> {
+  private async requirePending(
+    scope: Scope,
+    brandId: string,
+    id: string,
+  ): Promise<CheckSubmissionRow> {
     const row = await this.findOrThrow(scope, brandId, id);
     if (row.status !== 'SUBMITTED' && row.status !== 'UNDER_REVIEW') {
       throw new ConflictException('this check has already been reviewed');
@@ -210,7 +241,8 @@ export class ChecksService {
       checkNumber: row.checkNumber,
       amountMinor: row.amountMinor,
       currency: row.invoice.currency,
-      status: row.status === 'APPROVED' ? 'APPROVED' : row.status === 'REJECTED' ? 'REJECTED' : 'PENDING',
+      status:
+        row.status === 'APPROVED' ? 'APPROVED' : row.status === 'REJECTED' ? 'REJECTED' : 'PENDING',
       customerName: row.invoice.customer.displayName,
       invoiceNumber: row.invoice.number,
       createdAt: row.createdAt,

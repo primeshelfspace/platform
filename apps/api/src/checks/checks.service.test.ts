@@ -58,7 +58,10 @@ describeWithDb('ChecksService', () => {
     merchantId = solstice.merchantId;
     ownerScope = {
       merchantId,
-      userId: 'test-harness',
+      // A real UUID, not the 'test-harness' placeholder invoices.service.test.ts
+      // uses — that only works there because InvoiceEvent.actor is a plain
+      // string; CheckSubmission.reviewedBy is `@db.Uuid` and rejects it.
+      userId: '00000000-0000-0000-0000-000000000001',
       role: 'MERCHANT_OWNER',
       assignedBrandIds: [],
       sessionId: 'test-session',
@@ -124,7 +127,8 @@ describeWithDb('ChecksService', () => {
       data: {
         invoiceId,
         brandId: solsticeId,
-        checkNumber: overrides.checkNumber ?? `CHK-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        checkNumber:
+          overrides.checkNumber ?? `CHK-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         amountMinor: overrides.amountMinor ?? 50000n,
         frontImageKey: `brands/${solsticeId}/checks/test-front`,
         backImageKey: `brands/${solsticeId}/checks/test-back`,
@@ -184,10 +188,12 @@ describeWithDb('ChecksService', () => {
         reference: submission.checkNumber,
       });
 
-      const reviewed = await owner.checkSubmission.findUniqueOrThrow({ where: { id: submission.id } });
+      const reviewed = await owner.checkSubmission.findUniqueOrThrow({
+        where: { id: submission.id },
+      });
       expect(reviewed.status).toBe('APPROVED');
       expect(reviewed.reviewNote).toBe('Looks good');
-      expect(reviewed.reviewedBy).toBe('test-harness');
+      expect(reviewed.reviewedBy).toBe(ownerScope.userId);
     });
 
     it('refuses to approve a submission that was already reviewed', async () => {
@@ -215,7 +221,9 @@ describeWithDb('ChecksService', () => {
 
       await checks.reject(ownerScope, solsticeId, submission.id, { note: 'Check bounced' });
 
-      const reviewed = await owner.checkSubmission.findUniqueOrThrow({ where: { id: submission.id } });
+      const reviewed = await owner.checkSubmission.findUniqueOrThrow({
+        where: { id: submission.id },
+      });
       expect(reviewed.status).toBe('REJECTED');
       expect(reviewed.reviewNote).toBe('Check bounced');
       expect(await owner.payment.count({ where: { invoiceId: invoice.id } })).toBe(0);
