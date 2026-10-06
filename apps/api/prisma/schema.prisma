@@ -714,11 +714,18 @@ model InvoiceEvent {
   @@map("invoice_event")
 }
 
-/// Phase 2. Images are storage keys, never binary in the database.
+/// Images are storage keys, never binary in the database.
 model CheckSubmission {
   id            String      @id @default(uuid()) @db.Uuid
   invoiceId     String      @map("invoice_id") @db.Uuid
   brandId       String      @map("brand_id") @db.Uuid
+  /// Written on the physical check, transcribed by the customer at
+  /// submission — the Payments > Check Verifications table's primary column
+  /// and what `reference` is set to on the Payment approve() creates.
+  checkNumber   String      @map("check_number")
+  /// The customer's own claimed amount, not derived from the invoice total —
+  /// a check can cover a partial balance. Minor units, invoice's own currency.
+  amountMinor   BigInt      @map("amount_minor")
   frontImageKey String      @map("front_image_key")
   backImageKey  String      @map("back_image_key")
   customerNote  String?     @map("customer_note")

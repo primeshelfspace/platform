@@ -662,7 +662,10 @@ function AmountCell({
  * through PaymentGatewaysPanel/GatewayDetail) alongside this page's own
  * `tab`/`gateway` params, which a plain `pushParams` merge leaves untouched.
  */
-function TransactionLog({
+/** Exported for reuse on the standalone Payments page's Transactions tab —
+ * same component either way, since neither its data nor its `tx*` URL params
+ * depend on being embedded in Brand Settings specifically. */
+export function TransactionLog({
   brandId,
   initial,
 }: {

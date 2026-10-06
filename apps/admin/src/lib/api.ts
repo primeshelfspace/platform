@@ -1149,6 +1149,88 @@ export function listPaymentTransactions(
   return apiFetch<PaymentTransactionListResponse>(`/brands/${brandId}/payments${suffix}`);
 }
 
+// --- Check submissions (Payments > Check Verifications) ---------------------
+
+export type CheckReviewStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+/** One row of the Check Verifications table. */
+export interface CheckSubmissionRow {
+  id: string;
+  checkNumber: string;
+  amountMinor: number;
+  currency: string;
+  status: CheckReviewStatus;
+  customerName: string;
+  invoiceNumber: string;
+  createdAt: string;
+}
+
+export interface CheckSubmissionListResponse {
+  data: CheckSubmissionRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export function listCheckSubmissions(
+  brandId: string,
+  params: {
+    page?: number;
+    pageSize?: number;
+    status?: CheckReviewStatus;
+    search?: string;
+  } = {},
+): Promise<CheckSubmissionListResponse> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set('page', String(params.page));
+  if (params.pageSize) qs.set('pageSize', String(params.pageSize));
+  if (params.status) qs.set('status', params.status);
+  if (params.search) qs.set('search', params.search);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return apiFetch<CheckSubmissionListResponse>(`/brands/${brandId}/checks${suffix}`);
+}
+
+/** The Check Review drawer's single-submission fetch — adds the two signed,
+ * time-limited image URLs and the invoice this check is claimed against. */
+export interface CheckSubmissionDetail extends CheckSubmissionRow {
+  invoiceId: string;
+  customerNote: string | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  frontImageUrl: string;
+  backImageUrl: string;
+}
+
+export function getCheckSubmission(brandId: string, id: string): Promise<CheckSubmissionDetail> {
+  return apiFetch<CheckSubmissionDetail>(`/brands/${brandId}/checks/${id}`);
+}
+
+export interface ReviewCheckSubmissionInput {
+  note?: string;
+}
+
+export function approveCheckSubmission(
+  brandId: string,
+  id: string,
+  input: ReviewCheckSubmissionInput = {},
+): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/checks/${id}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function rejectCheckSubmission(
+  brandId: string,
+  id: string,
+  input: ReviewCheckSubmissionInput,
+): Promise<{ ok: true }> {
+  return apiFetch<{ ok: true }>(`/brands/${brandId}/checks/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 // --- Zoho integration (FR-ZHO) ------------------------------------------------
 
 export interface ZohoConnectionStatus {

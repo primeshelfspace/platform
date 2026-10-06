@@ -632,6 +632,29 @@ export const paymentIntentReconcileSchema = z.object({
 });
 export type PaymentIntentReconcileRequest = z.infer<typeof paymentIntentReconcileSchema>;
 
+// --- Check submission (Payments > Check Verifications) ---------------------
+
+/** UI-facing bucket, not the raw `CheckStatus` enum — `PENDING` covers both
+ * `SUBMITTED` and `UNDER_REVIEW` so the tab filter doesn't need to know about
+ * a review-in-progress state nothing surfaces separately yet. */
+export const CHECK_REVIEW_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const;
+export const checkReviewStatusSchema = z.enum(CHECK_REVIEW_STATUSES);
+export type CheckReviewStatus = z.infer<typeof checkReviewStatusSchema>;
+
+export const checkSubmissionListQuerySchema = paginationSchema.extend({
+  status: checkReviewStatusSchema.optional(),
+  search: z.string().trim().max(200).optional(),
+});
+export type CheckSubmissionListQuery = z.infer<typeof checkSubmissionListQuerySchema>;
+
+/** Approve takes an optional note; reject requires one (the service enforces
+ * the "required for reject" half — one shared shape is simpler than two
+ * near-identical schemas). */
+export const reviewCheckSubmissionSchema = z.object({
+  note: z.string().trim().max(2000).optional(),
+});
+export type ReviewCheckSubmissionInput = z.infer<typeof reviewCheckSubmissionSchema>;
+
 // --- Dashboard -------------------------------------------------------------
 
 export const dashboardQuerySchema = z.object({

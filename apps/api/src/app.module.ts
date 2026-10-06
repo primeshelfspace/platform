@@ -7,6 +7,7 @@ import { StorageModule } from './adapters/storage/storage.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { BrandsModule } from './brands/brands.module.js';
 import { ConfigModule } from './config/config.module.js';
+import { ChecksModule } from './checks/checks.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { HealthModule } from './health/health.module.js';
@@ -52,6 +53,7 @@ import { UsersModule } from './users/users.module.js';
     CustomersModule,
     InvoicesModule,
     PaymentsModule,
+    ChecksModule,
     PublicModule,
     IntegrationsModule,
     DashboardModule,
