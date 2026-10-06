@@ -5,7 +5,7 @@
  */
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { CustomerInput, InvoiceDraftInput, RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../adapters/mail/fake-mail.port.js';
 import { LocalDiskAdapter } from '../adapters/storage/local-disk.adapter.js';
@@ -519,6 +519,35 @@ describeWithDb('InvoicesService', () => {
       await expect(invoices.cancel(ownerScope, northgateId, created.id)).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it('enqueues a Zoho push when cancelling an invoice already synced to Zoho', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await invoices.issue(ownerScope, solsticeId, created.id);
+      await owner.invoice.update({
+        where: { id: created.id },
+        data: { zohoInvoiceId: 'remote-cancel-1' },
+      });
+
+      const enqueueSpy = vi.spyOn(queue, 'enqueue');
+      await invoices.cancel(ownerScope, solsticeId, created.id);
+
+      expect(enqueueSpy).toHaveBeenCalledWith('sync', 'zoho-push-invoice', {
+        brandId: solsticeId,
+        invoiceId: created.id,
+      });
+      enqueueSpy.mockRestore();
+    });
+
+    it('does not enqueue any Zoho push when cancelling an invoice never synced to Zoho', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await invoices.issue(ownerScope, solsticeId, created.id);
+
+      const enqueueSpy = vi.spyOn(queue, 'enqueue');
+      await invoices.cancel(ownerScope, solsticeId, created.id);
+
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      enqueueSpy.mockRestore();
     });
   });
 });

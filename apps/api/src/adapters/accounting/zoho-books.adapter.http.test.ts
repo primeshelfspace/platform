@@ -347,6 +347,58 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
     expect(zohoServer.requests).toHaveLength(1);
   });
 
+  // --- status transition: voiding an invoice ---------------------------------
+
+  it('voids an already-synced invoice via the status endpoint, never a create/update payload', async () => {
+    zohoServer.on('POST /books/v3/invoices/existing-void/status/void', () => ({
+      status: 200,
+      body: {},
+    }));
+    zohoServer.on('GET /books/v3/invoices/existing-void', () => ({
+      status: 200,
+      body: {
+        invoice: {
+          invoice_id: 'existing-void',
+          customer_id: 'contact-1',
+          invoice_number: 'INV-0001',
+          status: 'void',
+          date: '2026-08-01',
+          due_date: '2026-08-31',
+          currency_code: 'USD',
+          total: 111,
+          balance: 0,
+          sub_total: 111,
+          tax_total: 0,
+          line_items: [],
+          last_modified_time: '2026-08-22T09:00:00+0000',
+        },
+      },
+    }));
+
+    const ref = await adapter.pushInvoice(connection, {
+      ...INVOICE_PAYLOAD,
+      remoteId: 'existing-void',
+      status: 'VOID',
+    });
+
+    // Only the status endpoint and the readback — never POST/PUT
+    // /books/v3/invoices, which would send body content Zoho does not accept
+    // on a voided invoice.
+    expect(zohoServer.requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      'POST /books/v3/invoices/existing-void/status/void',
+      'GET /books/v3/invoices/existing-void',
+    ]);
+    expect(ref.remoteId).toBe('existing-void');
+    expect(ref.updatedAt?.toISOString()).toBe('2026-08-22T09:00:00.000Z');
+  });
+
+  it('refuses to void an invoice that was never synced to Zoho, making no request at all', async () => {
+    await expect(
+      adapter.pushInvoice(connection, { ...INVOICE_PAYLOAD, remoteId: null, status: 'VOID' }),
+    ).rejects.toThrow(IntegrationError);
+    expect(zohoServer.requests).toHaveLength(0);
+  });
+
   it('pushes tax and the card fee as their own line items', async () => {
     // Documents the asymmetry echo suppression exists to contain: what Zoho
     // ends up holding is not the shape we sent it conceptually.

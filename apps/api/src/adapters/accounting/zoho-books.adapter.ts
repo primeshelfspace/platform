@@ -158,8 +158,7 @@ export interface ZohoInvoiceDetail extends ZohoInvoiceListItem {
  * plus the real Contact/Invoice/Customer Payment field mappings (TDD-001
  * §10.4). Both directions are live: the pull methods below back
  * ZohoPullService, and pullChanges is a real list-level change feed.
- * voidInvoice remains the one genuine stub — see its own comment for the open
- * question blocking it.
+ * voidInvoice is live too — see its own comment for why void, not delete.
  *
  * Used directly by ZohoSyncService rather than through ACCOUNTING_PORT: the
  * push integration always talks to Zoho specifically, regardless of which
@@ -515,6 +514,37 @@ export class ZohoBooksAdapter implements AccountingPort {
     connection: AccountingConnection,
     invoice: AccountingInvoice,
   ): Promise<RemoteRef> {
+    // A cancellation is a pure status transition on an invoice that already
+    // exists in Zoho, not a content edit — and Zoho does not accept further
+    // writes to the body of a voided invoice. So this skips the regular
+    // create/update payload entirely rather than attempting a PUT Zoho may
+    // well reject, and calls the dedicated status endpoint instead (the same
+    // pattern markInvoiceSent already uses for the sent transition below). An
+    // invoice cancelled before it was ever pushed (still DRAFT, so no
+    // remoteId yet) has nothing in Zoho to void — this platform never creates
+    // one in Zoho solely to immediately void it, which the caller
+    // (InvoicesService.cancel) already avoids enqueuing for; this is the
+    // adapter-level backstop for that same rule.
+    if (invoice.status === 'VOID') {
+      if (!invoice.remoteId) {
+        throw new IntegrationError({
+          message: 'cannot void an invoice in Zoho that was never synced there',
+          errorClass: 'PERMANENT',
+          provider: 'zoho-books',
+        });
+      }
+      await this.voidInvoice(connection, invoice.remoteId);
+      const remoteId = invoice.remoteId;
+      return {
+        remoteId,
+        updatedAt: await this.resolveWriteVersion(
+          undefined,
+          async () => (await this.getInvoice(connection, remoteId)).last_modified_time,
+          `invoice ${remoteId}`,
+        ),
+      };
+    }
+
     const lineItems = invoice.lines.map((line) => ({
       name: line.name,
       description: line.description ?? undefined,
@@ -579,16 +609,12 @@ export class ZohoBooksAdapter implements AccountingPort {
     // Create/update never accepts a status field — Zoho always leaves the
     // invoice as a draft regardless of what this platform's local status is,
     // which used to mean issuing an invoice here had no visible effect in
-    // Zoho at all. VOID is excluded: there's no local cancel flow driving it
-    // yet (see voidInvoice), and PAID/PARTIALLY_PAID are left to Zoho's own
-    // computation from an applied customer payment (pushPayment) rather than
-    // forced here — this only ever needs to move a still-draft invoice to
-    // "sent".
-    if (
-      invoice.status !== 'DRAFT' &&
-      invoice.status !== 'VOID' &&
-      body.invoice.status === 'draft'
-    ) {
+    // Zoho at all. VOID never reaches this point at all (handled above,
+    // before this payload is even built), and PAID/PARTIALLY_PAID are left to
+    // Zoho's own computation from an applied customer payment (pushPayment)
+    // rather than forced here — this only ever needs to move a still-draft
+    // invoice to "sent".
+    if (invoice.status !== 'DRAFT' && body.invoice.status === 'draft') {
       await this.markInvoiceSent(connection, invoiceId);
       // The status transition is its own write and bumps last_modified_time
       // again — forcing the readback below keeps zohoSyncedVersion matching
@@ -748,13 +774,16 @@ export class ZohoBooksAdapter implements AccountingPort {
     };
   }
 
-  voidInvoice(_connection: AccountingConnection, _remoteInvoiceId: string): Promise<void> {
-    return Promise.reject(
-      this.mappingPending(
-        'voidInvoice',
-        'whether a cancelled invoice should void or delete in Zoho',
-      ),
-    );
+  /**
+   * Void, not delete — confirmed against the real API as its own status
+   * endpoint, same shape as markInvoiceSent. Voiding keeps the invoice and
+   * its number in Zoho (marked Void) rather than removing it, which is the
+   * only one of the two that cannot lose data a merchant or their bookkeeper
+   * may still need (an audit trail, a number that must not be reused).
+   * Deleting was the other option this was once pending on; it is not used.
+   */
+  async voidInvoice(connection: AccountingConnection, remoteInvoiceId: string): Promise<void> {
+    await this.request(connection, 'POST', `/books/v3/invoices/${remoteInvoiceId}/status/void`);
   }
 
   /**
@@ -805,9 +834,11 @@ export class ZohoBooksAdapter implements AccountingPort {
   // Verified against the real Zoho Books API v3 docs, not assumed:
   //  - Invoices supports a genuine server-side "last_modified_time" filter
   //    ("modified after" semantics) — the cheap, correct incremental path.
-  //    ZohoPullService pulls invoices list-only: no per-invoice detail fetch,
-  //    so line_items/sub_total/tax_total/notes (present only on the
-  //    single-record GET, not this list) are not pulled from Zoho at all.
+  //    ZohoPullService uses this list endpoint to find which invoices
+  //    changed, then makes one per-invoice detail fetch (getInvoice) for each
+  //    of those — line_items/sub_total/tax_total/notes are present only on
+  //    the single-record GET, not this list, so they are not pulled from
+  //    Zoho at all until that second call.
   //  - Contacts has no modified-time *filter*, and — critically — no
   //    documented `sort_order` *input* parameter either (it only appears in
   //    the response), so a descending-sort-plus-early-stop scan cannot be
@@ -930,13 +961,4 @@ export class ZohoBooksAdapter implements AccountingPort {
     return Math.round(amount * 10 ** minorUnitExponent(currency));
   }
 
-  private mappingPending(operation: string, question: string): IntegrationError {
-    return new IntegrationError({
-      message:
-        `ZohoBooksAdapter.${operation} is not implemented. Open question: ${question}. ` +
-        `Transport, auth and error classification are in place; only the field mapping is outstanding.`,
-      errorClass: 'PERMANENT',
-      provider: this.providerName,
-    });
-  }
 }

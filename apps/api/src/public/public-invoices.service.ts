@@ -132,12 +132,14 @@ export class PublicInvoicesService {
       let invoice = await loadInvoice();
       if (!invoice) return null;
 
-      // Line items aren't part of the list-only Zoho pull (ZohoPullService's
-      // own doc comment) — fetched here, on demand, the first time a
-      // customer actually opens this invoice's payment page, same as
-      // InvoicesService.findOne's admin equivalent. Non-fatal: a failed
-      // enrichment (rate limit, revoked token, ...) still shows the invoice
-      // with whatever it already has, rather than failing the whole page.
+      // Backward-compat fallback only (ZohoPullService's own doc comment):
+      // the regular pull now keeps line items current on every real sync, so
+      // this only still matters for a row written before that shipped.
+      // Fetched here, on demand, the first time a customer actually opens
+      // this invoice's payment page, same as InvoicesService.findOne's admin
+      // equivalent. Non-fatal: a failed enrichment (rate limit, revoked
+      // token, ...) still shows the invoice with whatever it already has,
+      // rather than failing the whole page.
       if (invoice.zohoInvoiceId && invoice.lineItems.length === 0) {
         const enriched = await this.zohoPull
           .enrichInvoiceFromZohoOnDemand(scope, scope.brandId, invoice.id)

@@ -28,6 +28,7 @@ import {
   isBulkSendable,
 } from '@/lib/invoice-presentation';
 import { useDismissablePanel } from '@/hooks/use-dismissable-panel';
+import { useIntervalWhenVisible } from '@/hooks/use-interval-when-visible';
 import {
   bulkSendInvoicesAction,
   getInvoiceDetailAction,
@@ -215,6 +216,35 @@ export function InvoicesPageClient({
 
   const selectAllMenuRef = useDismissablePanel<HTMLDivElement>(selectAllMenuOpen, () =>
     setSelectAllMenuOpen(false),
+  );
+
+  // Picks up a change made directly in Zoho Books without the user having to
+  // reload — a Zoho edit lands here as soon as its webhook/scheduled pull
+  // reaches our DB, but this page itself never knew to look again until now.
+  // router.refresh() re-runs the server component's own data fetch (tab
+  // counts, the current page of rows) while leaving client state (search
+  // box, bulk selection) alone. Paused during bulk mode so a row set
+  // reshuffling mid-selection doesn't surprise someone mid-click.
+  useIntervalWhenVisible(
+    () => {
+      router.refresh();
+      if (detailOpen && detailInvoice && brand) {
+        getInvoiceDetailAction(brand.id, detailInvoice.id)
+          .then((result) => {
+            if (result.invoice) {
+              setDetailInvoice(result.invoice);
+              setDetailActivity(result.activity ?? []);
+              setDetailPaymentTerms(result.paymentTermsLabel);
+            }
+          })
+          .catch(() => {
+            // A background refresh failing is not worth surfacing — the drawer
+            // just keeps showing the last good data until the next tick.
+          });
+      }
+    },
+    20_000,
+    !bulkMode,
   );
 
   const selectableVisible = useMemo(

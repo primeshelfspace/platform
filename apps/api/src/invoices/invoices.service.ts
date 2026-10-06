@@ -247,15 +247,17 @@ export class InvoicesService {
   /** The Invoice Details screen's own fetch — InvoiceWithLines plus the
    * customer identity its "Bill To" block needs (see InvoiceDetail).
    *
-   * A Zoho-sourced invoice with no line items yet has never had its Zoho
-   * detail fetched — the regular pull is list-only (ZohoPullService's own
-   * doc comment) precisely so that a per-invoice detail call isn't made for
-   * every invoice on every sync. Fetching it here instead, the first time
-   * someone actually opens this invoice's details, gets the same data
-   * without paying that cost for invoices nobody looks at. Non-fatal: a
-   * failed enrichment (rate limit, revoked token, ...) still returns the
-   * invoice with whatever it already has, rather than failing the whole
-   * details view over a supplementary fetch.
+   * The regular pull now fetches Zoho detail (line items, tax, notes) for
+   * every invoice it actually applies a change to (ZohoPullService's own doc
+   * comment), so a Zoho-sourced invoice normally already has line items by
+   * the time someone opens it here. This remains as a backward-compat
+   * fallback only, for a row written before that change shipped — a
+   * Zoho-sourced invoice with no line items at all still gets a one-off
+   * detail fetch the first time someone opens it, so an old leftover row
+   * self-heals rather than staying empty forever. Non-fatal: a failed
+   * enrichment (rate limit, revoked token, ...) still returns the invoice
+   * with whatever it already has, rather than failing the whole details view
+   * over a supplementary fetch.
    */
   async findOne(scope: Scope, brandId: string, id: string): Promise<InvoiceDetail> {
     const load = () =>
@@ -892,8 +894,13 @@ export class InvoicesService {
       });
     });
 
-    // No Zoho push: voiding on the Zoho side is still a stub
-    // (ZohoBooksAdapter.voidInvoice), so there is nothing to mirror yet.
+    // Only when this invoice was actually synced to Zoho before — one never
+    // issued (still DRAFT when cancelled) has nothing there to void, and
+    // ZohoBooksAdapter.pushInvoice refuses that case anyway as a backstop.
+    // Enqueued after commit — see CustomersService.create for why.
+    if (updated.zohoInvoiceId) {
+      await this.queue.enqueue('sync', 'zoho-push-invoice', { brandId, invoiceId: id });
+    }
     return updated;
   }
 }

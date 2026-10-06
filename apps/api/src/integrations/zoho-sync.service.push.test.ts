@@ -178,6 +178,52 @@ describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
     expect(updated.zohoUnsyncedReason).toBeNull();
   });
 
+  it('maps a cancelled invoice to VOID status for the adapter, carrying its existing remoteId', async () => {
+    // InvoicesService.cancel only enqueues this push for an invoice already
+    // synced to Zoho (zohoInvoiceId set) — this is that path, one layer in:
+    // does ZohoSyncService actually tell the adapter to void, not create/update.
+    const customer = await owner.customer.create({
+      data: { brandId, displayName: 'Acme Co', zohoContactId: 'contact-1' },
+    });
+    const invoice = await owner.invoice.create({
+      data: {
+        brandId,
+        customerId: customer.id,
+        number: 'INV-0003',
+        status: 'CANCELLED',
+        invoiceDate: new Date('2026-08-01'),
+        dueDate: new Date('2026-08-31'),
+        currency: 'USD',
+        zohoInvoiceId: 'remote-invoice-void-1',
+        totalMinor: 10000n,
+        balanceMinor: 10000n,
+        publicToken: randomUUID(),
+        lineItems: {
+          create: [
+            {
+              position: 0,
+              itemName: 'Widget',
+              quantity: 10000,
+              unitPriceMinor: 10000n,
+              lineTotalMinor: 10000n,
+            },
+          ],
+        },
+      },
+    });
+    const pushInvoice = vi
+      .fn()
+      .mockResolvedValue({ remoteId: 'remote-invoice-void-1', updatedAt: new Date() });
+    const sync = service({ pushInvoice });
+
+    await sync.pushInvoice(brandId, invoice.id);
+
+    expect(pushInvoice).toHaveBeenCalledTimes(1);
+    const dto = pushInvoice.mock.calls[0]![1];
+    expect(dto.status).toBe('VOID');
+    expect(dto.remoteId).toBe('remote-invoice-void-1');
+  });
+
   it('drops a payment with a non-positive amount before ever reaching Zoho', async () => {
     const customer = await owner.customer.create({
       data: { brandId, displayName: 'Acme Co', zohoContactId: 'contact-1' },

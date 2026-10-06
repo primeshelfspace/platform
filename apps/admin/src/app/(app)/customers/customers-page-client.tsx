@@ -2,6 +2,7 @@
 
 import { NoBrandsState } from '@/components/no-brands-state';
 import { useCan } from '@/hooks/use-permissions';
+import { useIntervalWhenVisible } from '@/hooks/use-interval-when-visible';
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Users } from 'lucide-react';
@@ -164,6 +165,28 @@ export function CustomersPageClient({
     toast.success(`${customer.displayName} was added.`);
     router.refresh();
   }
+
+  // Picks up a change made directly in Zoho Books without the user having to
+  // reload — a Zoho edit lands here as soon as its webhook/scheduled pull
+  // reaches our DB, but this page itself never knew to look again until now.
+  // router.refresh() re-runs the server component's own data fetch (the
+  // current page of rows) while leaving client state (search box, selection)
+  // alone.
+  useIntervalWhenVisible(() => {
+    router.refresh();
+    if (detailRow) {
+      getCustomerDetailAction(detailRow.brandId, detailRow.id)
+        .then((result) => {
+          if (result.customer) {
+            setDetail({ customer: result.customer, invoices: result.invoices ?? [] });
+          }
+        })
+        .catch(() => {
+          // A background refresh failing is not worth surfacing — the drawer
+          // just keeps showing the last good data until the next tick.
+        });
+    }
+  }, 20_000);
 
   const allSelected = customers.length > 0 && selected.size === customers.length;
   const currency = toCurrencyCode(brand?.currency);

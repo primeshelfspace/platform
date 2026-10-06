@@ -37,6 +37,13 @@ import { SendInvoiceModal } from './send-invoice-modal';
 const RECORDABLE_STATUSES = new Set(['SENT', 'VIEWED', 'PENDING_PAYMENT', 'PARTIALLY_PAID']);
 /** CANCEL's own from-states; the API also refuses once anything has settled. */
 const CANCELLABLE_STATUSES = new Set(['DRAFT', 'SENT', 'VIEWED', 'PENDING_PAYMENT']);
+/** A settled invoice (PAID/CANCELLED) has nothing left to chase — resending
+ * it reads as asking for money already received, or for an invoice that was
+ * voided. Same set as RECORDABLE_STATUSES today, kept as its own named
+ * constant since the two concerns (can record money against it vs. is still
+ * worth nudging the customer about) are conceptually distinct even where
+ * they happen to agree. */
+const RESENDABLE_STATUSES = new Set(['SENT', 'VIEWED', 'PENDING_PAYMENT', 'PARTIALLY_PAID']);
 
 // Same public payment app the "View & Pay Invoice" link in an invoice email
 // points at (SendInvoiceModal's own viewUrl) — Share and Copy Link hand out
@@ -266,7 +273,7 @@ export function InvoiceDetailDrawer({
                 Record Payment
               </button>
             )}
-            {canSend && status && status !== 'DRAFT' && (
+            {canSend && status && RESENDABLE_STATUSES.has(status) && (
               <button
                 type="button"
                 onClick={() => setSendModalOpen(true)}

@@ -5,6 +5,7 @@ import { TopProgress } from './top-progress';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
+  Banknote,
   ChevronDown,
   LayoutDashboard,
   LayoutGrid,
@@ -33,6 +34,10 @@ interface NavItem {
   readonly icon: LucideIcon;
 }
 
+// Notifications removed from here deliberately: the feed it pointed to was
+// never built (apps/admin/src/app/(app)/notifications/page.tsx says so
+// explicitly), so the bell just led to an empty placeholder. Re-add once
+// there is an actual feed behind it.
 const TOP_NAV: readonly NavItem[] = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/shop-payment-gateways', label: 'Shop Payment Gateways', icon: ShoppingBag },
@@ -45,6 +50,7 @@ const BRAND_NAV: readonly NavItem[] = [
 const MAIN_NAV: readonly NavItem[] = [
   { href: '/customers', label: 'Customers', icon: Users },
   { href: '/invoices', label: 'Invoices', icon: ScrollText },
+  { href: '/payments', label: 'Payments', icon: Banknote },
 ];
 
 function initialOf(value: string): string {
