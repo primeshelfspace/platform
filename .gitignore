@@ -2,6 +2,12 @@ node_modules/
 dist/
 build/
 .next/
+# Deploy build slots — see scripts/deploy.sh.
+.next-a/
+.next-b/
+.next-slot
+apps/api/dist-build/
+apps/api/dist-prev/
 out/
 coverage/
 *.tsbuildinfo

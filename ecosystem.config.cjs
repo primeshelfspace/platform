@@ -3,6 +3,22 @@
 // api/worker get backoff protection because a transient DB outage should not
 // turn into a restart storm — reload waits progressively longer between
 // attempts instead of hammering the connection every few milliseconds.
+const fs = require('node:fs');
+const path = require('node:path');
+
+// The build slot scripts/deploy.sh last switched this app to. Re-read on every
+// `pm2 startOrReload --update-env`, which is how a deploy goes live. Falls back
+// to .next for a box that has never run deploy.sh.
+function nextDistDir(app) {
+  try {
+    return (
+      fs.readFileSync(path.join(__dirname, 'apps', app, '.next-slot'), 'utf8').trim() || '.next'
+    );
+  } catch {
+    return '.next';
+  }
+}
+
 module.exports = {
   apps: [
     {
@@ -28,12 +44,14 @@ module.exports = {
       cwd: '.',
       script: '/usr/bin/pnpm',
       args: '--filter @sugrpay/admin start',
+      env: { NEXT_DIST_DIR: nextDistDir('admin') },
     },
     {
       name: 'payment',
       cwd: '.',
       script: '/usr/bin/pnpm',
       args: '--filter @sugrpay/payment start',
+      env: { NEXT_DIST_DIR: nextDistDir('payment') },
     },
   ],
 };
