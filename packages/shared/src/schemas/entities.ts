@@ -249,15 +249,23 @@ export const paymentPageDisplaySchema = brandElementsSchema.extend({
 });
 export type PaymentPageDisplayInput = z.infer<typeof paymentPageDisplaySchema>;
 
-/** Brand Settings > Branding > Email Receipt: the subject/body template and
- * layout for the invoice receipt email a customer gets. Variables
- * (`{{brand_name}}` etc.) are free text here — substituted at send/preview
- * time, not validated against a fixed list, so a merchant can't be blocked
- * from saving over a typo'd placeholder. */
+/** Brand Settings > Branding > Email Templates: the subject/body template and
+ * (shared) layout for the three automated emails a customer gets — the
+ * invoice receipt, the payment confirmation, and the payment-failed notice.
+ * One layout and one set of Brand Elements covers all three (the editor's
+ * "Email Layout"/"Brand Elements" panels are not per-template), so only the
+ * subject/body pairs are tripled here. Variables (`{{brand_name}}` etc.) are
+ * free text here — substituted at send/preview time, not validated against a
+ * fixed list, so a merchant can't be blocked from saving over a typo'd
+ * placeholder. */
 export const emailReceiptSettingsSchema = brandElementsSchema.extend({
   emailReceiptLayout: z.enum(EMAIL_RECEIPT_LAYOUTS),
   emailReceiptSubject: z.string().trim().min(1, 'subject is required').max(200),
   emailReceiptBody: z.string().trim().min(1, 'body is required').max(5000),
+  paymentConfirmationSubject: z.string().trim().min(1, 'subject is required').max(200),
+  paymentConfirmationBody: z.string().trim().min(1, 'body is required').max(5000),
+  paymentFailedSubject: z.string().trim().min(1, 'subject is required').max(200),
+  paymentFailedBody: z.string().trim().min(1, 'body is required').max(5000),
 });
 export type EmailReceiptSettingsInput = z.infer<typeof emailReceiptSettingsSchema>;
 

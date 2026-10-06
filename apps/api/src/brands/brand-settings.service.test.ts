@@ -84,6 +84,10 @@ describeWithDb('BrandSettingsService', () => {
         emailReceiptLayout: 'CLASSIC',
         emailReceiptSubject: 'Seed subject',
         emailReceiptBody: 'Seed body.',
+        paymentConfirmationSubject: 'Seed payment confirmation subject',
+        paymentConfirmationBody: 'Seed payment confirmation body.',
+        paymentFailedSubject: 'Seed payment failed subject',
+        paymentFailedBody: 'Seed payment failed body.',
         invoicePdfLayout: 'CLASSIC',
       },
     });
@@ -111,6 +115,10 @@ describeWithDb('BrandSettingsService', () => {
       emailReceiptLayout: 'HERO',
       emailReceiptSubject: 'Invoice from {{brand_name}}',
       emailReceiptBody: 'Hello {{customer_name}}.',
+      paymentConfirmationSubject: 'Seed payment confirmation subject',
+      paymentConfirmationBody: 'Seed payment confirmation body.',
+      paymentFailedSubject: 'Seed payment failed subject',
+      paymentFailedBody: 'Seed payment failed body.',
     });
 
     const [brand, row] = await Promise.all([
@@ -149,6 +157,10 @@ describeWithDb('BrandSettingsService', () => {
       emailReceiptLayout: 'MINIMAL',
       emailReceiptSubject: 'A new subject',
       emailReceiptBody: 'x'.repeat(1200),
+      paymentConfirmationSubject: 'Seed payment confirmation subject',
+      paymentConfirmationBody: 'Seed payment confirmation body.',
+      paymentFailedSubject: 'Seed payment failed subject',
+      paymentFailedBody: 'Seed payment failed body.',
     });
 
     const entry = await owner.auditLog.findFirstOrThrow({ where: { brandId } });

@@ -203,8 +203,18 @@ export async function saveEmailReceiptSettingsAction(
 
   const emailReceiptSubject = emptyToNull(formData.get('emailReceiptSubject'));
   const emailReceiptBody = emptyToNull(formData.get('emailReceiptBody'));
+  const paymentConfirmationSubject = emptyToNull(formData.get('paymentConfirmationSubject'));
+  const paymentConfirmationBody = emptyToNull(formData.get('paymentConfirmationBody'));
+  const paymentFailedSubject = emptyToNull(formData.get('paymentFailedSubject'));
+  const paymentFailedBody = emptyToNull(formData.get('paymentFailedBody'));
   if (!emailReceiptSubject) return { error: 'Subject is required.' };
   if (!emailReceiptBody) return { error: 'Body is required.' };
+  if (!paymentConfirmationSubject || !paymentConfirmationBody) {
+    return { error: 'Payment Confirmation subject and body are required.' };
+  }
+  if (!paymentFailedSubject || !paymentFailedBody) {
+    return { error: 'Payment Failed subject and body are required.' };
+  }
 
   try {
     await updateEmailReceiptSettings(brand.id, {
@@ -212,9 +222,13 @@ export async function saveEmailReceiptSettingsAction(
       emailReceiptLayout,
       emailReceiptSubject,
       emailReceiptBody,
+      paymentConfirmationSubject,
+      paymentConfirmationBody,
+      paymentFailedSubject,
+      paymentFailedBody,
     });
   } catch (error) {
-    return { error: describeActionError(error, 'Could not save the email receipt settings.') };
+    return { error: describeActionError(error, 'Could not save the email template settings.') };
   }
 
   const logoError = await saveLogo(brand.id, formData);

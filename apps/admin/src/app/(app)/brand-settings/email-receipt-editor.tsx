@@ -37,6 +37,35 @@ const LAYOUTS: readonly { key: EmailReceiptLayout; title: string; description: s
   { key: 'MINIMAL', title: 'Minimal', description: 'Clean, no header colour — logo mark only' },
 ];
 
+/** Email Templates' three-button switcher (Invoice Receipt / Payment
+ * Confirmation / Payment Failed). All three share one Brand Elements panel,
+ * one Email Layout and one set of insertable variables — only the subject,
+ * body, and this description line differ per kind. */
+const TEMPLATE_KINDS = [
+  {
+    key: 'INVOICE_RECEIPT',
+    title: 'Invoice Receipt',
+    description: 'Sent when an invoice is issued to a customer',
+  },
+  {
+    key: 'PAYMENT_CONFIRMATION',
+    title: 'Payment Confirmation',
+    description: 'Sent when a payment is successfully processed',
+  },
+  {
+    key: 'PAYMENT_FAILED',
+    title: 'Payment Failed',
+    description: 'Sent when a payment attempt fails',
+  },
+] as const;
+
+type TemplateKind = (typeof TEMPLATE_KINDS)[number]['key'];
+
+interface TemplateContent {
+  readonly subject: string;
+  readonly body: string;
+}
+
 const VARIABLES: readonly { token: string; label: string }[] = [
   { token: '{{brand_name}}', label: 'Brand name' },
   { token: '{{customer_name}}', label: 'Customer name' },
@@ -376,8 +405,34 @@ export function EmailReceiptEditor({
   const [themeColor, setThemeColor] = useState(brand.themeColor);
   const [accentColor, setAccentColor] = useState(initialAccentColor);
   const [layout, setLayout] = useState<EmailReceiptLayout>(settings.emailReceiptLayout);
-  const [subject, setSubject] = useState(settings.emailReceiptSubject);
-  const [body, setBody] = useState(settings.emailReceiptBody);
+
+  // Which of the three templates (Invoice Receipt / Payment Confirmation /
+  // Payment Failed) the Email Content panel and Preview are currently
+  // showing. Purely a client-side view — all three save together in one
+  // request, same as everything else on this form.
+  const [templateKind, setTemplateKind] = useState<TemplateKind>('INVOICE_RECEIPT');
+  const [content, setContent] = useState<Record<TemplateKind, TemplateContent>>({
+    INVOICE_RECEIPT: {
+      subject: settings.emailReceiptSubject,
+      body: settings.emailReceiptBody,
+    },
+    PAYMENT_CONFIRMATION: {
+      subject: settings.paymentConfirmationSubject,
+      body: settings.paymentConfirmationBody,
+    },
+    PAYMENT_FAILED: {
+      subject: settings.paymentFailedSubject,
+      body: settings.paymentFailedBody,
+    },
+  });
+  const current = content[templateKind];
+
+  function setSubject(value: string) {
+    setContent((prev) => ({ ...prev, [templateKind]: { ...prev[templateKind], subject: value } }));
+  }
+  function setBody(value: string) {
+    setContent((prev) => ({ ...prev, [templateKind]: { ...prev[templateKind], body: value } }));
+  }
 
   // Last-known-persisted snapshot, re-seeded from whatever was just
   // submitted the moment a save succeeds (see the effect below) — comparing
@@ -388,8 +443,7 @@ export function EmailReceiptEditor({
     themeColor: brand.themeColor,
     accentColor: initialAccentColor,
     layout: settings.emailReceiptLayout,
-    subject: settings.emailReceiptSubject,
-    body: settings.emailReceiptBody,
+    content,
   });
   const [logoDirty, setLogoDirty] = useState(false);
   // Layout counts as a change like everything else. It used to be excluded
@@ -403,8 +457,11 @@ export function EmailReceiptEditor({
     themeColor !== savedValues.themeColor ||
     accentColor !== savedValues.accentColor ||
     layout !== savedValues.layout ||
-    subject !== savedValues.subject ||
-    body !== savedValues.body;
+    TEMPLATE_KINDS.some(
+      ({ key }) =>
+        content[key].subject !== savedValues.content[key].subject ||
+        content[key].body !== savedValues.content[key].body,
+    );
 
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -427,7 +484,7 @@ export function EmailReceiptEditor({
   /** Builds the test-send payload by hand and dispatches the action. The
    * fields are the same ones the Save form carries, read from the same live
    * state, so a test always reflects what is on screen rather than what was
-   * last saved. */
+   * last saved. Sends whichever of the three templates is currently open. */
   function sendTest() {
     const data = new FormData();
     data.set('to', userEmail ?? '');
@@ -446,8 +503,7 @@ export function EmailReceiptEditor({
     setThemeColor(savedValues.themeColor);
     setAccentColor(savedValues.accentColor);
     setLayout(savedValues.layout);
-    setSubject(savedValues.subject);
-    setBody(savedValues.body);
+    setContent(savedValues.content);
     setLogoPreview(null);
     setLogoDirty(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -457,7 +513,7 @@ export function EmailReceiptEditor({
   // baseline, which is what makes the button disappear again.
   useEffect(() => {
     if (!saveState.success) return;
-    setSavedValues({ themeColor, accentColor, layout, subject, body });
+    setSavedValues({ themeColor, accentColor, layout, content });
     setLogoDirty(false);
     // Intentionally keyed on `saveState` alone: this should fire once per
     // successful dispatch, using whichever values were current at that
@@ -467,16 +523,17 @@ export function EmailReceiptEditor({
 
   /** Inserts a variable token at the textarea's cursor (or appends it if the
    * textarea hasn't been focused yet) rather than always appending — typing
-   * `{{amount_due}}` mid-sentence should land where the cursor actually is. */
+   * `{{amount_due}}` mid-sentence should land where the cursor actually is.
+   * Always targets whichever template is currently open. */
   function insertVariable(token: string) {
     const el = bodyRef.current;
     if (!el) {
-      setBody((current) => `${current}${token}`);
+      setBody(`${current.body}${token}`);
       return;
     }
-    const start = el.selectionStart ?? body.length;
-    const end = el.selectionEnd ?? body.length;
-    const next = `${body.slice(0, start)}${token}${body.slice(end)}`;
+    const start = el.selectionStart ?? current.body.length;
+    const end = el.selectionEnd ?? current.body.length;
+    const next = `${current.body.slice(0, start)}${token}${current.body.slice(end)}`;
     setBody(next);
     requestAnimationFrame(() => {
       el.focus();
@@ -500,8 +557,8 @@ export function EmailReceiptEditor({
         dueDate: SAMPLE_PREVIEW.dueDateLabel,
       };
 
-  const renderedSubject = substitute(subject, variables);
-  const renderedBody = substitute(body, variables);
+  const renderedSubject = substitute(current.subject, variables);
+  const renderedBody = substitute(current.body, variables);
 
   return (
     // The <form> wraps the bar as well as the fields, so Save is a plain
@@ -519,8 +576,28 @@ export function EmailReceiptEditor({
             <input type="hidden" name="themeColor" value={themeColor} />
             <input type="hidden" name="accentColor" value={accentColor} />
             <input type="hidden" name="emailReceiptLayout" value={layout} />
-            <input type="hidden" name="emailReceiptSubject" value={subject} />
-            <input type="hidden" name="emailReceiptBody" value={body} />
+            <input
+              type="hidden"
+              name="emailReceiptSubject"
+              value={content.INVOICE_RECEIPT.subject}
+            />
+            <input type="hidden" name="emailReceiptBody" value={content.INVOICE_RECEIPT.body} />
+            <input
+              type="hidden"
+              name="paymentConfirmationSubject"
+              value={content.PAYMENT_CONFIRMATION.subject}
+            />
+            <input
+              type="hidden"
+              name="paymentConfirmationBody"
+              value={content.PAYMENT_CONFIRMATION.body}
+            />
+            <input
+              type="hidden"
+              name="paymentFailedSubject"
+              value={content.PAYMENT_FAILED.subject}
+            />
+            <input type="hidden" name="paymentFailedBody" value={content.PAYMENT_FAILED.body} />
 
             {/* Brand Elements / Email Layout / Email Content used to just be
               mt-6-spaced with no line between them — only "Send a test
@@ -653,7 +730,7 @@ export function EmailReceiptEditor({
                         Subject
                       </span>
                       <input
-                        value={subject}
+                        value={current.subject}
                         onChange={(event) => setSubject(event.target.value)}
                         className="h-9 w-full rounded-lg border border-[#D4D4D4] bg-white px-3 text-sm text-slate-900
                                shadow-[0_1px_1px_rgba(0,0,0,0.05)] focus-visible:outline-none focus-visible:ring-2
@@ -665,7 +742,7 @@ export function EmailReceiptEditor({
                       <span className="mb-1 block text-sm font-medium text-ink-strong">Body</span>
                       <textarea
                         ref={bodyRef}
-                        value={body}
+                        value={current.body}
                         onChange={(event) => setBody(event.target.value)}
                         rows={8}
                         className="w-full rounded-lg border border-[#D4D4D4] bg-white px-3 py-2 text-sm text-slate-900
@@ -733,14 +810,46 @@ export function EmailReceiptEditor({
             brandId={brand.id}
             className="mx-auto max-w-[640px]"
           />
-          <div className="mx-auto mt-4 flex max-w-[640px] items-center justify-between">
-            <h3 className="text-base font-bold text-ink-strong">Preview</h3>
+
+          <div
+            className="mx-auto mt-4 flex max-w-[640px] gap-2"
+            role="radiogroup"
+            aria-label="Email template"
+          >
+            {TEMPLATE_KINDS.map(({ key, title }) => {
+              const selected = key === templateKind;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setTemplateKind(key)}
+                  className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                    selected
+                      ? 'bg-black text-white'
+                      : 'border border-[#D1D5DB] bg-white text-ink-strong hover:bg-slate-50'
+                  }`}
+                >
+                  {title}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mx-auto mt-4 flex max-w-[640px] items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-ink-strong">Preview</h3>
+              <p className="mt-1 text-sm text-ink-muted">
+                {TEMPLATE_KINDS.find(({ key }) => key === templateKind)?.description}
+              </p>
+            </div>
             <button
               type="button"
               onClick={sendTest}
               disabled={sendPending || !userEmail}
               title={userEmail ? undefined : 'Could not find your account email'}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#D1D5DB] bg-white px-3 py-1.5
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#D1D5DB] bg-white px-3 py-1.5
                        text-xs font-semibold text-ink-strong transition-colors hover:bg-slate-50
                        disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -757,8 +866,8 @@ export function EmailReceiptEditor({
               accentColor={accentColor}
               senderAddress={settings.senderAddress}
               logoSrc={logoSrc}
-              subjectTemplate={subject}
-              bodyTemplate={body}
+              subjectTemplate={current.subject}
+              bodyTemplate={current.body}
               variables={variables}
               invoiceLabel={{
                 number: variables.invoiceNumber,

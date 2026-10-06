@@ -14,7 +14,7 @@ export function isBrandSettingsTab(value: string | undefined): value is BrandSet
 }
 
 export const BRANDING_SUB_TABS = [
-  { key: 'email-receipt', label: 'Email Receipt' },
+  { key: 'email-receipt', label: 'Email Templates' },
   { key: 'invoice-pdf', label: 'Invoice PDF' },
   { key: 'payment-page', label: 'Payment Page' },
 ] as const;

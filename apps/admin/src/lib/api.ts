@@ -922,6 +922,13 @@ export interface EmailReceiptSettings extends BrandElements {
   emailReceiptLayout: EmailReceiptLayout;
   emailReceiptSubject: string;
   emailReceiptBody: string;
+  /** "Payment Confirmation" template — shares the layout/colours above
+   * rather than carrying its own. */
+  paymentConfirmationSubject: string;
+  paymentConfirmationBody: string;
+  /** "Payment Failed" template — same sharing as above. */
+  paymentFailedSubject: string;
+  paymentFailedBody: string;
   /** Read-only: the address these emails actually come from (MAIL_FROM on
    * the API), shown in the preview's sender line. Not part of the write
    * shape below — it is platform configuration, not a brand setting. */
@@ -932,6 +939,10 @@ export interface EmailReceiptSettingsInput extends BrandElements {
   emailReceiptLayout: EmailReceiptLayout;
   emailReceiptSubject: string;
   emailReceiptBody: string;
+  paymentConfirmationSubject: string;
+  paymentConfirmationBody: string;
+  paymentFailedSubject: string;
+  paymentFailedBody: string;
 }
 
 export function getEmailReceiptSettings(brandId: string): Promise<EmailReceiptSettings> {
@@ -948,13 +959,23 @@ export function updateEmailReceiptSettings(
   });
 }
 
+/** Whichever one of the three Email Templates (Invoice Receipt / Payment
+ * Confirmation / Payment Failed) is currently open in the editor — the API's
+ * test-send endpoint only ever renders one subject/body pair at a time,
+ * unlike the save endpoint which writes all three together. */
+export interface EmailTemplateTestSendInput extends BrandElements {
+  emailReceiptLayout: EmailReceiptLayout;
+  emailReceiptSubject: string;
+  emailReceiptBody: string;
+}
+
 /** Actually sends — see BrandSettingsService.sendEmailReceiptTest. Renders
  * the whole draft that is passed in — layout and colours as well as
  * subject/body — not the brand's saved settings, so a draft can be tested
  * before it's saved and the test email matches the preview beside it. */
 export function sendEmailReceiptTest(
   brandId: string,
-  input: EmailReceiptSettingsInput & { to: string },
+  input: EmailTemplateTestSendInput & { to: string },
 ): Promise<{ sent: true }> {
   return apiFetch<{ sent: true }>(`/brands/${brandId}/settings/email-receipt/test-send`, {
     method: 'POST',

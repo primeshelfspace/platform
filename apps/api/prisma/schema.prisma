@@ -414,13 +414,24 @@ model BrandSettings {
   accentColor       String            @default("#171717") @map("accent_color")
   paymentPageLayout PaymentPageLayout @default(BANNER) @map("payment_page_layout")
 
-  /// FR-MAIL: Brand Settings > Branding > Email Receipt — the subject/body
-  /// template and layout for the invoice receipt email a customer gets.
-  /// `{{brand_name}}`, `{{customer_name}}`, `{{invoice_number}}`,
+  /// FR-MAIL: Brand Settings > Branding > Email Templates — the subject/body
+  /// template and (shared) layout for the invoice receipt email a customer
+  /// gets. `{{brand_name}}`, `{{customer_name}}`, `{{invoice_number}}`,
   /// `{{amount_due}}` and `{{due_date}}` are substituted at send time.
   emailReceiptLayout  EmailReceiptLayout @default(CLASSIC) @map("email_receipt_layout")
   emailReceiptSubject String             @default("New invoice from {{brand_name}}") @map("email_receipt_subject")
   emailReceiptBody    String             @default("Hi {{customer_name}},\n\nThis is an automated message from {{brand_name}} regarding invoice {{invoice_number}}.\n\nAmount due: {{amount_due}}\nDue date: {{due_date}}\n\nPlease click the button below to view and pay your invoice.\n\nThank you for your business.") @map("email_receipt_body")
+
+  /// FR-MAIL: Brand Settings > Branding > Email Templates — the "Payment
+  /// Confirmation" template, sent when a payment is successfully processed.
+  /// Shares emailReceiptLayout/accentColor above rather than carrying its own.
+  paymentConfirmationSubject String @default("Payment received for invoice {{invoice_number}}") @map("payment_confirmation_subject")
+  paymentConfirmationBody    String @default("Hi {{customer_name}},\n\nWe've received your payment of {{amount_due}} for invoice {{invoice_number}} from {{brand_name}}.\n\nThank you for your business.") @map("payment_confirmation_body")
+
+  /// FR-MAIL: Brand Settings > Branding > Email Templates — the "Payment
+  /// Failed" template, sent when a payment attempt fails.
+  paymentFailedSubject String @default("Payment failed for invoice {{invoice_number}}") @map("payment_failed_subject")
+  paymentFailedBody    String @default("Hi {{customer_name}},\n\nWe were unable to process your payment of {{amount_due}} for invoice {{invoice_number}} from {{brand_name}}.\n\nPlease try again or contact us for help.") @map("payment_failed_body")
 
   /// FR-PDF: Brand Settings > Branding > Invoice PDF — layout and which
   /// optional sections appear on the invoice PDF a customer receives.

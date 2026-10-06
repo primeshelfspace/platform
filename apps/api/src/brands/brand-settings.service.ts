@@ -48,6 +48,13 @@ export interface EmailReceiptSettings extends BrandElements {
   readonly emailReceiptLayout: EmailReceiptLayout;
   readonly emailReceiptSubject: string;
   readonly emailReceiptBody: string;
+  /** Email Templates > "Payment Confirmation" — shares the layout/colours
+   * above rather than carrying its own. */
+  readonly paymentConfirmationSubject: string;
+  readonly paymentConfirmationBody: string;
+  /** Email Templates > "Payment Failed" — same sharing as above. */
+  readonly paymentFailedSubject: string;
+  readonly paymentFailedBody: string;
   /**
    * The address these emails actually arrive from — platform configuration
    * (MAIL_FROM), not a per-brand setting, and read-only here.
@@ -193,6 +200,10 @@ export class BrandSettingsService {
         emailReceiptLayout: input.emailReceiptLayout,
         emailReceiptSubject: input.emailReceiptSubject,
         emailReceiptBody: input.emailReceiptBody,
+        paymentConfirmationSubject: input.paymentConfirmationSubject,
+        paymentConfirmationBody: input.paymentConfirmationBody,
+        paymentFailedSubject: input.paymentFailedSubject,
+        paymentFailedBody: input.paymentFailedBody,
       });
 
       await this.record(
@@ -216,6 +227,10 @@ export class BrandSettingsService {
       emailReceiptLayout: settings.emailReceiptLayout,
       emailReceiptSubject: settings.emailReceiptSubject,
       emailReceiptBody: settings.emailReceiptBody,
+      paymentConfirmationSubject: settings.paymentConfirmationSubject,
+      paymentConfirmationBody: settings.paymentConfirmationBody,
+      paymentFailedSubject: settings.paymentFailedSubject,
+      paymentFailedBody: settings.paymentFailedBody,
       senderAddress: parseFrom(this.env.MAIL_FROM).address,
     };
   }
