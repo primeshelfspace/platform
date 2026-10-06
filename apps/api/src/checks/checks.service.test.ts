@@ -180,13 +180,16 @@ describeWithDb('ChecksService', () => {
       expect(updatedInvoice.status).toBe('PAID');
       expect(updatedInvoice.balanceMinor).toBe(0n);
 
+      // recordManualPayment has no `reference` column on Payment itself — the
+      // check number lands in the InvoiceEvent payload instead (same place
+      // recordManualPayment already puts a manual reference).
       const payment = await owner.payment.findFirst({ where: { invoiceId: invoice.id } });
-      expect(payment).toMatchObject({
-        method: 'CHECK',
-        status: 'SETTLED',
-        amountMinor: 50000n,
-        reference: submission.checkNumber,
+      expect(payment).toMatchObject({ method: 'CHECK', status: 'SETTLED', amountMinor: 50000n });
+
+      const event = await owner.invoiceEvent.findFirst({
+        where: { invoiceId: invoice.id, eventType: 'MANUAL_PAYMENT_RECORDED' },
       });
+      expect(event?.payload).toMatchObject({ reference: submission.checkNumber });
 
       const reviewed = await owner.checkSubmission.findUniqueOrThrow({
         where: { id: submission.id },
