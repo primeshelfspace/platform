@@ -84,7 +84,11 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        # Pulled from ECR Public's mirror of the official image, not Docker
+        # Hub directly — Docker Hub's anonymous-pull rate limit intermittently
+        # throttles GitHub's shared runner IP pool, failing this job before a
+        # single test runs even though nothing about the repo is broken.
+        image: public.ecr.aws/docker/library/postgres:16-alpine
         env:
           POSTGRES_USER: sugrpay
           POSTGRES_PASSWORD: sugrpay
@@ -96,7 +100,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: public.ecr.aws/docker/library/redis:7-alpine
         ports: ['6379:6379']
         options: >-
           --health-cmd "redis-cli ping"
