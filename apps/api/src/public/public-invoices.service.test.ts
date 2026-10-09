@@ -225,6 +225,15 @@ describeWithDb('PublicInvoicesService', () => {
       size: label.length,
     });
 
+    // checkEnabled defaults to false at the schema level — these tests need
+    // it on regardless of what the seed happens to set it to.
+    beforeAll(async () => {
+      await owner.brandSettings.update({
+        where: { brandId: solsticeId },
+        data: { checkEnabled: true },
+      });
+    });
+
     it(
       "stores both images and creates a SUBMITTED row claiming the invoice's own balance, " +
         'leaving the invoice itself untouched',
