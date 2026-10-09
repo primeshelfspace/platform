@@ -217,4 +217,84 @@ describeWithDb('PublicInvoicesService', () => {
     );
     expect(await publicInvoices.view(legitimate!)).not.toBeNull();
   });
+
+  describe('submitCheck', () => {
+    const image = (label: string) => ({
+      buffer: Buffer.from(label),
+      mimetype: 'image/jpeg',
+      size: label.length,
+    });
+
+    it(
+      "stores both images and creates a SUBMITTED row claiming the invoice's own balance, " +
+        'leaving the invoice itself untouched',
+      async () => {
+        const { id, publicToken } = await issuedInvoice();
+        const scope = (await publicInvoices.resolveScope(publicToken))!;
+
+        const { id: submissionId } = await publicInvoices.submitCheck(
+          scope,
+          { checkNumber: 'CHK-1001', customerNote: 'Mailed on the 1st' },
+          { front: image('front-bytes'), back: image('back-bytes') },
+        );
+
+        const row = await owner.checkSubmission.findUniqueOrThrow({
+          where: { id: submissionId },
+        });
+        expect(row.invoiceId).toBe(id);
+        expect(row.status).toBe('SUBMITTED');
+        expect(row.checkNumber).toBe('CHK-1001');
+        expect(row.customerNote).toBe('Mailed on the 1st');
+
+        const invoice = await owner.invoice.findUniqueOrThrow({ where: { id } });
+        // The claimed amount is the invoice's own current balance, not
+        // something a client could have sent a different figure for.
+        expect(row.amountMinor).toBe(invoice.balanceMinor);
+        // Unlike a gateway attempt (PaymentsService.createIntent), nothing
+        // settles here — this only stores evidence for staff to review.
+        expect(invoice.status).toBe('SENT');
+      },
+    );
+
+    it('refuses when Upload Check is disabled for the brand', async () => {
+      await owner.brandSettings.update({
+        where: { brandId: solsticeId },
+        data: { checkEnabled: false },
+      });
+      try {
+        const { publicToken } = await issuedInvoice();
+        const scope = (await publicInvoices.resolveScope(publicToken))!;
+
+        await expect(
+          publicInvoices.submitCheck(
+            scope,
+            { checkNumber: 'CHK-1002' },
+            { front: image('f'), back: image('b') },
+          ),
+        ).rejects.toThrow(/not enabled/);
+      } finally {
+        await owner.brandSettings.update({
+          where: { brandId: solsticeId },
+          data: { checkEnabled: true },
+        });
+      }
+    });
+
+    it('refuses once the invoice has already been paid in full', async () => {
+      const { id, publicToken } = await issuedInvoice();
+      await owner.invoice.update({
+        where: { id },
+        data: { status: 'PAID', balanceMinor: 0n, paidAt: new Date() },
+      });
+      const scope = (await publicInvoices.resolveScope(publicToken))!;
+
+      await expect(
+        publicInvoices.submitCheck(
+          scope,
+          { checkNumber: 'CHK-1003' },
+          { front: image('f'), back: image('b') },
+        ),
+      ).rejects.toThrow(/already been paid/);
+    });
+  });
 });

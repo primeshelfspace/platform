@@ -663,6 +663,17 @@ export const reviewCheckSubmissionSchema = z.object({
 });
 export type ReviewCheckSubmissionInput = z.infer<typeof reviewCheckSubmissionSchema>;
 
+/** The customer-facing half of Upload Check (public payment page) — paired
+ * with the front/back images, sent as multipart fields alongside this JSON-
+ * shaped pair rather than as a JSON body (checkNumber/customerNote still
+ * validate the same way: multer hands multipart text fields through as
+ * plain strings, exactly like a JSON body would). */
+export const createCheckSubmissionSchema = z.object({
+  checkNumber: z.string().trim().min(1, 'check number is required').max(100),
+  customerNote: z.string().trim().max(1000).optional(),
+});
+export type CreateCheckSubmissionInput = z.infer<typeof createCheckSubmissionSchema>;
+
 // --- Dashboard -------------------------------------------------------------
 
 export const dashboardQuerySchema = z.object({

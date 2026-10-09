@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { X, ZoomIn } from 'lucide-react';
+import { Eye, X } from 'lucide-react';
 import { toast } from '@sugrpay/ui/toast';
 import { formatDateForDisplay } from '@sugrpay/shared';
 import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
@@ -74,7 +74,7 @@ export function CheckReviewDrawer({
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState<'approve' | 'reject' | null>(null);
-  const [preview, setPreview] = useState<{ url: string; label: string } | null>(null);
+  const [previewSide, setPreviewSide] = useState<'Front' | 'Back' | null>(null);
   const canReview = useCan('CHECK_APPROVAL', 'APPROVE');
 
   useEffect(() => {
@@ -82,7 +82,7 @@ export function CheckReviewDrawer({
     setDetail(null);
     setError(null);
     setNote('');
-    setPreview(null);
+    setPreviewSide(null);
     setLoading(true);
     getCheckSubmissionDetailAction(brandId, checkId)
       .then((result) => {
@@ -120,7 +120,7 @@ export function CheckReviewDrawer({
 
   return createPortal(
     <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden />
 
       <div className="relative flex h-full w-full max-w-lg flex-col overflow-y-auto bg-white shadow-xl">
         <div className="flex items-start justify-between gap-4 px-8 py-6">
@@ -198,7 +198,7 @@ export function CheckReviewDrawer({
                     <p className="text-sm text-ink-muted">{side.label}</p>
                     <button
                       type="button"
-                      onClick={() => setPreview({ url: side.url, label: side.label })}
+                      onClick={() => setPreviewSide(side.label)}
                       className="group relative mt-1 block w-full overflow-hidden rounded-lg border border-border"
                     >
                       <img
@@ -207,10 +207,13 @@ export function CheckReviewDrawer({
                         className="aspect-[16/9] w-full object-cover"
                       />
                       <span
-                        className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0
-                                   transition-all group-hover:bg-black/40 group-hover:opacity-100"
+                        className="pointer-events-none absolute left-1/2 top-1/2 flex h-8 -translate-x-1/2 -translate-y-1/2
+                                   items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#D4D4D4] bg-white
+                                   px-3 text-xs font-semibold text-[#404040] opacity-0 shadow-[0_1px_2px_rgba(0,0,0,0.05)]
+                                   transition-opacity group-hover:opacity-100"
                       >
-                        <ZoomIn className="h-6 w-6 text-white" aria-hidden />
+                        <Eye className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                        Preview
                       </span>
                     </button>
                   </div>
@@ -267,29 +270,62 @@ export function CheckReviewDrawer({
         )}
       </div>
 
-      {preview &&
+      {previewSide &&
+        detail &&
         createPortal(
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={`${preview.label} of check, full size`}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-8"
-            onClick={() => setPreview(null)}
+            aria-label={`${previewSide} of check ${detail.checkNumber}, full size`}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-8"
+            onClick={() => setPreviewSide(null)}
           >
-            <button
-              type="button"
-              onClick={() => setPreview(null)}
-              aria-label="Close preview"
-              className="absolute right-6 top-6 rounded-full p-2 text-white hover:bg-white/10"
-            >
-              <X className="h-6 w-6" aria-hidden />
-            </button>
-            <img
-              src={preview.url}
-              alt={`${preview.label} of check, full size`}
-              className="max-h-full max-w-full rounded-lg object-contain"
+            <div
+              className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-2xl shadow-2xl"
               onClick={(event) => event.stopPropagation()}
-            />
+            >
+              <div className="flex items-center justify-between gap-4 bg-[#1F2430] px-8 py-5">
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-bold text-white">
+                    Check #: {detail.checkNumber}
+                  </h2>
+                  <p className="truncate text-sm text-[#9CA3AF]">{detail.customerName}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <div className="flex items-center gap-1 rounded-full bg-[#2A3140] p-1">
+                    {(['Front', 'Back'] as const).map((side) => (
+                      <button
+                        key={side}
+                        type="button"
+                        onClick={() => setPreviewSide(side)}
+                        className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                          previewSide === side
+                            ? 'bg-white text-[#111827]'
+                            : 'text-[#9CA3AF] hover:text-white'
+                        }`}
+                      >
+                        {side}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewSide(null)}
+                    aria-label="Close preview"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2A3140] text-white hover:bg-[#3A4253]"
+                  >
+                    <X className="h-5 w-5" aria-hidden />
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-1 items-center justify-center bg-black p-10">
+                <img
+                  src={previewSide === 'Front' ? detail.frontImageUrl : detail.backImageUrl}
+                  alt={`${previewSide} of check ${detail.checkNumber}, full size`}
+                  className="max-h-[60vh] max-w-full rounded-lg object-contain shadow-lg"
+                />
+              </div>
+            </div>
           </div>,
           document.body,
         )}

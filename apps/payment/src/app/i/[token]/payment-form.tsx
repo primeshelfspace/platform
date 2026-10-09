@@ -10,6 +10,7 @@ import {
 import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
 import { useAmountDue } from './amount-due-context';
+import { CheckUploadForm } from './check-upload-form';
 import { StripeCardForm, type CreateIntentResult } from './stripe-card-form';
 import { CreditCardIcon, FileCheckIcon, LandmarkIcon, WalletIcon } from './icons';
 
@@ -63,9 +64,12 @@ function randomNonce(): string {
  * PaymentsService.createIntent still only runs once the customer actually
  * submits that form, not the moment they select the tile, so opening the
  * real intent (INITIATE_PAYMENT, a Payment row) never happens just because
- * someone was browsing options. ACH/Wallet/Check have no such split-second
+ * someone was browsing options. ACH/Wallet have no such split-second
  * confirmation step, so they still go through the single outer "Pay" button
- * below the grid.
+ * below the grid. Check is its own third case: CheckUploadForm posts
+ * straight to /public/invoices/:token/checks (no gateway, no Payment row —
+ * just a row for staff to review), so it mounts its own form and submit
+ * button exactly like Card does, rather than the outer button.
  */
 export function PaymentForm({
   invoice,
@@ -155,10 +159,10 @@ export function PaymentForm({
     return body;
   }
 
-  /** Backs the outer "Pay" button — every method except CARD, which mounts
-   * StripeCardForm instead and drives createIntent from inside its own
-   * submit handler. */
-  async function submitNonCard(method: Method) {
+  /** Backs the outer "Pay" button — every method except CARD (which mounts
+   * StripeCardForm) and CHECK (which mounts CheckUploadForm), both of which
+   * drive their own submit from inside their own handler instead. */
+  async function submitNonCard(method: Exclude<Method, 'CARD' | 'CHECK'>) {
     setStep({ kind: 'processing' });
     try {
       const body = await createIntent(method);
@@ -226,6 +230,13 @@ export function PaymentForm({
           onPending={() => setStep({ kind: 'pending' })}
           onError={(message) => setStep({ kind: 'error', message })}
         />
+      ) : chosen?.key === 'CHECK' ? (
+        <CheckUploadForm
+          token={token}
+          accentColor={invoice.accentColor}
+          amountLabel={amountLabel}
+          onSubmitted={() => setStep({ kind: 'checkSubmitted' })}
+        />
       ) : (
         <>
           {chosen && (
@@ -236,7 +247,7 @@ export function PaymentForm({
           <button
             type="button"
             disabled={!chosen}
-            onClick={() => chosen && submitNonCard(chosen.key)}
+            onClick={() => chosen && submitNonCard(chosen.key as Exclude<Method, 'CARD' | 'CHECK'>)}
             style={{ backgroundColor: invoice.accentColor }}
             className="mt-5 w-full rounded-lg py-3 text-sm font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
           >
@@ -252,6 +263,7 @@ type Step =
   | { kind: 'select' }
   | { kind: 'processing' }
   | { kind: 'success' }
+  | { kind: 'checkSubmitted' }
   | { kind: 'pending' }
   | { kind: 'failure'; reason: string | null }
   | { kind: 'error'; message: string };
@@ -272,6 +284,17 @@ function Outcome({ step, onRetry }: { step: Step; onRetry: () => void }) {
       <div className="rounded-lg border border-[#E5E7EB] bg-surface-muted px-4 py-6 text-center">
         <p className="text-sm font-bold text-success">Payment successful</p>
         <p className="mt-1 text-xs text-ink-muted">A receipt has been sent to you.</p>
+      </div>
+    );
+  }
+
+  if (step.kind === 'checkSubmitted') {
+    return (
+      <div className="rounded-lg border border-[#E5E7EB] bg-surface-muted px-4 py-6 text-center">
+        <p className="text-sm font-bold text-success">Check submitted</p>
+        <p className="mt-1 text-xs text-ink-muted">
+          We&rsquo;ll review your check and update you once it&rsquo;s verified.
+        </p>
       </div>
     );
   }

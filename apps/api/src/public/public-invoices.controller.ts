@@ -9,11 +9,15 @@ import {
   Post,
   Req,
   Res,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import type { z } from 'zod';
 import {
+  createCheckSubmissionSchema,
   formatDateForDisplay,
   formatMinorForDisplay,
   idSchema,
@@ -22,7 +26,9 @@ import {
   publicTokenSchema,
   renderInvoicePdfHtml,
   toCurrencyCode,
+  type CreateCheckSubmissionInput,
 } from '@sugrpay/shared';
+import { assertCheckImage, MAX_CHECK_IMAGE_BYTES } from '../common/check-upload.js';
 import { zodPipe } from '../common/zod-validation.pipe.js';
 import { Public } from '../tenancy/authorisation.js';
 import { PaymentsService, type PaymentAttemptResult } from '../payments/payments.service.js';
@@ -123,6 +129,44 @@ export class PublicInvoicesController {
     if (!scope) throw new NotFoundException('this payment link is no longer valid');
 
     return this.payments.createIntent(scope, body.method, body.attemptNonce);
+  }
+
+  /**
+   * Upload Check's customer-facing half (FR-PAY) — front/back photos plus the
+   * check number arrive as multipart fields alongside the two image parts,
+   * rather than as a JSON body the way every other method's intent request
+   * is shaped; there is no payment-intent/gateway step for this method, just
+   * a row ChecksService's staff-facing review queue (Payments > Check
+   * Verifications) reads from.
+   */
+  @Post('invoices/:token/checks')
+  @Public()
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'front', maxCount: 1 },
+        { name: 'back', maxCount: 1 },
+      ],
+      { limits: { fileSize: MAX_CHECK_IMAGE_BYTES } },
+    ),
+  )
+  async submitCheck(
+    @Param('token', zodPipe(publicTokenSchema)) token: string,
+    @Body(zodPipe(createCheckSubmissionSchema)) body: CreateCheckSubmissionInput,
+    @UploadedFiles() files: { front?: Express.Multer.File[]; back?: Express.Multer.File[] },
+  ): Promise<{ id: string }> {
+    const scope = await this.publicInvoices.resolveScope(token);
+    if (!scope) throw new NotFoundException('this payment link is no longer valid');
+
+    const front = files.front?.[0];
+    const back = files.back?.[0];
+    assertCheckImage(front, 'front');
+    assertCheckImage(back, 'back');
+
+    return this.publicInvoices.submitCheck(scope, body, {
+      front: { buffer: front.buffer, mimetype: front.mimetype, size: front.size },
+      back: { buffer: back.buffer, mimetype: back.mimetype, size: back.size },
+    });
   }
 
   /**

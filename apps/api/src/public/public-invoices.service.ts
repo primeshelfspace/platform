@@ -1,8 +1,11 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   evaluateTransition,
   formatQuantity,
+  storageKeys,
   STORAGE_PORT,
+  type CreateCheckSubmissionInput,
   type PublicScope,
   type StoragePort,
 } from '@sugrpay/shared';
@@ -11,6 +14,7 @@ import {
   toInvoicePdfSettings,
   type InvoicePdfSettings,
 } from '../brands/brand-settings.service.js';
+import type { CheckImageUpload } from '../common/check-upload.js';
 import { LOGO_URL_TTL_SECONDS } from '../common/logo-upload.js';
 import { StripeAccountService } from '../integrations/stripe-account.service.js';
 import { ZohoPullService } from '../integrations/zoho-pull.service.js';
@@ -256,6 +260,78 @@ export class PublicInvoicesService {
         stripePublishableKey,
         stripeAccountId,
       };
+    });
+  }
+
+  /**
+   * Upload Check's customer-facing half (FR-PAY) — ChecksService and the
+   * admin's check-review-drawer.tsx are the staff-facing half that reads the
+   * rows this creates; nothing on that side needs to change for a submission
+   * to show up there. Unlike a card/ACH/wallet attempt (PaymentsService.
+   * createIntent), there is no gateway here: this only stores evidence for a
+   * human to review, so the invoice's status is left untouched.
+   *
+   * The id is generated up front, before either image is stored, so
+   * storageKeys.checkImage (keyed by submission id) never has to be patched
+   * in after the fact the way a database-assigned id would require.
+   */
+  async submitCheck(
+    scope: PublicScope,
+    input: CreateCheckSubmissionInput,
+    images: { front: CheckImageUpload; back: CheckImageUpload },
+  ): Promise<{ id: string }> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const invoice = await tx.invoice.findFirst({ where: { id: scope.invoiceId } });
+      if (!invoice) throw new NotFoundException('invoice not found');
+
+      // FR-PAY-005, same enforcement PaymentsService.createIntent applies to
+      // every other method — the tile list a client renders is never trusted
+      // on its own.
+      const settings = await tx.brandSettings.findUnique({ where: { brandId: scope.brandId } });
+      if (!settings?.checkEnabled) {
+        throw new ConflictException('Upload Check is not enabled for this brand');
+      }
+      if (invoice.balanceMinor <= 0n) {
+        throw new ConflictException('this invoice has already been paid in full');
+      }
+
+      const id = randomUUID();
+      const frontImageKey = storageKeys.checkImage(scope.brandId, id, 'front');
+      const backImageKey = storageKeys.checkImage(scope.brandId, id, 'back');
+
+      await Promise.all([
+        this.storage.put({
+          key: frontImageKey,
+          body: images.front.buffer,
+          contentType: images.front.mimetype,
+          encrypt: true,
+        }),
+        this.storage.put({
+          key: backImageKey,
+          body: images.back.buffer,
+          contentType: images.back.mimetype,
+          encrypt: true,
+        }),
+      ]);
+
+      // The customer's claimed amount is the invoice's own current balance,
+      // not a client-supplied figure — same reasoning as createIntent's
+      // server-computed chargeMinor: nothing charged (or, here, claimed)
+      // against this invoice is ever taken on the client's say-so.
+      await tx.checkSubmission.create({
+        data: {
+          id,
+          invoiceId: invoice.id,
+          brandId: scope.brandId,
+          checkNumber: input.checkNumber,
+          amountMinor: invoice.balanceMinor,
+          frontImageKey,
+          backImageKey,
+          customerNote: input.customerNote ?? null,
+        },
+      });
+
+      return { id };
     });
   }
 }
