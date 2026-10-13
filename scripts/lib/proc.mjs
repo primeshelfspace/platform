@@ -31,9 +31,25 @@ export function fail(msg) {
   log(`${c.red}✗${c.reset} ${msg}`);
 }
 
+/**
+ * On Windows, pnpm/npx and friends are .cmd shims that spawnSync can only
+ * launch through the shell (without it they fail with ENOENT). Every caller
+ * here passes plain words as arguments, so the shell has nothing to
+ * misinterpret.
+ */
+const SHELL = process.platform === 'win32';
+
+/** Through the shell, a path with a space (C:\Program Files\nodejs\node.exe)
+ * would split into two words — quote anything containing whitespace. */
+const forShell = (word) => (SHELL && /\s/.test(word) ? `"${word}"` : word);
+
+function spawnArgs(cmd, args) {
+  return [forShell(cmd), args.map(forShell)];
+}
+
 /** Run a command, returning { code, stdout, stderr }. Never throws. */
 export function run(cmd, args = [], opts = {}) {
-  const r = spawnSync(cmd, args, { encoding: 'utf8', ...opts });
+  const r = spawnSync(...spawnArgs(cmd, args), { encoding: 'utf8', shell: SHELL, ...opts });
   return {
     code: r.status ?? 1,
     stdout: (r.stdout ?? '').trim(),
@@ -44,15 +60,16 @@ export function run(cmd, args = [], opts = {}) {
 
 /** Run a command, printing output, and exit the process on failure. */
 export function runOrExit(cmd, args = [], opts = {}) {
-  const r = spawnSync(cmd, args, { stdio: 'inherit', ...opts });
+  const r = spawnSync(...spawnArgs(cmd, args), { stdio: 'inherit', shell: SHELL, ...opts });
   if ((r.status ?? 1) !== 0) {
     fail(`${cmd} ${args.join(' ')} exited with ${r.status}`);
     process.exit(r.status ?? 1);
   }
 }
 
+/** Whether `cmd` is on the PATH (`which` on POSIX, `where` on Windows). */
 export function has(cmd) {
-  return run('which', [cmd]).code === 0;
+  return run(process.platform === 'win32' ? 'where' : 'which', [cmd]).code === 0;
 }
 
 /** True when something is listening on the port. */

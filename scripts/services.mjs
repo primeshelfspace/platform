@@ -30,12 +30,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LOCAL_DIR = path.join(ROOT, '.local');
 const PID_FILE = path.join(LOCAL_DIR, 'mail-sink.pid');
 
-const DB_NAME = 'sugrpay';
-const DB_OWNER = 'sugrpay';
-const DB_OWNER_PASSWORD = 'sugrpay';
-const DB_APP_ROLE = 'sugrpay_app';
-const DB_APP_PASSWORD = 'sugrpay_app';
-
 const action = process.argv[2] ?? 'up';
 
 const compose = dockerCompose();
@@ -84,7 +78,11 @@ async function ensurePostgres() {
   step('postgres');
   if (!(await portOpen(5432))) {
     if (!has('brew')) {
-      fail('postgres is not running on :5432 and Homebrew is unavailable to start it');
+      fail(
+        process.platform === 'win32'
+          ? 'postgres is not running on :5432 — start the PostgreSQL Windows service (or Docker)'
+          : 'postgres is not running on :5432 and Homebrew is unavailable to start it',
+      );
       process.exit(1);
     }
     const formula = detectBrewFormula(['postgresql@16', 'postgresql@15', 'postgresql@14']);
@@ -97,28 +95,8 @@ async function ensurePostgres() {
   }
   ok('postgres listening on :5432');
 
-  // Roles and database. Idempotent: safe to re-run.
-  psqlAdmin(`DO $$ BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${DB_OWNER}') THEN
-        CREATE ROLE ${DB_OWNER} LOGIN PASSWORD '${DB_OWNER_PASSWORD}' CREATEDB;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${DB_APP_ROLE}') THEN
-        CREATE ROLE ${DB_APP_ROLE} LOGIN PASSWORD '${DB_APP_PASSWORD}';
-      END IF;
-    END $$;`);
-
-  const exists = psqlAdmin(
-    `SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'`,
-    'postgres',
-    true,
-  );
-  if (!exists.stdout.includes('1')) {
-    psqlAdmin(`CREATE DATABASE ${DB_NAME} OWNER ${DB_OWNER}`);
-    ok(`database "${DB_NAME}" created`);
-  } else {
-    ok(`database "${DB_NAME}" present`);
-  }
-  ok(`roles "${DB_OWNER}" (owner) and "${DB_APP_ROLE}" (runtime, RLS-bound) present`);
+  // Roles and databases are created by `pnpm db:bootstrap` (one database per
+  // module), which setup:local runs next — not here.
 }
 
 function detectBrewFormula(candidates) {
@@ -126,23 +104,15 @@ function detectBrewFormula(candidates) {
   return candidates.find((f) => installed.includes(f)) ?? null;
 }
 
-function psqlAdmin(sql, db = 'postgres', tuplesOnly = false) {
-  const args = ['-d', db, '-v', 'ON_ERROR_STOP=1'];
-  if (tuplesOnly) args.push('-tA');
-  args.push('-c', sql);
-  const r = run('psql', args);
-  if (r.code !== 0 && !tuplesOnly) {
-    fail(`psql failed: ${r.stderr}`);
-    process.exit(1);
-  }
-  return r;
-}
-
 async function ensureRedis() {
   step('redis');
   if (!(await portOpen(6379))) {
     if (!has('brew') || !detectBrewFormula(['redis'])) {
-      fail('redis is not running on :6379 — run: brew install redis');
+      fail(
+        process.platform === 'win32'
+          ? 'redis is not running on :6379 — start Memurai/Redis (or Docker)'
+          : 'redis is not running on :6379 — run: brew install redis',
+      );
       process.exit(1);
     }
     run('brew', ['services', 'start', 'redis'], { stdio: 'inherit' });

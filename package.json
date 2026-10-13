@@ -1,8 +1,8 @@
 {
-  "name": "sugrpay-invoicing",
+  "name": "platform",
   "version": "0.1.0",
   "private": true,
-  "description": "Sugrpay — Multi-Brand Invoicing & Payment Platform",
+  "description": "One platform, many products — shared login, companies, brands and billing, with Sugrpay (invoicing) as the first product and HQ next.",
   "packageManager": "pnpm@11.10.0",
   "engines": {
     "node": ">=22.0.0",
@@ -20,11 +20,16 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
     "test": "pnpm -r test",
+    "services:status": "node scripts/services.mjs status",
+    "boot-check": "pnpm --filter @sugrpay/api build && node scripts/boot-check.mjs \"\" && node scripts/boot-check.mjs invoicing",
+    "db:bootstrap": "pnpm --filter @sugrpay/api db:bootstrap",
     "db:generate": "pnpm --filter @sugrpay/api db:generate",
     "db:migrate": "pnpm --filter @sugrpay/api db:migrate",
     "db:reset": "pnpm --filter @sugrpay/api db:reset",
     "db:seed": "pnpm --filter @sugrpay/api db:seed",
-    "db:studio": "pnpm --filter @sugrpay/api db:studio"
+    "db:migrate-legacy": "pnpm --filter @sugrpay/api db:migrate-legacy",
+    "db:studio:platform": "pnpm --filter @sugrpay/api db:studio:platform",
+    "db:studio:invoicing": "pnpm --filter @sugrpay/api db:studio:invoicing"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

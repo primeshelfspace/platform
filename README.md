@@ -1,26 +1,85 @@
-# Sugrpay — Multi-Brand Invoicing & Payment Platform
+# Platform
 
-Monorepo for the platform specified in `docs/`. This is the framework and its
-connections: tenancy, money, ports and adapters, queues, and the two web
-entry points. Feature screens land on top of it.
+One platform, several products. The platform owns what every product needs —
+login, companies, brands, users, roles, integrations, audit and (soon)
+subscriptions — and each product is built on top of it:
+
+- **Sugrpay** (invoicing) — send invoices and get paid. The first product.
+- **HQ** — products, stock, suppliers and stores. Placeholder only for now
+  (`apps/hq`, `apps/api/src/hq`).
+
+## Architecture in one page
+
+```
+apps/
+  api/                 ONE NestJS backend (modular monolith) + workers
+    src/platform/      shared core: auth, companies, brands, users, tenancy,
+                       integrations, audit, events          → platform database
+    src/invoicing/     Sugrpay: customers, invoices, payments, pay API,
+                       settings, Zoho sync, dashboard        → invoicing database
+    src/hq/            HQ (placeholder)                      → hq database (later)
+    src/adapters, infra, config, common, health              shared plumbing
+    prisma/platform/   platform schema + migrations
+    prisma/invoicing/  invoicing schema + migrations
+  invoicing/           Next.js admin app for Sugrpay (was apps/admin)
+  payment/             Next.js public payment pages
+  hq/                  HQ web app (placeholder)
+packages/
+  shared/              money, calculation, domain, schemas
+  ui/                  shared React components
+```
+
+**One database per module.** The platform and each product have their own
+PostgreSQL database, their own Prisma schema and client, and their own
+database roles. A module's runtime role cannot even connect to another
+module's database, and row-level security still isolates tenants inside each.
+
+**Modules talk in two ways only:**
+
+- **Ask** — call the other module's public API (`<module>/public-api.ts`).
+  In-process today; an HTTP client with the same interface if a module is
+  ever split out.
+- **Tell** — publish an event. The platform writes events to an outbox in
+  the same transaction as the change; a dispatcher delivers them (immediately
+  after commit, plus a retry poll), and subscribers are idempotent.
+
+Example: invoicing keeps a **read-only copy of brands** (to join, render and
+scope by), maintained only from `platform.brand.*` events. To change a brand,
+invoicing calls the platform (`BrandsService`); it never writes the copy.
+
+**Enforced, not remembered:**
+
+| Check                                   | Where                                   |
+| --------------------------------------- | --------------------------------------- |
+| No module imports another's internals   | `src/module-boundaries.test.ts`         |
+| Platform never imports a product        | `src/module-boundaries.test.ts`         |
+| A role can't reach another module's DB  | `*/rls.test.ts`                         |
+| The platform boots with no product      | `pnpm boot-check` (also in CI)          |
+
+`ENABLED_PRODUCTS` (default `invoicing`) picks which products a process runs.
 
 ## Quick start
 
 ```bash
 pnpm install
-pnpm setup:local     # services, migrations, seed, browser binaries
+pnpm setup:local     # .env, services, both databases, migrations, seed
 pnpm dev
 ```
 
-Ports come from `.env` (`ADMIN_PORT`, `PAYMENT_PORT`, `API_PORT`) — the URLs
-below assume the defaults, so substitute your own if you have changed them.
+`setup:local` creates the module databases and their roles through
+`DATABASE_ADMIN_URL` (a PostgreSQL superuser — `sugrpay/sugrpay` with
+docker-compose; on a native install, usually `postgres`). It works on macOS,
+Linux and Windows.
 
-| Surface     | URL                          | Notes                                   |
-| ----------- | ---------------------------- | --------------------------------------- |
-| Admin app   | http://localhost:3000        | Sign-in required — see below            |
-| Payment app | http://localhost:3001        | Anonymous, strict CSP                   |
-| API         | http://localhost:4000/health | Modular monolith                        |
-| Mail        | http://localhost:1080        | Every outbound message is captured here |
+Ports come from `.env` (`ADMIN_PORT`, `PAYMENT_PORT`, `API_PORT`) — the URLs
+below assume the defaults.
+
+| Surface       | URL                          | Notes                                   |
+| ------------- | ---------------------------- | --------------------------------------- |
+| Sugrpay admin | http://localhost:3000        | Sign-in required — see below            |
+| Payment app   | http://localhost:3001        | Anonymous, strict CSP                   |
+| API           | http://localhost:4000/health | Shows both module databases             |
+| Mail          | http://localhost:1080        | Every outbound message is captured here |
 
 **Signing in.** Every page of `apps/invoicing` is behind `/login` (FR-AUTH-001).
 `pnpm db:seed` creates one user per role, all sharing the same development
@@ -54,36 +113,26 @@ thirty (FR-AUTH-002); a successful sign-in resets the run. To clear a lock
 while developing, re-run `pnpm db:seed`.
 
 **If a port is already taken** by something else on your machine, change it in
-`.env` and restart:
-
-```bash
-ADMIN_PORT=3002
-API_PORT=4001
-NEXT_PUBLIC_API_URL=http://localhost:4001   # must match API_PORT
-```
-
-`.env` is the single source of truth for all three ports. Change
-`NEXT_PUBLIC_API_URL` alongside `API_PORT` — admin's server-side fetches read it
-at process start. Restart `pnpm dev` after editing `.env`; it is not picked up
-live.
+`.env` and restart (`NEXT_PUBLIC_API_URL` must match `API_PORT`). `.env` is not
+picked up live.
 
 **Docker is the documented path** for local services (`docker-compose.yml`). If
-Docker is absent, `pnpm services:up` falls back to Homebrew-managed PostgreSQL
-and Redis plus an in-repo SMTP sink, so a workstation without Docker still runs
-the full stack.
+Docker is absent, `pnpm services:up` uses locally installed PostgreSQL and
+Redis (Homebrew on macOS; on Windows, the PostgreSQL service and Memurai)
+plus an in-repo SMTP sink.
 
-## Layout
+## Moving an existing installation
 
-```
-apps/
-  api/        NestJS modular monolith + BullMQ workers, Prisma schema, seed
-  admin/      Next.js admin application
-  payment/    Next.js public payment application (separate deployment)
-packages/
-  shared/     money, calculation, domain, ports, schemas, design tokens
-scripts/      local environment, services, budgets
+A pre-split, single-database installation is copied into the module
+databases with:
+
+```bash
+LEGACY_DATABASE_URL=postgresql://<owner>@<host>/<old db> pnpm db:migrate-legacy
 ```
 
+It needs the module databases bootstrapped, migrated and empty; reads the old
+database only; keeps every id (sessions, payment links, Zoho ids carry over);
+and fails unless every table's row count matches.
 ## Testing the invoice → payment flow
 
 The one thing worth actually clicking through. Everything below runs against
@@ -169,7 +218,11 @@ to boot production with a fake bound.
 | `pnpm build`                                             | Build everything                   |
 | `pnpm test`                                              | Unit and integration tests         |
 | `pnpm typecheck`                                         | Type-check every workspace         |
-| `pnpm db:migrate` / `db:seed` / `db:reset`               | Schema and fixtures                |
+| `pnpm db:bootstrap`                                      | Create module databases and roles  |
+| `pnpm db:migrate` / `db:seed` / `db:reset`               | Schemas and fixtures, every module |
+| `pnpm db:studio:platform` / `db:studio:invoicing`        | Browse one module's database       |
+| `pnpm db:migrate-legacy`                                 | Copy a pre-split database in       |
+| `pnpm boot-check`                                        | Platform alone, then + invoicing   |
 | `pnpm services:up` / `services:down` / `services:status` | Local dependencies                 |
 
 ## Connecting Zoho (partially wired)

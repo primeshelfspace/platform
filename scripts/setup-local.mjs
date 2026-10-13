@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { c, log, step, ok, warn, run, runOrExit, portOpen } from './lib/proc.mjs';
+import { c, fail, log, step, ok, warn, run, runOrExit, portOpen } from './lib/proc.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const started = Date.now();
@@ -36,11 +36,25 @@ step('building @sugrpay/shared');
 runOrExit('pnpm', ['--filter', '@sugrpay/shared', 'build'], { cwd: ROOT });
 ok('shared package built');
 
-// 4. Database ---------------------------------------------------------------
+// 4. Databases (one per module) --------------------------------------------
 log();
-step('applying migrations');
+step('creating module databases and roles (DATABASE_ADMIN_URL)');
+const bootstrap = run('pnpm', ['--filter', '@sugrpay/api', 'db:bootstrap'], {
+  cwd: ROOT,
+  stdio: 'inherit',
+});
+if (bootstrap.code !== 0) {
+  fail(
+    'could not create the databases — DATABASE_ADMIN_URL in .env must be a PostgreSQL ' +
+      'superuser (docker-compose: sugrpay/sugrpay; a native install: usually postgres/<your password>)',
+  );
+  process.exit(1);
+}
+ok('platform and invoicing databases ready');
+
+step('applying migrations (platform, invoicing)');
 runOrExit('pnpm', ['--filter', '@sugrpay/api', 'db:migrate'], { cwd: ROOT });
-ok('schema up to date');
+ok('schemas up to date');
 
 step('seeding multi-brand dataset');
 runOrExit('pnpm', ['--filter', '@sugrpay/api', 'db:seed'], { cwd: ROOT });
