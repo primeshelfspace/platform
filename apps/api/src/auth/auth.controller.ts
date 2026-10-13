@@ -62,7 +62,7 @@ export class AuthController {
       path: '/',
     });
 
-    // Also returned in the body, because apps/admin is a separate origin: its
+    // Also returned in the body, because apps/invoicing is a separate origin: its
     // server sets its OWN httpOnly cookie and replays this token upstream. A
     // cookie issued on this origin cannot be read there, and SameSite=None
     // would need HTTPS to work at all in local development. The token is only

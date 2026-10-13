@@ -30,7 +30,7 @@ const isDev = process.env.NODE_ENV !== 'production';
 
 /**
  * Whether *this* request actually arrived over HTTPS — the same question
- * `isSecureRequest` answers in the admin app (apps/admin/src/lib/session.ts),
+ * `isSecureRequest` answers in the admin app (apps/invoicing/src/lib/session.ts),
  * and for the same reason: a production build served over plain HTTP (hitting
  * an EC2 box directly by IP, with no TLS reverse proxy in front of it yet) is
  * a deployment we actually run, so build mode is not a safe stand-in.

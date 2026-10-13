@@ -3,7 +3,7 @@
  *
  * Lives here rather than in the API for the same reason
  * email-receipt-html.ts does: it is pure, and the admin editor's live preview
- * (InvoicePreviewBody, apps/admin/.../invoice-pdf-editor.tsx) is written
+ * (InvoicePreviewBody, apps/invoicing/.../invoice-pdf-editor.tsx) is written
  * against the same three layouts — a layout added here is a layout that
  * preview must grow too. This file is rendered by a real headless browser
  * (see apps/api's InvoicePdfService), not an email client, so — unlike

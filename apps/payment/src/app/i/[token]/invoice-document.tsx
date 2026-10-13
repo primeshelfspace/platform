@@ -34,7 +34,7 @@ interface DocumentInvoice {
 
 /**
  * This is a deliberate, near-verbatim port of InvoicePreviewBody
- * (apps/admin/.../brand-settings/invoice-pdf-editor.tsx) — same markup,
+ * (apps/invoicing/.../brand-settings/invoice-pdf-editor.tsx) — same markup,
  * same class names, same three-layout branching, same physical size
  * (a 744px-wide card). The admin component previews a brand's settings
  * against a sample or the brand's latest invoice; this one renders a real

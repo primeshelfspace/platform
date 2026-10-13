@@ -178,7 +178,7 @@ jobs:
       - run: pnpm --filter @sugrpay/ui build
       - run: pnpm --filter @sugrpay/api db:generate
       - run: pnpm --filter @sugrpay/api build
-      - run: pnpm --filter @sugrpay/admin build
+      - run: pnpm --filter @sugrpay/invoicing build
       - run: pnpm --filter @sugrpay/payment build
 
       # NFR-PRF-013: the payment application's first load is budgeted at 400 KB

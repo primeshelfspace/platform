@@ -22,7 +22,7 @@ below assume the defaults, so substitute your own if you have changed them.
 | API         | http://localhost:4000/health | Modular monolith                        |
 | Mail        | http://localhost:1080        | Every outbound message is captured here |
 
-**Signing in.** Every page of `apps/admin` is behind `/login` (FR-AUTH-001).
+**Signing in.** Every page of `apps/invoicing` is behind `/login` (FR-AUTH-001).
 `pnpm db:seed` creates one user per role, all sharing the same development
 password, so signing in as each is how you exercise the permission matrix:
 

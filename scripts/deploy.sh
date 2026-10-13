@@ -13,7 +13,7 @@
 #
 # Instead every app builds beside the live one, and nothing live is touched
 # until ALL of them have built:
-#   - admin / payment build into the idle slot (.next-a or .next-b, recorded in
+#   - invoicing / payment build into the idle slot (.next-a or .next-b, recorded in
 #     apps/<app>/.next-slot, which ecosystem.config.cjs hands to next start).
 #   - the API compiles into dist-build and is swapped into dist at the end.
 # A failed build exits here with the old version still serving.
@@ -31,7 +31,7 @@ rm -rf apps/api/dist-build
 pnpm --filter @sugrpay/api exec tsc -p tsconfig.build.json --outDir dist-build
 
 declare -A slot
-for app in admin payment; do
+for app in invoicing payment; do
   dir="apps/$app"
   live=$(cat "$dir/.next-slot" 2>/dev/null || echo .next)
   if [ "$live" = .next-a ]; then slot[$app]=.next-b; else slot[$app]=.next-a; fi
@@ -46,13 +46,13 @@ done
 
 # next build rewrites these to point at the slot it built into; keep the
 # tracked copies clean so the next `git reset --hard` / `git pull` is quiet.
-git checkout -- apps/admin/next-env.d.ts apps/payment/next-env.d.ts
+git checkout -- apps/invoicing/next-env.d.ts apps/payment/next-env.d.ts
 
 # --- everything built: go live ---
 rm -rf apps/api/dist-prev
 if [ -d apps/api/dist ]; then mv apps/api/dist apps/api/dist-prev; fi
 mv apps/api/dist-build apps/api/dist
-for app in admin payment; do echo "${slot[$app]}" > "apps/$app/.next-slot"; done
+for app in invoicing payment; do echo "${slot[$app]}" > "apps/$app/.next-slot"; done
 
 # Processes started before the Fenwick -> Sugrpay rename still run
 # `--filter @fenwick/*`, and reload never refreshes a process's args — so
@@ -62,6 +62,6 @@ pm2 startOrReload ecosystem.config.cjs --update-env
 pm2 save
 
 # The pre-slot build is unused once every app is on a slot.
-rm -rf apps/admin/.next apps/payment/.next
+rm -rf apps/invoicing/.next apps/payment/.next
 
 pm2 status

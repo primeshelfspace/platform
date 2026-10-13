@@ -7,7 +7,7 @@
  * added here is a layout the preview must grow too, and having them in one
  * package makes that obvious rather than a thing to remember.
  *
- * This file and PreviewBody (apps/admin/.../email-receipt-editor.tsx) are two
+ * This file and PreviewBody (apps/invoicing/.../email-receipt-editor.tsx) are two
  * renderers of one design, so every visible element here has a counterpart
  * there: the sender line under the brand name, the colour band above HERO and
  * CLASSIC, the emphasised variables, the full-width button and the bordered

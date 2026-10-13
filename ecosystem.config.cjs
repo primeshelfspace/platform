@@ -38,13 +38,13 @@ module.exports = {
       max_restarts: 20,
     },
     {
-      // admin/payment's own "start" scripts (with-env.mjs -> next start) are
+      // invoicing/payment's own "start" scripts (with-env.mjs -> next start) are
       // what actually load the repo-root .env; pm2 just invokes them as-is.
-      name: 'admin',
+      name: 'invoicing',
       cwd: '.',
       script: '/usr/bin/pnpm',
-      args: '--filter @sugrpay/admin start',
-      env: { NEXT_DIST_DIR: nextDistDir('admin') },
+      args: '--filter @sugrpay/invoicing start',
+      env: { NEXT_DIST_DIR: nextDistDir('invoicing') },
     },
     {
       name: 'payment',

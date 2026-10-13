@@ -32,7 +32,7 @@ loadRootEnv();
 /** The ports we are about to bind, with the same defaults the apps use. */
 const PORTS = [
   { name: 'api', port: Number(process.env.API_PORT ?? 4000) },
-  { name: 'admin', port: Number(process.env.ADMIN_PORT ?? 3000) },
+  { name: 'invoicing', port: Number(process.env.ADMIN_PORT ?? 3000) },
   { name: 'payment', port: Number(process.env.PAYMENT_PORT ?? 3001) },
 ];
 
@@ -206,17 +206,26 @@ await reclaim();
 
 // Once, before anything imports it, so the apps never start against a stale
 // dist. The watch below keeps it fresh from here on.
-step('building @sugrpay/shared');
-const built = await runToCompletion(['--filter', '@sugrpay/shared', 'build']);
+step('building @sugrpay/shared and @sugrpay/ui');
+const built = await runToCompletion(['--filter', '@sugrpay/shared', '--filter', '@sugrpay/ui', 'build']);
 if (built !== 0) {
-  fail('@sugrpay/shared failed to build — fix that before the apps start');
+  fail('@sugrpay/shared or @sugrpay/ui failed to build — fix that before the apps start');
   process.exit(built);
 }
-ok('@sugrpay/shared built');
+ok('@sugrpay/shared and @sugrpay/ui built');
 
-step('starting apps + shared watch');
+step('starting apps + shared/ui watch');
 log();
-const dev = pnpm(['--parallel', '--filter', './apps/*', '--filter', '@sugrpay/shared', 'dev']);
+const dev = pnpm([
+  '--parallel',
+  '--filter',
+  './apps/*',
+  '--filter',
+  '@sugrpay/shared',
+  '--filter',
+  '@sugrpay/ui',
+  'dev',
+]);
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {

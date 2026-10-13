@@ -40,7 +40,7 @@ function randomNonce(): string {
 /**
  * The live payment form, laid out as the admin's Payment Page editor previews
  * it (PreviewBody/MethodGrid/CardDetailsForm/PayButton in
- * apps/admin/.../brand-settings/payment-page-editor.tsx): "Choose how to pay"
+ * apps/invoicing/.../brand-settings/payment-page-editor.tsx): "Choose how to pay"
  * above a two-column method grid, the chosen method's detail block below it,
  * and one full-width accent-coloured "Pay {amount}" button.
  *

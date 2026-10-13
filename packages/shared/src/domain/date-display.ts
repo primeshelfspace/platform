@@ -3,7 +3,7 @@
  *
  * Was reimplemented independently three times with the exact same
  * Intl.DateTimeFormat options object: the invoices list, the brand settings
- * preview (both apps/admin), and the email-receipt preview (apps/api). Money
+ * preview (both apps/invoicing), and the email-receipt preview (apps/api). Money
  * and quantity each have exactly one shared formatter already
  * (formatMinorForDisplay, formatQuantity) — this gives dates the same thing.
  */

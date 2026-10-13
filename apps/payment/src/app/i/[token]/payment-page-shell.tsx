@@ -11,7 +11,7 @@ import { ExternalLinkIcon } from './icons';
  * The hosted payment page's brand chrome.
  *
  * This is the customer-facing counterpart of PreviewBody in the admin's
- * Payment Page editor (apps/admin/.../brand-settings/payment-page-editor.tsx),
+ * Payment Page editor (apps/invoicing/.../brand-settings/payment-page-editor.tsx),
  * and is written against it element for element: the same three layouts off
  * `paymentPageLayout`, the same banner/centered/split arrangements, the same
  * invoice summary block (number • customer, the amount at 3xl, the due date

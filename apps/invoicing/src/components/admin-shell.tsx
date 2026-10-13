@@ -36,7 +36,7 @@ interface NavItem {
 }
 
 // Notifications removed from here deliberately: the feed it pointed to was
-// never built (apps/admin/src/app/(app)/notifications/page.tsx says so
+// never built (apps/invoicing/src/app/(app)/notifications/page.tsx says so
 // explicitly), so the bell just led to an empty placeholder. Re-add once
 // there is an actual feed behind it.
 const TOP_NAV: readonly NavItem[] = [

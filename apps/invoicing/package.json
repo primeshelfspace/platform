@@ -1,5 +1,5 @@
 {
-  "name": "@sugrpay/admin",
+  "name": "@sugrpay/invoicing",
   "version": "0.1.0",
   "private": true,
   "description": "Authenticated admin application for merchant staff.",

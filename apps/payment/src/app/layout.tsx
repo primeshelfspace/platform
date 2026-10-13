@@ -25,7 +25,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en">
-      {/* See apps/admin/src/app/layout.tsx for why this is on <body>: browser
+      {/* See apps/invoicing/src/app/layout.tsx for why this is on <body>: browser
        * extensions inject attributes here before React hydrates, and the
        * server HTML cannot contain them. Scoped to this element's own
        * attributes, so a genuine mismatch inside the payment flow is still
