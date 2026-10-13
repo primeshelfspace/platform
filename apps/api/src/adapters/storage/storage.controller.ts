@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, NotFoundException, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ENV, type Env } from '../../config/env.js';
-import { Public } from '../../tenancy/authorisation.js';
+import { Public } from '../../platform/tenancy/authorisation.js';
 import { LocalDiskAdapter } from './local-disk.adapter.js';
 
 /**

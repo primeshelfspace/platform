@@ -13,7 +13,7 @@ import {
   type RefundResult,
 } from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
-import { StripeAccountService } from '../../integrations/stripe-account.service.js';
+import { StripeAccountService } from '../../platform/integrations/stripe-account.service.js';
 
 /**
  * StripeGatewayAdapter — real PaymentGatewayPort implementation (TDD-001 §10.2).

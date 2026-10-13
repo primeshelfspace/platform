@@ -8,8 +8,8 @@ import { PrismaService } from './infra/prisma/prisma.service.js';
 import { QueueService } from './infra/queue/queue.service.js';
 import { RedisService } from './infra/redis/redis.service.js';
 import { QUEUES, QUEUE_NAMES, type QueueName } from './infra/queue/queues.js';
-import { ZohoPullService } from './integrations/zoho-pull.service.js';
-import { ZohoSyncService } from './integrations/zoho-sync.service.js';
+import { ZohoPullService } from './invoicing/zoho-sync/zoho-pull.service.js';
+import { ZohoSyncService } from './invoicing/zoho-sync/zoho-sync.service.js';
 
 /**
  * How long a SyncJob may sit in RUNNING before it is treated as abandoned

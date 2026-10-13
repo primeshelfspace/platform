@@ -6,7 +6,7 @@ import { ENV, type Env } from '../config/env.js';
 import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { RedisService } from '../infra/redis/redis.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
-import { Public } from '../tenancy/authorisation.js';
+import { Public } from '../platform/tenancy/authorisation.js';
 
 type CheckState = 'up' | 'down' | 'skipped';
 

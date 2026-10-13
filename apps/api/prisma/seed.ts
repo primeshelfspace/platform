@@ -22,7 +22,7 @@ import {
   type PaymentMethod,
   type Role,
 } from '@sugrpay/shared';
-import { hashPassword } from '../src/auth/password.js';
+import { hashPassword } from '../src/platform/auth/password.js';
 
 const prisma = new PrismaClient({
   datasources: {

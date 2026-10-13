@@ -12,8 +12,8 @@
 # Authorisation, tenancy and the permission matrix.
 /packages/shared/src/domain/roles.ts    @sugrpay/engineering-leads @sugrpay/security
 /packages/shared/src/tenancy.ts         @sugrpay/engineering-leads @sugrpay/security
-/apps/api/src/tenancy/                  @sugrpay/engineering-leads @sugrpay/security
-/apps/api/src/auth/                     @sugrpay/engineering-leads @sugrpay/security
+/apps/api/src/platform/tenancy/         @sugrpay/engineering-leads @sugrpay/security
+/apps/api/src/platform/auth/            @sugrpay/engineering-leads @sugrpay/security
 
 # Row-level security policies and grants.
 /apps/api/prisma/migrations/            @sugrpay/engineering-leads @sugrpay/security
