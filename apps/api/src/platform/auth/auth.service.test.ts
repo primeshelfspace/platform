@@ -9,7 +9,7 @@
 import { UnauthorizedException } from '@nestjs/common';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RequestScope } from '@sugrpay/shared';
-import type { PrismaService } from '../../infra/prisma/prisma.service.js';
+import type { PlatformPrismaService } from '../database/platform-prisma.service.js';
 import type { RedisService } from '../../infra/redis/redis.service.js';
 import { AuthService } from './auth.service.js';
 import type { AuthMailService } from './auth-mail.service.js';
@@ -44,7 +44,7 @@ interface AuditRow {
   metadata: unknown;
 }
 
-/** Just enough of PrismaService for the unscoped paths login actually touches. */
+/** Just enough of PlatformPrismaService for the unscoped paths login actually touches. */
 function fakePrisma(users: UserRow[], audit: AuditRow[]) {
   /** Mirrors the subset of Prisma's filter semantics these queries rely on —
    * notably that occurredAt may be bounded by gte (inclusive) or gt
@@ -96,7 +96,7 @@ function fakePrisma(users: UserRow[], audit: AuditRow[]) {
   return {
     withoutScope: async <T>(_reason: string, work: (c: unknown) => Promise<T>) => work(client),
     withScope: async <T>(_scope: unknown, work: (c: unknown) => Promise<T>) => work(client),
-  } as unknown as PrismaService;
+  } as unknown as PlatformPrismaService;
 }
 
 function fakeSessions(issued: string[]) {

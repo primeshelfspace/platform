@@ -28,10 +28,24 @@ export {
 // Background work that needs a tenant scope without a signed-in user
 export { SystemScopeResolver } from './tenancy/system-scope.js';
 
+// Audit log (append-only, shared by every product)
+export { AuditLogService, type AuditEntry } from './audit/audit-log.service.js';
+
+// Brands (the platform owns them; products keep a copy fed by the events below)
+export { BrandsService } from './brands/brands.service.js';
+
+// Events the platform publishes, and their payloads
+export {
+  PLATFORM_EVENTS,
+  type BrandEventPayload,
+  type BrandSnapshot,
+  type PlatformEventTopic,
+} from './events/contracts.js';
+
 // Integration connections (records and credentials are platform-owned)
 export {
   IntegrationConnectionService,
-  type ZohoActivityPage,
+  type LiveZohoConnection,
   type ZohoConnectionConfig,
   type ZohoConnectionStatus,
 } from './integrations/integration-connection.service.js';

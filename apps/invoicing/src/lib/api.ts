@@ -377,8 +377,25 @@ export interface BrandFormInput {
   themeColor: string;
 }
 
-export function createBrand(input: BrandFormInput & { invoicePrefix: string }): Promise<Brand> {
-  return apiFetch<Brand>('/brands', { method: 'POST', body: JSON.stringify(input) });
+/**
+ * Two calls, because two modules own the result: the brand is the platform's
+ * (POST /brands), its invoice-number prefix is invoicing's (PUT .../settings/
+ * invoice-numbering). The platform announces the new brand to invoicing
+ * before its call returns, so the second call always finds the brand.
+ */
+export async function createBrand(
+  input: BrandFormInput & { invoicePrefix: string },
+): Promise<Brand> {
+  const { invoicePrefix, ...brandFields } = input;
+  const brand = await apiFetch<Brand>('/brands', {
+    method: 'POST',
+    body: JSON.stringify(brandFields),
+  });
+  await apiFetch<{ invoicePrefix: string }>(`/brands/${brand.id}/settings/invoice-numbering`, {
+    method: 'PUT',
+    body: JSON.stringify({ invoicePrefix }),
+  });
+  return brand;
 }
 
 /** Brand Settings' "Brand Details" tab. Full replace, same shape as

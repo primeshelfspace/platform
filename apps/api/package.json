@@ -2,7 +2,7 @@
   "name": "@sugrpay/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Modular monolith API and workers for the Sugrpay invoicing platform.",
+  "description": "Modular monolith API and workers for the platform and its products (one database per module).",
   "main": "dist/main.js",
   "scripts": {
     "dev": "node ../../scripts/with-env.mjs nest start --watch",
@@ -13,15 +13,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint src --max-warnings 0",
-    "db:generate": "prisma generate",
-    "db:migrate": "node ../../scripts/with-env.mjs prisma migrate deploy && prisma generate",
-    "db:migrate:dev": "node ../../scripts/with-env.mjs prisma migrate dev",
-    "db:reset": "node ../../scripts/guard-destructive-db.mjs && node ../../scripts/with-env.mjs prisma migrate reset --force",
+    "db:generate": "node ../../scripts/with-env.mjs prisma generate --schema prisma/platform/schema.prisma && node ../../scripts/with-env.mjs prisma generate --schema prisma/invoicing/schema.prisma",
+    "db:bootstrap": "node ../../scripts/with-env.mjs tsx prisma/bootstrap.ts",
+    "db:migrate": "node ../../scripts/with-env.mjs prisma migrate deploy --schema prisma/platform/schema.prisma && node ../../scripts/with-env.mjs prisma migrate deploy --schema prisma/invoicing/schema.prisma && pnpm db:generate",
+    "db:reset": "node ../../scripts/guard-destructive-db.mjs && node ../../scripts/with-env.mjs prisma migrate reset --force --skip-seed --schema prisma/platform/schema.prisma && node ../../scripts/with-env.mjs prisma migrate reset --force --skip-seed --schema prisma/invoicing/schema.prisma && pnpm db:seed",
     "db:seed": "node ../../scripts/with-env.mjs tsx prisma/seed.ts",
-    "db:studio": "node ../../scripts/with-env.mjs prisma studio"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "db:migrate-legacy": "node ../../scripts/with-env.mjs tsx prisma/migrate-legacy.ts",
+    "db:studio:platform": "node ../../scripts/with-env.mjs prisma studio --schema prisma/platform/schema.prisma",
+    "db:studio:invoicing": "node ../../scripts/with-env.mjs prisma studio --schema prisma/invoicing/schema.prisma --port 5556"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.717.0",

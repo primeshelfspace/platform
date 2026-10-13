@@ -26,14 +26,17 @@ import { zodPipe } from '../../common/zod-validation.pipe.js';
 import { ENV, type Env } from '../../config/env.js';
 import { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
 import { QueueService } from '../../infra/queue/queue.service.js';
-import { CurrentScope, Public, RequirePermission } from '../../platform/public-api.js';
-import { SystemScopeResolver } from '../../platform/public-api.js';
 import {
+  CurrentScope,
   IntegrationConnectionService,
-  type ZohoActivityPage,
+  Public,
+  RequirePermission,
+  signOAuthState,
+  SystemScopeResolver,
+  verifyOAuthState,
   type ZohoConnectionStatus,
 } from '../../platform/public-api.js';
-import { signOAuthState, verifyOAuthState } from '../../platform/public-api.js';
+import { ZohoActivityService, type ZohoActivityPage } from './zoho-activity.service.js';
 import { ZohoSyncService, type BackfillCounts } from './zoho-sync.service.js';
 import { zohoWebhookToken } from './zoho-webhook-token.js';
 import { ZohoWebhookService, type ZohoWebhookDelivery } from './zoho-webhook.service.js';
@@ -66,6 +69,7 @@ export class ZohoConnectController {
     private readonly systemScope: SystemScopeResolver,
     private readonly sync: ZohoSyncService,
     private readonly queue: QueueService,
+    private readonly activityLog: ZohoActivityService,
     private readonly webhooks?: ZohoWebhookService,
   ) {}
 
@@ -117,7 +121,7 @@ export class ZohoConnectController {
     @Query(zodPipe(paginationSchema)) pagination: Pagination,
     @CurrentScope() scope: Scope,
   ): Promise<ZohoActivityPage> {
-    return this.connections.getRecentActivity(scope, brandId, pagination);
+    return this.activityLog.getRecentActivity(scope, brandId, pagination);
   }
 
   /**

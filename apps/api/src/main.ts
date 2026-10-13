@@ -25,7 +25,7 @@ async function bootstrap(): Promise<void> {
   const env = getEnv();
   const logger = new Logger('bootstrap');
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.register(env), {
     // Gateway webhook signatures are computed over the exact bytes sent, not
     // over a re-serialised JSON body — rawBody exposes those bytes on
     // request.rawBody while the parsed body remains available as usual.

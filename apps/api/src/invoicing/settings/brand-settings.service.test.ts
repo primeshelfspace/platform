@@ -1,40 +1,45 @@
 /**
  * BrandSettingsService against a real database (TDD-001 §12.1).
  *
- * The point of these tests is the *write*: a Branding save spans two tables
- * (Brand.themeColor and the brand_settings row) and must land as one
- * transaction, leaving no column it was not asked to touch. That is not
- * something a mocked Prisma can demonstrate — RLS, the transaction boundary
- * and the append-only audit row are all database behaviour. Needs a
- * migrated, seeded database:
+ * The point of these tests is the *write*: a Branding save spans invoicing's
+ * brand_settings row and the brand's themeColor — a platform brand field,
+ * saved through the platform and copied back into invoicing by the brand
+ * event — and must leave no column it was not asked to touch. That is not
+ * something a mocked Prisma can demonstrate — RLS, the event round trip and
+ * the append-only audit row are all database behaviour. Needs migrated,
+ * seeded databases:
  *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../database/client.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../../adapters/mail/fake-mail.port.js';
 import { LocalDiskAdapter } from '../../adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../../config/load-env.js';
 import { getEnv } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
+import { createPlatformHarness } from '../testing/platform-harness.test-support.js';
 import { BrandSettingsService } from './brand-settings.service.js';
 
 loadEnv();
-const hasDb = Boolean(process.env['DATABASE_URL']);
+const hasDb = Boolean(process.env['INVOICING_DATABASE_URL']);
 const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
 
 describeWithDb('BrandSettingsService', () => {
-  const prisma = new PrismaService(env!);
+  const prisma = new InvoicingPrismaService(env!);
+  const platform = createPlatformHarness(env!, prisma);
   const settings = new BrandSettingsService(
     prisma,
     createFakeMailPort(),
     env!,
     new LocalDiskAdapter(env!),
+    platform.brands,
+    platform.audit,
   );
   const owner = new PrismaClient({
-    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+    datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },
   });
 
   let brandId = '';
@@ -42,21 +47,18 @@ describeWithDb('BrandSettingsService', () => {
 
   // A brand of its own rather than a seeded one: every test here mutates
   // branding columns, and a shared fixture would make the assertions depend
-  // on execution order.
+  // on execution order. Created through the platform, so invoicing's copy and
+  // settings arrive the way they do in production.
   beforeAll(async () => {
     const seed = await owner.brand.findFirst({ select: { merchantId: true } });
     if (!seed) throw new Error('seed data missing — run pnpm db:seed');
 
-    const brand = await owner.brand.create({
-      data: {
-        merchantId: seed.merchantId,
-        legalName: 'Branding Fixture Ltd.',
-        displayName: `Branding Fixture ${randomUUID().slice(0, 8)}`,
-        themeColor: '#2D6A6A',
-        settings: { create: { invoicePrefix: 'BFX' } },
-      },
-    });
+    const brand = await platform.createBrand(
+      seed.merchantId,
+      `Branding Fixture ${randomUUID().slice(0, 8)}`,
+    );
     brandId = brand.id;
+    await owner.brandSettings.update({ where: { brandId }, data: { invoicePrefix: 'BFX' } });
     scope = {
       merchantId: seed.merchantId,
       userId: 'test-harness',
@@ -68,14 +70,17 @@ describeWithDb('BrandSettingsService', () => {
   });
 
   afterAll(async () => {
-    if (brandId) await owner.brand.delete({ where: { id: brandId } });
-    await Promise.all([prisma.$disconnect(), owner.$disconnect()]);
+    if (brandId) {
+      await platform.owner.auditLog.deleteMany({ where: { brandId } });
+      await platform.deleteBrand(brandId);
+    }
+    await Promise.all([prisma.$disconnect(), owner.$disconnect(), platform.close()]);
   });
 
   // Each test starts from the same known branding state, so one test's
   // writes cannot be mistaken for another's.
   beforeEach(async () => {
-    await owner.brand.update({ where: { id: brandId }, data: { themeColor: '#2D6A6A' } });
+    await platform.brands.setThemeColor(scope, brandId, '#2D6A6A');
     await owner.brandSettings.update({
       where: { brandId },
       data: {
@@ -91,7 +96,7 @@ describeWithDb('BrandSettingsService', () => {
         invoicePdfLayout: 'CLASSIC',
       },
     });
-    await owner.auditLog.deleteMany({ where: { brandId } });
+    await platform.owner.auditLog.deleteMany({ where: { brandId } });
   });
 
   const pdfInput = {
@@ -108,7 +113,7 @@ describeWithDb('BrandSettingsService', () => {
     notes: 'Thanks.',
   };
 
-  it('keeps a brand colour and the section it was saved from in one transaction', async () => {
+  it('saves a brand colour (through the platform) together with the section it was saved from', async () => {
     await settings.updateEmailReceiptSettings(scope, brandId, {
       themeColor: '#123456',
       accentColor: '#CC0066',
@@ -163,7 +168,7 @@ describeWithDb('BrandSettingsService', () => {
       paymentFailedBody: 'Seed payment failed body.',
     });
 
-    const entry = await owner.auditLog.findFirstOrThrow({ where: { brandId } });
+    const entry = await platform.owner.auditLog.findFirstOrThrow({ where: { brandId } });
     expect(entry.action).toBe('BRAND_EMAIL_RECEIPT_UPDATED');
     expect(entry.objectType).toBe('BRAND_SETTINGS');
     expect(entry.actorId).toBe('test-harness');
@@ -191,7 +196,7 @@ describeWithDb('BrandSettingsService', () => {
 
     const row = await owner.brandSettings.findUniqueOrThrow({ where: { brandId } });
     expect(row.cardEnabled).toBe(true);
-    const entries = await owner.auditLog.count({ where: { brandId } });
+    const entries = await platform.owner.auditLog.count({ where: { brandId } });
     expect(entries).toBe(0);
   });
 

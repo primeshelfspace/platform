@@ -19,6 +19,7 @@ import type { IntegrationConnectionService } from '../../platform/public-api.js'
 import type { SystemScopeResolver } from '../../platform/public-api.js';
 import type { ZohoSyncService } from './zoho-sync.service.js';
 import type { QueueService } from '../../infra/queue/queue.service.js';
+import type { ZohoActivityService } from './zoho-activity.service.js';
 import { ZohoConnectController } from './zoho-connect.controller.js';
 import { signOAuthState } from '../../platform/public-api.js';
 
@@ -64,7 +65,15 @@ function makeController(overrides: { queueEnqueue?: ReturnType<typeof vi.fn> } =
     enqueue: overrides.queueEnqueue ?? vi.fn().mockResolvedValue(undefined),
   } as unknown as QueueService;
 
-  const controller = new ZohoConnectController(env, zoho, connections, systemScope, sync, queue);
+  const controller = new ZohoConnectController(
+    env,
+    zoho,
+    connections,
+    systemScope,
+    sync,
+    queue,
+    {} as ZohoActivityService,
+  );
   return { controller, zoho, connections, systemScope, sync, queue };
 }
 

@@ -12,24 +12,24 @@
  * would make one test's assertions depend on another's having run first.
  */
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../../adapters/mail/fake-mail.port.js';
 import { loadEnv } from '../../config/load-env.js';
 import { getEnv } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 import { PasswordResetService } from '../auth/password-reset.service.js';
 import { AuthMailService } from '../auth/auth-mail.service.js';
 import { UsersService } from './users.service.js';
 
 loadEnv();
-const hasDb = Boolean(process.env['DATABASE_URL']);
+const hasDb = Boolean(process.env['PLATFORM_DATABASE_URL']);
 const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
 
 describeWithDb('UsersService', () => {
-  const prisma = new PrismaService(env!);
+  const prisma = new PlatformPrismaService(env!);
   const mail = createFakeMailPort();
   const users = new UsersService(
     prisma,
@@ -37,7 +37,7 @@ describeWithDb('UsersService', () => {
     new AuthMailService(mail, env!),
   );
   const owner = new PrismaClient({
-    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+    datasources: { db: { url: env!.PLATFORM_DIRECT_DATABASE_URL ?? env!.PLATFORM_DATABASE_URL } },
   });
 
   let merchantId = '';

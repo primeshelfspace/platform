@@ -6,13 +6,14 @@
  */
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { RequestScope } from '@sugrpay/shared';
 import { loadEnv } from '../../config/load-env.js';
 import { getEnv } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import type { QueueService } from '../../infra/queue/queue.service.js';
+import type { IntegrationConnectionService } from '../../platform/public-api.js';
 import { bucketFor, DashboardService } from './dashboard.service.js';
 
 /** Records what retrySyncJob actually asked the queue to do, rather than
@@ -34,7 +35,7 @@ function createRecordingQueueService(): QueueService & {
 }
 
 loadEnv();
-const hasDb = Boolean(process.env['DATABASE_URL']);
+const hasDb = Boolean(process.env['INVOICING_DATABASE_URL']);
 const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
 
@@ -67,11 +68,13 @@ describe('bucketFor', () => {
 });
 
 describeWithDb('DashboardService', () => {
-  const prisma = new PrismaService(env!);
+  const prisma = new InvoicingPrismaService(env!);
   const queue = createRecordingQueueService();
-  const dashboard = new DashboardService(prisma, queue);
+  // The integrations banner is the platform's (getIntegrationsStatus) and is
+  // not exercised here.
+  const dashboard = new DashboardService(prisma, queue, {} as IntegrationConnectionService);
   const owner = new PrismaClient({
-    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+    datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },
   });
 
   let brandId = '';

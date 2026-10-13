@@ -14,28 +14,29 @@
  * Needs a migrated database and Redis: pnpm setup:local
  */
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../database/client.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccountingConnection, RequestScope } from '@sugrpay/shared';
 import { loadEnv } from '../../config/load-env.js';
 import { getEnv } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { createFakeQueueService } from '../../infra/queue/fake-queue.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import type { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
 import type { IntegrationConnectionService } from '../../platform/public-api.js';
 import type { SystemScopeResolver } from '../../platform/public-api.js';
+import { createInvoicingBrand, deleteInvoicingBrand } from '../testing/brand-fixture.test-support.js';
 import { ZohoSyncService } from './zoho-sync.service.js';
 
 loadEnv();
-const hasDb = Boolean(process.env['DATABASE_URL']);
+const hasDb = Boolean(process.env['INVOICING_DATABASE_URL']);
 const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
 
 describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
-  const prisma = new PrismaService(env!);
+  const prisma = new InvoicingPrismaService(env!);
   const owner = new PrismaClient({
-    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+    datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },
   });
   const redis = new RedisService(env!);
 
@@ -67,13 +68,12 @@ describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
   }
 
   beforeEach(async () => {
-    const merchant = await owner.merchant.create({
-      data: { name: `zoho-sync-push-${randomUUID()}`, contactEmail: 'ops@example.com' },
+    // The platform is mocked above, so a brand on invoicing's side is all
+    // this needs; the merchant id is just a tenant id here.
+    const brand = await createInvoicingBrand(owner, {
+      displayName: `Push Test Brand ${randomUUID().slice(0, 8)}`,
     });
-    merchantId = merchant.id;
-    const brand = await owner.brand.create({
-      data: { merchantId, legalName: 'Push Test Brand', displayName: 'Push Test Brand' },
-    });
+    merchantId = brand.merchantId;
     brandId = brand.id;
     connection = {
       brandId,
@@ -93,7 +93,7 @@ describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
   });
 
   afterEach(async () => {
-    await owner.merchant.delete({ where: { id: merchantId } }).catch(() => undefined);
+    await deleteInvoicingBrand(owner, brandId);
   });
 
   afterAll(async () => {

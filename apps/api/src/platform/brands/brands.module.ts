@@ -7,5 +7,8 @@ import { BrandsService } from './brands.service.js';
   imports: [StorageModule],
   controllers: [BrandsController],
   providers: [BrandsService],
+  // Products change brand fields they edit on their own screens (the
+  // invoicing Branding tab's colour) through BrandsService, never directly.
+  exports: [BrandsService],
 })
 export class BrandsModule {}

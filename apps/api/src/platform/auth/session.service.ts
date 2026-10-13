@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import type { RequestScope, Role } from '@sugrpay/shared';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 
 /**
  * Session issue and resolution (TDD-001 §7.1).
@@ -33,7 +33,7 @@ interface ResolvedSessionRow {
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PlatformPrismaService) {}
 
   static hash(token: string): string {
     return createHash('sha256').update(token).digest('hex');

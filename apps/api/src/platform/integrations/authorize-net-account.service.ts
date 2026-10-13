@@ -1,9 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../database/client.js';
 import { IntegrationError, type AuthorizeNetConnectInput, type Scope } from '@sugrpay/shared';
 import { encryptCredential } from '../../common/credential-encryption.js';
 import { ENV, type Env } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 
 export interface AuthorizeNetStatus {
   readonly connected: boolean;
@@ -53,7 +53,7 @@ export class AuthorizeNetAccountService {
   private readonly logger = new Logger(AuthorizeNetAccountService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 

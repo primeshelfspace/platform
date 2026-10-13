@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../database/client.js';
 import type { Scope } from '@sugrpay/shared';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import { ZohoPullService } from './zoho-pull.service.js';
-import type { ZohoConnectionConfig } from '../../platform/public-api.js';
+import { IntegrationConnectionService } from '../../platform/public-api.js';
 
 export type ZohoWebhookObjectType = 'CUSTOMER' | 'INVOICE';
 /** 'unspecified' is a webhook URL with no `event` parameter — the
@@ -73,9 +73,10 @@ export class ZohoWebhookService {
   private readonly logger = new Logger(ZohoWebhookService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     private readonly redis: RedisService,
     private readonly zohoPull: ZohoPullService,
+    private readonly connections: IntegrationConnectionService,
   ) {}
 
   async handleContactEvent(
@@ -290,25 +291,10 @@ export class ZohoWebhookService {
     );
   }
 
-  /** Every brand whose IntegrationConnection.config.organizationId matches —
-   * unscoped because which brand(s) this belongs to is exactly what routing
-   * needs to discover. Organization ids are not indexed (config is opaque
-   * Json, and the brand count sharing one Zoho org is always small), so this
-   * is a full scan of connected Zoho connections, not a hot path. */
-  private async candidateBrands(organizationId: string): Promise<CandidateBrand[]> {
-    const rows = await this.prisma.withoutScope(
-      `zoho webhook: resolving which brand(s) organization ${organizationId} belongs to`,
-      (client) =>
-        client.integrationConnection.findMany({
-          where: { provider: 'ZOHO_BOOKS', status: 'CONNECTED' },
-          select: { brandId: true, config: true, brand: { select: { merchantId: true } } },
-        }),
-    );
-    return rows
-      .filter(
-        (row) => (row.config as ZohoConnectionConfig | null)?.organizationId === organizationId,
-      )
-      .map((row) => ({ brandId: row.brandId, merchantId: row.brand.merchantId }));
+  /** Every brand whose Zoho connection is for this organization. Connections
+   * are the platform's, so this asks its public API. */
+  private candidateBrands(organizationId: string): Promise<CandidateBrand[]> {
+    return this.connections.findBrandsForZohoOrganization(organizationId);
   }
 
   private async recordForManualReview(

@@ -7,7 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type Invoice, type LineItem } from '@prisma/client';
+import { Prisma, type Invoice, type LineItem } from '../database/client.js';
 import {
   formatQuantity,
   IntegrationError,
@@ -41,7 +41,7 @@ import {
 } from '../settings/brand-settings.service.js';
 import { brandLogoAttachment, LOGO_CID } from '../../common/logo-upload.js';
 import { ENV, type Env } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { QueueService } from '../../infra/queue/queue.service.js';
 import { ZohoPullService } from '../zoho-sync/zoho-pull.service.js';
 import { InvoicePdfService } from '../pay-api/invoice-pdf.service.js';
@@ -112,7 +112,7 @@ export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     private readonly queue: QueueService,
     @Inject(MAIL_PORT) private readonly mail: MailPort,
     @Inject(ENV) private readonly env: Env,
@@ -656,7 +656,7 @@ export class InvoicesService {
       } catch (error) {
         // The sequence lock above should make this unreachable; caught anyway
         // rather than asserting the exact constraint name Prisma generates.
-        if (PrismaService.isUniqueViolation(error)) {
+        if (InvoicingPrismaService.isUniqueViolation(error)) {
           throw new ConflictException('invoice number collision — retry');
         }
         throw error;

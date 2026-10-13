@@ -2,7 +2,8 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { CompanyDetailsInput, Scope, StoragePort } from '@sugrpay/shared';
 import { storageKeys, STORAGE_PORT } from '@sugrpay/shared';
 import { logoExtensionFor, storeLogo, type LogoUpload } from '../../common/logo-upload.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
+import { PlatformOutbox } from '../events/platform-outbox.js';
 
 export interface CompanyDetailsView {
   readonly legalName: string;
@@ -40,8 +41,9 @@ export interface CreatedBrandSummary {
 @Injectable()
 export class MerchantService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    private readonly outbox: PlatformOutbox,
   ) {}
 
   async getOnboardingState(scope: Scope): Promise<MerchantOnboardingState> {
@@ -124,7 +126,7 @@ export class MerchantService {
     scope: Scope,
     structure: 'SINGLE' | 'MULTI',
   ): Promise<CreatedBrandSummary | null> {
-    return this.prisma.withScope(scope, async (tx) => {
+    const result = await this.prisma.withScope(scope, async (tx) => {
       const merchant = await tx.merchant.findUniqueOrThrow({ where: { id: scope.merchantId } });
 
       if (merchant.brandStructure === 'SINGLE') {
@@ -185,9 +187,11 @@ export class MerchantService {
           currency: 'USD',
           timezone: 'America/New_York',
           themeColor: '#2D6A6A',
-          settings: { create: { invoicePrefix: 'INV' } },
         },
       });
+      // Products set up their own per-brand defaults (invoicing: an INV
+      // prefix and its settings row) when they receive this event.
+      await this.outbox.recordBrand(tx, 'created', brand);
 
       // Nothing else to configure for a single-brand merchant — the
       // structure choice and the brand it produces are the whole of
@@ -199,6 +203,10 @@ export class MerchantService {
 
       return { id: brand.id, displayName: brand.displayName };
     });
+    // Deliver brand.created now, so the brand is ready in every product by
+    // the time onboarding hands the merchant over to it.
+    await this.outbox.flush();
+    return result;
   }
 
   /**

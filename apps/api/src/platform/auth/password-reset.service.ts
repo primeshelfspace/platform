@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 
 /**
  * Set-password / reset links (FR-AUTH-005/006, FR-ONB).
@@ -19,7 +19,7 @@ const TOKEN_TTL_HOURS = 24;
 export class PasswordResetService {
   private readonly logger = new Logger(PasswordResetService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PlatformPrismaService) {}
 
   static hash(token: string): string {
     return createHash('sha256').update(token).digest('hex');

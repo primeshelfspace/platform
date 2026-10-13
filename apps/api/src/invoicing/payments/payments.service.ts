@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
-import type { Payment, Prisma } from '@prisma/client';
+import type { Payment, Prisma } from '../database/client.js';
 import {
   IntegrationError,
   PAYMENT_GATEWAY_PORT,
@@ -16,7 +16,7 @@ import {
   type Scope,
 } from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
-import { PrismaService, type ScopedClient } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService, type ScopedClient } from '../database/invoicing-prisma.service.js';
 import { QueueService } from '../../infra/queue/queue.service.js';
 
 export interface PaymentAttemptResult {
@@ -58,7 +58,7 @@ export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     @Inject(ENV) private readonly env: Env,
     @Inject(PAYMENT_GATEWAY_PORT) private readonly gateway: PaymentGatewayPort,
     private readonly queue: QueueService,

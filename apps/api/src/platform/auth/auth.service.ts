@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import type { RegisterInput, RequestScope, Role } from '@sugrpay/shared';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { SessionService } from './session.service.js';
@@ -83,7 +83,7 @@ export class AuthService {
   private decoyHash: Promise<string> | null = null;
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     private readonly sessions: SessionService,
     private readonly passwordResets: PasswordResetService,
     private readonly mail: AuthMailService,

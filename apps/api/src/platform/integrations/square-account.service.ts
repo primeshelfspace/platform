@@ -1,9 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../database/client.js';
 import { IntegrationError, type Scope } from '@sugrpay/shared';
 import { decryptCredential, encryptCredential } from '../../common/credential-encryption.js';
 import { ENV, type Env } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 import { signOAuthState, verifyOAuthState } from './oauth-state.js';
 
 /** Pinned so a Square-side API change cannot silently alter response shapes
@@ -68,7 +68,7 @@ export class SquareAccountService {
   private readonly logger = new Logger(SquareAccountService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 

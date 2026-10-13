@@ -1,9 +1,8 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, type Brand, type BrandSettings } from '@prisma/client';
+import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma, type Brand, type BrandSettings } from '../database/client.js';
 import {
   formatDateForDisplay,
   formatMinorForDisplay,
-  isPublicScope,
   MAIL_PORT,
   renderEmailReceiptHtml,
   renderEmailReceiptTemplate,
@@ -21,7 +20,8 @@ import {
   type StoragePort,
 } from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
-import { PrismaService, type ScopedClient } from '../../infra/prisma/prisma.service.js';
+import { AuditLogService, BrandsService } from '../../platform/public-api.js';
+import { InvoicingPrismaService, type ScopedClient } from '../database/invoicing-prisma.service.js';
 import { brandLogoAttachment, LOGO_CID } from '../../common/logo-upload.js';
 
 export interface PaymentMethodSettings {
@@ -99,12 +99,43 @@ const SAMPLE_INVOICE = {
  */
 @Injectable()
 export class BrandSettingsService {
+  private readonly logger = new Logger(BrandSettingsService.name);
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     @Inject(MAIL_PORT) private readonly mail: MailPort,
     @Inject(ENV) private readonly env: Env,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    private readonly brands: BrandsService,
+    private readonly audit: AuditLogService,
   ) {}
+
+  /**
+   * The brand's invoice-number prefix, settable only until its first invoice
+   * is numbered: changing it afterwards would split one brand's invoices
+   * across two number series. Called by the "create brand" flow right after
+   * the platform creates the brand (the prefix is invoicing's, not the
+   * platform's).
+   */
+  async setInitialInvoicePrefix(
+    scope: Scope,
+    brandId: string,
+    invoicePrefix: string,
+  ): Promise<{ invoicePrefix: string }> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const { settings } = await load(tx, brandId);
+      if (settings.nextSequence !== 1) {
+        throw new ConflictException(
+          'the invoice prefix cannot change once this brand has numbered an invoice',
+        );
+      }
+      const updated = await tx.brandSettings.update({
+        where: { brandId },
+        data: { invoicePrefix },
+      });
+      return { invoicePrefix: updated.invoicePrefix };
+    });
+  }
 
   async getPaymentMethods(scope: Scope, brandId: string): Promise<PaymentMethodSettings> {
     const { settings } = await this.prisma.withScope(scope, (tx) => load(tx, brandId));
@@ -122,35 +153,33 @@ export class BrandSettingsService {
     brandId: string,
     input: PaymentMethodSettingsInput,
   ): Promise<PaymentMethodSettings> {
-    return this.prisma.withScope(scope, async (tx) => {
-      const { brand, settings } = await load(tx, brandId);
+    // Disabling every method leaves every invoice unpayable with no
+    // indication why — refused here rather than discovered by a confused
+    // customer on the payment page.
+    const anyEnabled =
+      input.cardEnabled ||
+      input.applePayEnabled ||
+      input.googlePayEnabled ||
+      input.achEnabled ||
+      input.checkEnabled;
+    if (!anyEnabled) {
+      throw new ConflictException('at least one payment method must stay enabled');
+    }
 
-      // Disabling every method leaves every invoice unpayable with no
-      // indication why — refused here rather than discovered by a confused
-      // customer on the payment page.
-      const anyEnabled =
-        input.cardEnabled ||
-        input.applePayEnabled ||
-        input.googlePayEnabled ||
-        input.achEnabled ||
-        input.checkEnabled;
-      if (!anyEnabled) {
-        throw new ConflictException('at least one payment method must stay enabled');
-      }
-
-      const updated = await tx.brandSettings.update({ where: { brandId }, data: input });
-      await this.record(tx, scope, brandId, 'BRAND_PAYMENT_METHODS_UPDATED', settings, brand, {
-        brand,
-        settings: updated,
-      });
-      return {
-        cardEnabled: updated.cardEnabled,
-        applePayEnabled: updated.applePayEnabled,
-        googlePayEnabled: updated.googlePayEnabled,
-        achEnabled: updated.achEnabled,
-        checkEnabled: updated.checkEnabled,
-      };
-    });
+    const { settings: updated } = await this.saveBranding(
+      scope,
+      brandId,
+      'BRAND_PAYMENT_METHODS_UPDATED',
+      null,
+      input,
+    );
+    return {
+      cardEnabled: updated.cardEnabled,
+      applePayEnabled: updated.applePayEnabled,
+      googlePayEnabled: updated.googlePayEnabled,
+      achEnabled: updated.achEnabled,
+      checkEnabled: updated.checkEnabled,
+    };
   }
 
   async getPaymentPageDisplay(scope: Scope, brandId: string): Promise<PaymentPageDisplaySettings> {
@@ -166,20 +195,14 @@ export class BrandSettingsService {
     brandId: string,
     input: PaymentPageDisplayInput,
   ): Promise<PaymentPageDisplaySettings> {
-    return this.prisma.withScope(scope, async (tx) => {
-      const { brand, settings } = await load(tx, brandId);
-
-      const updated = await writeBranding(tx, brand, settings, input, {
-        accentColor: input.accentColor,
-        paymentPageLayout: input.paymentPageLayout,
-      });
-
-      await this.record(tx, scope, brandId, 'BRAND_PAYMENT_PAGE_UPDATED', settings, brand, updated);
-      return {
-        ...elementsOf(updated.brand, updated.settings),
-        paymentPageLayout: updated.settings.paymentPageLayout,
-      };
+    const updated = await this.saveBranding(scope, brandId, 'BRAND_PAYMENT_PAGE_UPDATED', input, {
+      accentColor: input.accentColor,
+      paymentPageLayout: input.paymentPageLayout,
     });
+    return {
+      ...elementsOf(updated.brand, updated.settings),
+      paymentPageLayout: updated.settings.paymentPageLayout,
+    };
   }
 
   async getEmailReceiptSettings(scope: Scope, brandId: string): Promise<EmailReceiptSettings> {
@@ -192,31 +215,17 @@ export class BrandSettingsService {
     brandId: string,
     input: EmailReceiptSettingsInput,
   ): Promise<EmailReceiptSettings> {
-    return this.prisma.withScope(scope, async (tx) => {
-      const { brand, settings } = await load(tx, brandId);
-
-      const updated = await writeBranding(tx, brand, settings, input, {
-        accentColor: input.accentColor,
-        emailReceiptLayout: input.emailReceiptLayout,
-        emailReceiptSubject: input.emailReceiptSubject,
-        emailReceiptBody: input.emailReceiptBody,
-        paymentConfirmationSubject: input.paymentConfirmationSubject,
-        paymentConfirmationBody: input.paymentConfirmationBody,
-        paymentFailedSubject: input.paymentFailedSubject,
-        paymentFailedBody: input.paymentFailedBody,
-      });
-
-      await this.record(
-        tx,
-        scope,
-        brandId,
-        'BRAND_EMAIL_RECEIPT_UPDATED',
-        settings,
-        brand,
-        updated,
-      );
-      return this.toEmailReceiptSettings(updated.brand, updated.settings);
+    const updated = await this.saveBranding(scope, brandId, 'BRAND_EMAIL_RECEIPT_UPDATED', input, {
+      accentColor: input.accentColor,
+      emailReceiptLayout: input.emailReceiptLayout,
+      emailReceiptSubject: input.emailReceiptSubject,
+      emailReceiptBody: input.emailReceiptBody,
+      paymentConfirmationSubject: input.paymentConfirmationSubject,
+      paymentConfirmationBody: input.paymentConfirmationBody,
+      paymentFailedSubject: input.paymentFailedSubject,
+      paymentFailedBody: input.paymentFailedBody,
     });
+    return this.toEmailReceiptSettings(updated.brand, updated.settings);
   }
 
   /** Needs `this` for the configured sender address, so it is a method here
@@ -245,28 +254,63 @@ export class BrandSettingsService {
     brandId: string,
     input: InvoicePdfSettingsInput,
   ): Promise<InvoicePdfSettings> {
-    return this.prisma.withScope(scope, async (tx) => {
-      const { brand, settings } = await load(tx, brandId);
-
-      const updated = await writeBranding(tx, brand, settings, input, {
-        accentColor: input.accentColor,
-        invoicePdfLayout: input.invoicePdfLayout,
-        invoicePdfShowCompanyAddress: input.showCompanyAddress,
-        invoicePdfShowPaymentTerms: input.showPaymentTerms,
-        invoicePdfShowTaxBreakdown: input.showTaxBreakdown,
-        invoicePdfShowNotes: input.showNotes,
-        // A plain nullable String column, not Json — an explicit `null`
-        // here already means "clear the override", no Prisma.DbNull dance
-        // needed (that's only for Json columns; see BrandsService.update).
-        invoicePdfCompanyName: input.companyName,
-        invoicePdfCompanyAddress: input.companyAddress,
-        invoicePdfPaymentTerms: input.paymentTerms,
-        invoicePdfNotes: input.notes,
-      });
-
-      await this.record(tx, scope, brandId, 'BRAND_INVOICE_PDF_UPDATED', settings, brand, updated);
-      return toInvoicePdfSettings(updated.settings, updated.brand);
+    const updated = await this.saveBranding(scope, brandId, 'BRAND_INVOICE_PDF_UPDATED', input, {
+      accentColor: input.accentColor,
+      invoicePdfLayout: input.invoicePdfLayout,
+      invoicePdfShowCompanyAddress: input.showCompanyAddress,
+      invoicePdfShowPaymentTerms: input.showPaymentTerms,
+      invoicePdfShowTaxBreakdown: input.showTaxBreakdown,
+      invoicePdfShowNotes: input.showNotes,
+      // A plain nullable String column, not Json — an explicit `null`
+      // here already means "clear the override", no Prisma.DbNull dance
+      // needed (that's only for Json columns; see BrandsService.update).
+      invoicePdfCompanyName: input.companyName,
+      invoicePdfCompanyAddress: input.companyAddress,
+      invoicePdfPaymentTerms: input.paymentTerms,
+      invoicePdfNotes: input.notes,
     });
+    return toInvoicePdfSettings(updated.settings, updated.brand);
+  }
+
+  /**
+   * The single write behind every Branding save:
+   *   1. invoicing's own settings columns, in invoicing's database;
+   *   2. the brand's themeColor — a platform brand field — through the
+   *      platform's BrandsService, only when it actually changed (saving an
+   *      email template must not bump the brand's updatedAt). The platform
+   *      updates invoicing's brand copy before that call returns;
+   *   3. the audit entry, in the platform's append-only audit log.
+   *
+   * The three live in two databases, so they are no longer one transaction.
+   * Settings are written first because they are the bulk of the edit; if a
+   * later step fails the request fails, and the merchant's retry of the same
+   * save is idempotent. A failed audit write is logged as an error rather
+   * than failing a change that has already been saved.
+   */
+  private async saveBranding(
+    scope: Scope,
+    brandId: string,
+    action: string,
+    elements: BrandElementsInput | null,
+    data: Prisma.BrandSettingsUncheckedUpdateInput,
+  ): Promise<{ brand: Brand; settings: BrandSettings }> {
+    const saved = await this.prisma.withScope(scope, async (tx) => {
+      const before = await load(tx, brandId);
+      const settings = await tx.brandSettings.update({ where: { brandId }, data });
+      return { before, settings };
+    });
+
+    let brand = saved.before.brand;
+    if (elements && elements.themeColor !== brand.themeColor) {
+      await this.brands.setThemeColor(scope, brandId, elements.themeColor);
+      brand = await this.prisma.withScope(scope, (tx) =>
+        tx.brand.findUniqueOrThrow({ where: { id: brandId } }),
+      );
+    }
+
+    const after = { brand, settings: saved.settings };
+    await this.record(scope, brandId, action, saved.before.settings, saved.before.brand, after);
+    return after;
   }
 
   /**
@@ -361,18 +405,13 @@ export class BrandSettingsService {
   }
 
   /**
-   * Writes the audit entry for a Branding change, in the same transaction as
-   * the change itself — so the log can never claim an edit that rolled back,
-   * nor miss one that committed. audit_log has no UPDATE or DELETE grant
-   * (see the rls_and_grants migration), which is what makes it evidence.
-   *
-   * The public payment scope never reaches these endpoints — they are all
-   * behind RequirePermission('BRAND_CONFIGURATION') — but it is still a
-   * valid Scope at the type level, so it is recorded as a system actor
-   * rather than asserted away.
+   * Records a Branding change in the platform's append-only audit log, right
+   * after the change itself has been saved (see saveBranding for why that is
+   * no longer one transaction). The public payment scope never reaches these
+   * endpoints — they are all behind RequirePermission('BRAND_CONFIGURATION')
+   * — and AuditLogService records such a scope as a system actor anyway.
    */
   private async record(
-    tx: ScopedClient,
     scope: Scope,
     brandId: string,
     action: string,
@@ -385,20 +424,21 @@ export class BrandSettingsService {
       ...diffOf({ themeColor: beforeBrand.themeColor }, { themeColor: after.brand.themeColor }),
     };
 
-    await tx.auditLog.create({
-      data: {
-        merchantId: scope.merchantId,
+    try {
+      await this.audit.record(scope, {
         brandId,
-        actorType: isPublicScope(scope) ? 'SYSTEM' : 'USER',
-        actorId: isPublicScope(scope) ? null : scope.userId,
         action,
         objectType: 'BRAND_SETTINGS',
         objectId: brandId,
-        sourceIp: scope.sourceIp,
         outcome: 'SUCCESS',
         metadata: { changes },
-      },
-    });
+      });
+    } catch (error) {
+      this.logger.error(
+        `audit entry ${action} for brand ${brandId} could not be written after the change ` +
+          `was saved: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }
 
@@ -424,37 +464,6 @@ async function load(
  * actually live on. */
 function elementsOf(brand: Brand, settings: BrandSettings): BrandElements {
   return { themeColor: brand.themeColor, accentColor: settings.accentColor };
-}
-
-/**
- * The single write behind every Branding save: the brand's themeColor and
- * the section's own columns, committed together or not at all.
- *
- * themeColor is written only when it actually differs — a merchant saving an
- * email template should not bump the brand row's updatedAt, and Brand
- * Details' own "last changed" reading stays honest.
- */
-async function writeBranding(
-  tx: ScopedClient,
-  brand: Brand,
-  settings: BrandSettings,
-  elements: BrandElementsInput,
-  data: Prisma.BrandSettingsUncheckedUpdateInput,
-): Promise<{ brand: Brand; settings: BrandSettings }> {
-  const nextBrand =
-    elements.themeColor === brand.themeColor
-      ? brand
-      : await tx.brand.update({
-          where: { id: brand.id },
-          data: { themeColor: elements.themeColor },
-        });
-
-  const nextSettings = await tx.brandSettings.update({
-    where: { brandId: settings.brandId },
-    data,
-  });
-
-  return { brand: nextBrand, settings: nextSettings };
 }
 
 /** Columns that say when a row changed, not what it says — noise in a diff

@@ -1,9 +1,9 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../database/client.js';
 import Stripe from 'stripe';
 import { IntegrationError, type Scope } from '@sugrpay/shared';
 import { ENV, type Env } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 import { signOAuthState, verifyOAuthState } from './oauth-state.js';
 
 export const STRIPE_API_VERSION = '2025-02-24.acacia';
@@ -50,7 +50,7 @@ export class StripeAccountService {
   private readonly logger = new Logger(StripeAccountService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 

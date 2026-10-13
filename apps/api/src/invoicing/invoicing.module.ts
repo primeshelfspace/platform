@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ChecksModule } from './checks/checks.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { InvoicingDatabaseModule } from './database/invoicing-database.module.js';
+import { PlatformSyncModule } from './platform-sync/platform-sync.module.js';
 import { InvoicesModule } from './invoices/invoices.module.js';
 import { PublicModule } from './pay-api/public.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
@@ -12,6 +14,9 @@ import { ZohoSyncModule } from './zoho-sync/zoho-sync.module.js';
  * payment page API, brand invoice settings and Zoho Books sync. */
 @Module({
   imports: [
+    InvoicingDatabaseModule,
+    // Keeps invoicing's read-only copy of platform data (brands) current.
+    PlatformSyncModule,
     BrandSettingsModule,
     CustomersModule,
     InvoicesModule,

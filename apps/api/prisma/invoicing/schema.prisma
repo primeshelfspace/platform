@@ -1,0 +1,676 @@
+// Invoicing (Sugrpay) database — customers, invoices, payments and their settings.
+//
+// Conventions that are load-bearing, not stylistic:
+//   *_minor   BigInt   money as signed 64-bit integer minor units (§5.3, NFR-INT-001).
+//                      No Decimal and no Float appears anywhere in this file.
+//   *_bp      Int      rates as integer basis points. 6% is 600.
+//   quantity  Int      fixed point scaled by 10,000, so 1.5 is 15000.
+//   Nothing is hard-deleted; financial records carry a status instead (NFR-INT-023).
+//
+// This database belongs to ONE module. No other module may read or write it;
+// they ask this module's public API or listen to its events instead.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../generated/invoicing"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("INVOICING_DATABASE_URL")
+  directUrl = env("INVOICING_DIRECT_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum BrandStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// FR-BRD onboarding: legal structure of the business behind a brand.
+enum BusinessType {
+  SOLE_PROPRIETORSHIP
+  LLC
+  CORPORATION
+  PARTNERSHIP
+  NONPROFIT
+}
+
+/// FR-PAY: how the hosted payment page arranges the invoice summary and the
+/// "choose how to pay" form for a brand's customers.
+enum PaymentPageLayout {
+  BANNER
+  CENTERED
+  SPLIT
+}
+
+/// FR-MAIL: how the invoice receipt email is arranged for a brand's customers.
+enum EmailReceiptLayout {
+  CLASSIC
+  HERO
+  MINIMAL
+}
+
+/// FR-PDF: how the generated invoice PDF a customer receives/downloads is
+/// arranged for a brand.
+enum InvoicePdfLayout {
+  CLASSIC
+  MODERN
+  MINIMAL
+}
+
+/// FR-PDF: the payment-terms label printed on the invoice PDF. Distinct from
+/// BrandSettings.paymentTermsDays (which drives the actual due-date math) —
+/// this is display copy a merchant may want to phrase differently.
+enum InvoicePdfPaymentTerms {
+  DUE_ON_RECEIPT
+  NET_15
+  NET_30
+  NET_60
+}
+
+enum CustomerType {
+  BUSINESS
+  INDIVIDUAL
+}
+
+enum CustomerStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// TDD-001 §8.1. OVERDUE is deliberately absent — it is an overlay flag.
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PENDING_PAYMENT
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CARD
+  WALLET
+  ACH
+  CHECK
+  MANUAL
+}
+
+enum PaymentStatus {
+  INITIATED
+  PROCESSING
+  SETTLED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  CANCELLED
+}
+
+enum IntegrationProvider {
+  ZOHO_BOOKS
+  NUMBERS_GATEWAY
+  SHOPIFY
+  STRIPE
+  PAYPAL
+  SQUARE
+  AUTHORIZE_NET
+}
+
+enum SyncDirection {
+  PUSH
+  PULL
+}
+
+enum SyncStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  /// Ran to completion and deliberately applied nothing — a Zoho payment
+  /// spanning several invoices (unrepresentable here), or a record recognised
+  /// as this platform's own push echoing back. Distinct from SUCCEEDED so the
+  /// activity feed cannot overstate what actually synced.
+  SKIPPED
+  FAILED
+  DEAD_LETTERED
+}
+
+/// TDD-001 §11.2.
+enum SyncErrorClass {
+  TRANSIENT
+  AUTHENTICATION
+  VALIDATION
+  CONFLICT
+  PERMANENT
+}
+
+enum CheckStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+/// FR-ZHO-webhook. PENDING until a Finance Manager assigns it (or, for an
+/// ORPHANED_UPDATE row, resolves it by hand) — see PendingBrandAssignment.
+enum PendingAssignmentStatus {
+  PENDING
+  ASSIGNED
+}
+
+/// Why a Zoho-native webhook event could not be routed to a brand
+/// automatically (FR-ZHO-webhook "New records created natively in Zoho").
+enum PendingAssignmentReason {
+  /// contact.created / invoice.created for an organization connected to more
+  /// than one brand here — organization_id alone cannot pick one, and this
+  /// platform never guesses.
+  NEW_RECORD_MULTI_BRAND
+  /// contact.status_updated / invoice.status_updated naming a zoho_contact_id
+  /// / zoho_invoice_id this platform has never seen locally under any brand.
+  ORPHANED_UPDATE
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+/// READ-ONLY copy of the platform's brand. The platform owns brands; this row
+/// exists so invoicing can join to a brand, render it on invoices, PDFs and
+/// emails, and scope row-level security by it without querying the platform's
+/// database. It is written ONLY by BrandReplicaProjector from
+/// platform.brand.* events — the application role holds SELECT and nothing
+/// else on this table (see the RLS migration). To change a brand, call the
+/// platform's public API.
+///
+/// id, createdAt and updatedAt are the platform's own values, copied as-is;
+/// updatedAt doubles as the version that lets an out-of-order event be
+/// ignored.
+model Brand {
+  id             String        @id @db.Uuid
+  merchantId     String        @map("merchant_id") @db.Uuid
+  legalName      String        @map("legal_name")
+  displayName    String        @map("display_name")
+  salesPerson    String?       @map("sales_person")
+  businessType   BusinessType? @map("business_type")
+  phone          String?
+  email          String?
+  mailingAddress Json?         @map("mailing_address")
+  billingAddress Json?         @map("billing_address")
+  taxId          String?       @map("tax_id")
+  currency       String        @default("USD")
+  timezone       String        @default("America/New_York")
+  themeColor     String        @default("#2D6A6A") @map("theme_color")
+  logoKey        String?       @map("logo_key")
+  status         BrandStatus   @default(ACTIVE)
+  createdAt      DateTime      @map("created_at")
+  updatedAt      DateTime      @map("updated_at")
+  /// When this copy was last written from a platform event.
+  replicatedAt   DateTime      @default(now()) @map("replicated_at")
+
+  settings           BrandSettings?
+  customers          Customer[]
+  invoices           Invoice[]
+  payments           Payment[]
+  taxRates           TaxRate[]
+  syncJobs           SyncJob[]
+  checks             CheckSubmission[]
+  pendingAssignments PendingBrandAssignment[]
+
+  @@index([merchantId])
+  @@map("brand")
+}
+
+/// Separated from brand so sequence allocation locks a narrow row (TDD-001 §5.2).
+model BrandSettings {
+  brandId               String  @id @map("brand_id") @db.Uuid
+  invoicePrefix         String  @default("INV") @map("invoice_prefix")
+  nextSequence          Int     @default(1) @map("next_sequence")
+  paymentTermsDays      Int     @default(30) @map("payment_terms_days")
+  lateFeeRateBp         Int     @default(0) @map("late_fee_rate_bp")
+  defaultTaxRateId      String? @map("default_tax_rate_id") @db.Uuid
+  cardFeeRateBp         Int     @default(0) @map("card_fee_rate_bp")
+  partialPaymentEnabled Boolean @default(false) @map("partial_payment_enabled")
+  reminderSchedule      Int[]   @default([]) @map("reminder_schedule")
+
+  /// FR-PAY-005: which methods the public payment page offers for this
+  /// brand. Card defaults on; everything else is opt-in because each has its
+  /// own real-world prerequisite (a live gateway, an Apple/Google merchant
+  /// registration) that does not exist until someone actually completes it.
+  cardEnabled      Boolean @default(true) @map("card_enabled")
+  applePayEnabled  Boolean @default(false) @map("apple_pay_enabled")
+  googlePayEnabled Boolean @default(false) @map("google_pay_enabled")
+  achEnabled       Boolean @default(false) @map("ach_enabled")
+  checkEnabled     Boolean @default(false) @map("check_enabled")
+
+  /// FR-PAY: brand-level display of the hosted payment page — Brand Settings
+  /// > Branding > Payment Page. accentColor has no other home; themeColor on
+  /// Brand already covers the primary brand colour used elsewhere.
+  accentColor       String            @default("#171717") @map("accent_color")
+  paymentPageLayout PaymentPageLayout @default(BANNER) @map("payment_page_layout")
+
+  /// FR-MAIL: Brand Settings > Branding > Email Templates — the subject/body
+  /// template and (shared) layout for the invoice receipt email a customer
+  /// gets. `{{brand_name}}`, `{{customer_name}}`, `{{invoice_number}}`,
+  /// `{{amount_due}}` and `{{due_date}}` are substituted at send time.
+  emailReceiptLayout  EmailReceiptLayout @default(CLASSIC) @map("email_receipt_layout")
+  emailReceiptSubject String             @default("New invoice from {{brand_name}}") @map("email_receipt_subject")
+  emailReceiptBody    String             @default("Hi {{customer_name}},\n\nThis is an automated message from {{brand_name}} regarding invoice {{invoice_number}}.\n\nAmount due: {{amount_due}}\nDue date: {{due_date}}\n\nPlease click the button below to view and pay your invoice.\n\nThank you for your business.") @map("email_receipt_body")
+
+  /// FR-MAIL: Brand Settings > Branding > Email Templates — the "Payment
+  /// Confirmation" template, sent when a payment is successfully processed.
+  /// Shares emailReceiptLayout/accentColor above rather than carrying its own.
+  paymentConfirmationSubject String @default("Payment received for invoice {{invoice_number}}") @map("payment_confirmation_subject")
+  paymentConfirmationBody    String @default("Hi {{customer_name}},\n\nWe've received your payment of {{amount_due}} for invoice {{invoice_number}} from {{brand_name}}.\n\nThank you for your business.") @map("payment_confirmation_body")
+
+  /// FR-MAIL: Brand Settings > Branding > Email Templates — the "Payment
+  /// Failed" template, sent when a payment attempt fails.
+  paymentFailedSubject String @default("Payment failed for invoice {{invoice_number}}") @map("payment_failed_subject")
+  paymentFailedBody    String @default("Hi {{customer_name}},\n\nWe were unable to process your payment of {{amount_due}} for invoice {{invoice_number}} from {{brand_name}}.\n\nPlease try again or contact us for help.") @map("payment_failed_body")
+
+  /// FR-PDF: Brand Settings > Branding > Invoice PDF — layout and which
+  /// optional sections appear on the invoice PDF a customer receives.
+  invoicePdfLayout             InvoicePdfLayout       @default(CLASSIC) @map("invoice_pdf_layout")
+  invoicePdfShowCompanyAddress Boolean                @default(true) @map("invoice_pdf_show_company_address")
+  invoicePdfShowPaymentTerms   Boolean                @default(true) @map("invoice_pdf_show_payment_terms")
+  invoicePdfShowTaxBreakdown   Boolean                @default(true) @map("invoice_pdf_show_tax_breakdown")
+  invoicePdfShowNotes          Boolean                @default(true) @map("invoice_pdf_show_notes")
+  /// Null until a merchant overrides it — the read path falls back to the
+  /// brand's own displayName/mailingAddress, so the PDF letterhead matches
+  /// Brand Details until someone deliberately wants it to read differently.
+  invoicePdfCompanyName        String?                @map("invoice_pdf_company_name")
+  invoicePdfCompanyAddress     String?                @map("invoice_pdf_company_address")
+  invoicePdfPaymentTerms       InvoicePdfPaymentTerms @default(DUE_ON_RECEIPT) @map("invoice_pdf_payment_terms")
+  invoicePdfNotes              String                 @default("Thank you for your business. Please contact us with any questions.") @map("invoice_pdf_notes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("brand_settings")
+}
+
+/// Rate held in basis points. Synced from Zoho where connected.
+model TaxRate {
+  id        String   @id @default(uuid()) @db.Uuid
+  brandId   String   @map("brand_id") @db.Uuid
+  label     String
+  rateBp    Int      @map("rate_bp")
+  zohoTaxId String?  @map("zoho_tax_id")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  brand    Brand     @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([brandId])
+  @@map("tax_rate")
+}
+
+model Customer {
+  id                String         @id @default(uuid()) @db.Uuid
+  brandId           String         @map("brand_id") @db.Uuid
+  type              CustomerType   @default(BUSINESS)
+  salutation        String?
+  firstName         String?        @map("first_name")
+  lastName          String?        @map("last_name")
+  companyName       String?        @map("company_name")
+  displayName       String         @map("display_name")
+  email             String?
+  phone             String?
+  billingAddress    Json?          @map("billing_address")
+  shippingAddress   Json?          @map("shipping_address")
+  zohoContactId     String?        @map("zoho_contact_id")
+  /// The last_modified_time Zoho reported for this contact immediately after
+  /// our own push. Lets ZohoPullService tell our own write echoing back from a
+  /// genuine edit made in Zoho — without it, a push followed by a pull
+  /// replaced firstName/lastName with whatever Zoho derived from contact_name,
+  /// since upsertCustomer sends only contact_name but pullOneCustomer reads
+  /// first_name/last_name back. Null means "never pushed from here", which
+  /// correctly reads as "not an echo".
+  zohoSyncedVersion DateTime?      @map("zoho_synced_version")
+  /// Set when a required-field check blocks an outbound Zoho push (FR-ZHO
+  /// webhook "Outbound"/"mandatory fields"), so the reason is visible on the
+  /// customer itself, not only in the Sync Dashboard's SyncJob trail. Cleared
+  /// the moment a push for this customer succeeds.
+  zohoUnsyncedReason String?       @map("zoho_unsynced_reason")
+  notes             String?
+  status            CustomerStatus @default(ACTIVE)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  brand          Brand                   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  invoices       Invoice[]
+  contactPersons CustomerContactPerson[]
+
+  /// Real uniqueness, not just an index: ZohoPullService now runs its
+  /// per-record detail fetches with several in flight at once
+  /// (mapWithConcurrency), so two concurrent pulls racing to create the same
+  /// not-yet-seen Zoho contact (e.g. two invoices for one new customer,
+  /// pulled in the same batch) must fail one of them at the database rather
+  /// than silently doubling the customer — pullOneCustomer upserts on this.
+  @@unique([brandId, zohoContactId])
+  @@index([brandId])
+  @@index([brandId, status])
+  @@map("customer")
+}
+
+/// A named person at a customer — Zoho's own "contact person": billing and
+/// invoice questions often go to someone specific at the account, not the
+/// company's general line. Fields and their limits are confirmed against
+/// https://www.zoho.com/books/api/v3/contact-persons/, not assumed.
+/// Deliberately not carried: enable_portal / is_added_in_portal /
+/// communication_preference — those govern Zoho's own client portal, which
+/// this app has no equivalent of and no use for.
+model CustomerContactPerson {
+  id                  String  @id @default(uuid()) @db.Uuid
+  customerId          String  @map("customer_id") @db.Uuid
+  zohoContactPersonId String? @map("zoho_contact_person_id")
+  salutation          String?
+  firstName           String  @map("first_name")
+  lastName            String? @map("last_name")
+  email               String?
+  phone               String?
+  mobile              String?
+  skype               String?
+  designation         String?
+  department          String?
+  isPrimaryContact    Boolean @default(false) @map("is_primary_contact")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  /// Same reasoning as Customer.zohoContactId above: ZohoPullService upserts
+  /// each contact person on this rather than a naive delete-then-recreate,
+  /// which is exactly what made line items unsafe under concurrent pulls of
+  /// the same customer (see pullOneInvoice's own comment on that).
+  @@unique([customerId, zohoContactPersonId])
+  @@index([customerId])
+  @@map("customer_contact_person")
+}
+
+model Invoice {
+  id         String        @id @default(uuid()) @db.Uuid
+  brandId    String        @map("brand_id") @db.Uuid
+  customerId String        @map("customer_id") @db.Uuid
+  number     String
+  status     InvoiceStatus @default(DRAFT)
+
+  invoiceDate DateTime @map("invoice_date") @db.Date
+  dueDate     DateTime @map("due_date") @db.Date
+  currency    String   @default("USD")
+
+  subtotalMinor        BigInt @default(0) @map("subtotal_minor")
+  taxRateBpApplied     Int    @default(0) @map("tax_rate_bp_applied")
+  taxMinor             BigInt @default(0) @map("tax_minor")
+  cardFeeRateBpApplied Int    @default(0) @map("card_fee_rate_bp_applied")
+  cardFeeMinor         BigInt @default(0) @map("card_fee_minor")
+  totalMinor           BigInt @default(0) @map("total_minor")
+  /// Stored, not computed. Updated inside the same transaction as the payment,
+  /// and verified by a reconciliation job (TDD-001 §5.3).
+  balanceMinor         BigInt @default(0) @map("balance_minor")
+
+  /// 128-bit random, hex. Separate from `number` because invoice numbers are
+  /// sequential and guessable and this is what secures the public page (NFR-SEC-014).
+  publicToken       String  @unique @map("public_token")
+  publicTokenActive Boolean @default(true) @map("public_token_active")
+
+  notes             String?
+  internalNotes     String?        @map("internal_notes")
+  zohoInvoiceId     String?        @map("zoho_invoice_id")
+  /// Same purpose as Customer.zohoSyncedVersion, and the more consequential of
+  /// the two: pushInvoice sends tax and the card fee to Zoho as ordinary line
+  /// items, so pulling our own push back rewrote subtotalMinor to include
+  /// them, zeroed taxMinor, and left cardFeeMinor double-counted. A pull whose
+  /// Zoho last_modified_time has not advanced past this value is skipped.
+  zohoSyncedVersion DateTime?      @map("zoho_synced_version")
+  /// When a full reconciliation scan first failed to find this invoice in Zoho.
+  /// Setting it also deactivates publicToken, which is what actually stops an
+  /// invoice deleted in Zoho from staying collectable here. Cleared if the
+  /// invoice turns up again. Status is deliberately left alone — see the
+  /// migration comment for why inferring deletion from silence must not
+  /// rewrite the ledger.
+  zohoMissingSince  DateTime?      @map("zoho_missing_since")
+  /// Same purpose as Customer.zohoUnsyncedReason: a blocked outbound push
+  /// (unsupported currency, no line items, ...) is recorded here so it is
+  /// visible on the invoice itself, and cleared the moment a push succeeds.
+  zohoUnsyncedReason String?       @map("zoho_unsynced_reason")
+  taxRateId         String?        @map("tax_rate_id") @db.Uuid
+  issuedAt          DateTime?      @map("issued_at")
+  firstViewedAt     DateTime?      @map("first_viewed_at")
+  paidAt            DateTime?      @map("paid_at")
+  cancelledAt       DateTime?      @map("cancelled_at")
+  /// Set when a payment attempt starts, so a definitive failure can return the
+  /// invoice to where it was (TDD-001 §8.2).
+  previousStatus    InvoiceStatus? @map("previous_status")
+  overdue           Boolean        @default(false)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  brand     Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customer  Customer          @relation(fields: [customerId], references: [id])
+  taxRate   TaxRate?          @relation(fields: [taxRateId], references: [id])
+  lineItems LineItem[]
+  payments  Payment[]
+  events    InvoiceEvent[]
+  checks    CheckSubmission[]
+
+  @@unique([brandId, number])
+  /// Real uniqueness, not just an index — same reason as
+  /// Customer.zohoContactId above: pullOneInvoice now upserts on this rather
+  /// than findFirst-then-create, because pullOnePayment's cascade can have
+  /// two concurrently-pulled payments reference the same not-yet-seen
+  /// invoice (e.g. two partial payments on it) in the same
+  /// mapWithConcurrency batch.
+  @@unique([brandId, zohoInvoiceId])
+  @@index([brandId, status])
+  @@index([brandId, dueDate])
+  @@index([customerId])
+  @@map("invoice")
+}
+
+model LineItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  invoiceId      String  @map("invoice_id") @db.Uuid
+  position       Int
+  itemName       String  @map("item_name")
+  description    String?
+  /// Fixed point scaled by 10,000. Int caps a single line at 214,748.3647
+  /// units; widen to BigInt if a client ever bills beyond that.
+  quantity       Int
+  unitPriceMinor BigInt  @map("unit_price_minor")
+  /// Stored, not derived at read (TDD-001 §5.3).
+  lineTotalMinor BigInt  @map("line_total_minor")
+  taxExempt      Boolean @default(false) @map("tax_exempt")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, position])
+  @@index([invoiceId])
+  @@map("line_item")
+}
+
+model Payment {
+  id          String        @id @default(uuid()) @db.Uuid
+  invoiceId   String        @map("invoice_id") @db.Uuid
+  brandId     String        @map("brand_id") @db.Uuid
+  method      PaymentMethod
+  amountMinor BigInt        @map("amount_minor")
+  currency    String        @default("USD")
+  status      PaymentStatus @default(INITIATED)
+
+  /// Uniquely indexed — the mechanism behind NFR-INT-010. A gateway that
+  /// delivers the same settlement twice cannot create a second payment row.
+  gatewayReference String?   @unique @map("gateway_reference")
+  /// hash(invoice_id, amount, attempt_nonce) — TDD-001 §8.3.
+  idempotencyKey   String    @unique @map("idempotency_key")
+  /// Gateway's own timestamp for the last event applied. Anything older is
+  /// discarded, which is what makes out-of-order webhooks safe (NFR-INT-012).
+  lastEventAt      DateTime? @map("last_event_at")
+
+  declineReason String?   @map("decline_reason")
+  settledAt     DateTime? @map("settled_at")
+  refundedMinor BigInt    @default(0) @map("refunded_minor")
+  zohoPaymentId String?   @map("zoho_payment_id")
+  /// Same purpose as Customer.zohoUnsyncedReason. Payment sync is
+  /// platform → Zoho only, so this is the only unsynced-reason surface for it.
+  zohoUnsyncedReason String? @map("zoho_unsynced_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+  brand   Brand   @relation(fields: [brandId], references: [id])
+
+  @@index([invoiceId])
+  @@index([brandId, status])
+  /// Looked up once per listed payment on every Zoho pull, to skip
+  /// re-fetching detail for one already pulled (ZohoPullService.pullPayments)
+  /// — same reason Customer.zohoContactId is indexed below.
+  @@index([zohoPaymentId])
+  @@map("payment")
+}
+
+/// Append-only lifecycle history. Drives the invoice timeline.
+model InvoiceEvent {
+  id         String         @id @default(uuid()) @db.Uuid
+  invoiceId  String         @map("invoice_id") @db.Uuid
+  eventType  String         @map("event_type")
+  fromStatus InvoiceStatus? @map("from_status")
+  toStatus   InvoiceStatus? @map("to_status")
+  actor      String
+  payload    Json?
+  occurredAt DateTime       @default(now()) @map("occurred_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId, occurredAt])
+  @@map("invoice_event")
+}
+
+/// Images are storage keys, never binary in the database.
+model CheckSubmission {
+  id            String      @id @default(uuid()) @db.Uuid
+  invoiceId     String      @map("invoice_id") @db.Uuid
+  brandId       String      @map("brand_id") @db.Uuid
+  /// Written on the physical check, transcribed by the customer at
+  /// submission — the Payments > Check Verifications table's primary column
+  /// and what `reference` is set to on the Payment approve() creates.
+  checkNumber   String      @map("check_number")
+  /// The customer's own claimed amount, not derived from the invoice total —
+  /// a check can cover a partial balance. Minor units, invoice's own currency.
+  amountMinor   BigInt      @map("amount_minor")
+  frontImageKey String      @map("front_image_key")
+  backImageKey  String      @map("back_image_key")
+  customerNote  String?     @map("customer_note")
+  status        CheckStatus @default(SUBMITTED)
+  reviewedBy    String?     @map("reviewed_by") @db.Uuid
+  reviewNote    String?     @map("review_note")
+  reviewedAt    DateTime?   @map("reviewed_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  brand   Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, status])
+  @@map("check_submission")
+}
+
+/// The retry and error-log surface for FR-ZHO-021.
+model SyncJob {
+  id            String              @id @default(uuid()) @db.Uuid
+  brandId       String              @map("brand_id") @db.Uuid
+  provider      IntegrationProvider
+  direction     SyncDirection
+  objectType    String              @map("object_type")
+  objectId      String?             @map("object_id")
+  status        SyncStatus          @default(QUEUED)
+  attemptCount  Int                 @default(0) @map("attempt_count")
+  errorClass    SyncErrorClass?     @map("error_class")
+  /// The provider's verbatim message, so an operator sees what was actually
+  /// said rather than a paraphrase.
+  lastError     String?             @map("last_error")
+  nextAttemptAt DateTime?           @map("next_attempt_at")
+  completedAt   DateTime?           @map("completed_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, status])
+  @@index([status, nextAttemptAt])
+  @@map("sync_job")
+}
+
+/// FR-ZHO-webhook. A Zoho-native contact/invoice event whose brand could not
+/// be determined automatically — either created directly in Zoho under an
+/// organisation connected to more than one brand here (organization_id is
+/// ambiguous, so this platform never guesses), or an update naming a
+/// zoho_contact_id/zoho_invoice_id no local record has ever carried. Surfaced
+/// on the Sync Dashboard until a Finance Manager assigns it to a brand (or,
+/// for an ORPHANED_UPDATE row, resolves it by hand — assigning one of those
+/// does not itself create anything, since an update has no full record body
+/// to create from).
+///
+/// merchantId is populated from a sibling IntegrationConnection that already
+/// shares this organizationId (every brand connected to one Zoho
+/// organisation belongs to one merchant in practice, since a Zoho
+/// organisation is itself owned by one Zoho account) — this is what lets the
+/// row carry real row-level security instead of living outside every tenant
+/// boundary.
+model PendingBrandAssignment {
+  id              String                  @id @default(uuid()) @db.Uuid
+  merchantId      String                  @map("merchant_id") @db.Uuid
+  provider        IntegrationProvider
+  organizationId  String                  @map("organization_id")
+  /// 'CUSTOMER' | 'INVOICE' — same plain-string convention as SyncJob.objectType.
+  objectType      String                  @map("object_type")
+  /// The Zoho contact_id / invoice_id the event named.
+  remoteId        String                  @map("remote_id")
+  reason          PendingAssignmentReason
+  status          PendingAssignmentStatus @default(PENDING)
+  /// The webhook's own record payload, for the assignment screen to show
+  /// something human-readable without an extra Zoho call.
+  payload         Json?
+  assignedBrandId String?                 @map("assigned_brand_id") @db.Uuid
+  assignedAt      DateTime?               @map("assigned_at")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  // merchantId is the platform's company id — no foreign key, since the
+  // company lives in the platform's database.
+  assignedBrand Brand?   @relation(fields: [assignedBrandId], references: [id], onDelete: SetNull)
+
+  /// A redelivered webhook for the same never-resolved record must refresh
+  /// this row, not duplicate it.
+  @@unique([provider, organizationId, objectType, remoteId])
+  @@index([merchantId, status])
+  @@map("pending_brand_assignment")
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+/// Events from other modules this database has already applied. A handler
+/// records the event id here in the same transaction as its own change, so a
+/// redelivered event (the outbox delivers at least once) is a no-op.
+model ProcessedEvent {
+  eventId     String   @id @map("event_id") @db.Uuid
+  topic       String
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_event")
+}

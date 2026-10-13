@@ -4,9 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type Customer, type CustomerContactPerson } from '@prisma/client';
+import { Prisma, type Customer, type CustomerContactPerson } from '../database/client.js';
 import type { CustomerInput, CustomerListQuery, Scope } from '@sugrpay/shared';
-import { PrismaService, type ScopedClient } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService, type ScopedClient } from '../database/invoicing-prisma.service.js';
 import { QueueService } from '../../infra/queue/queue.service.js';
 
 /** A row's outstanding balance, invoice count and settled-payment count — the
@@ -38,7 +38,7 @@ export interface CustomerListResult {
 const COLLECTED_PAYMENT_STATUSES = ['SETTLED'] as const;
 
 /**
- * Customers (FR-CUS). Every method runs inside PrismaService.withScope, which
+ * Customers (FR-CUS). Every method runs inside InvoicingPrismaService.withScope, which
  * is the only path to this table — row-level security is the backstop, this
  * is the layer that keeps a query from being attempted unscoped at all.
  *
@@ -48,7 +48,7 @@ const COLLECTED_PAYMENT_STATUSES = ['SETTLED'] as const;
 @Injectable()
 export class CustomersService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     private readonly queue: QueueService,
   ) {}
 
@@ -261,7 +261,7 @@ export class CustomersService {
    * text is inspected, and only to avoid leaking a raw SQL error to a client.
    */
   private translateWriteError(error: unknown): Error {
-    if (PrismaService.isUniqueViolation(error)) {
+    if (InvoicingPrismaService.isUniqueViolation(error)) {
       return new ConflictException('a customer with this identifier already exists');
     }
     if (error instanceof Error && /row-level security/i.test(error.message)) {

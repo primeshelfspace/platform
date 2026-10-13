@@ -1,5 +1,5 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../database/client.js';
 import {
   formatMinor,
   isPublicScope,
@@ -11,7 +11,7 @@ import {
   type Scope,
   type StoragePort,
 } from '@sugrpay/shared';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { InvoicesService } from '../invoices/invoices.service.js';
 
 /** Long enough to review one check without the preview expiring mid-read,
@@ -68,7 +68,7 @@ export interface CheckSubmissionDetail extends CheckSubmissionListRow {
 @Injectable()
 export class ChecksService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     private readonly invoices: InvoicesService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
   ) {}

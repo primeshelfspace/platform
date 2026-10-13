@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../database/client.js';
 import type { PaymentGatewayProvider, Scope } from '@sugrpay/shared';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 import { AuthorizeNetAccountService } from './authorize-net-account.service.js';
 import { SquareAccountService } from './square-account.service.js';
 import { StripeAccountService } from './stripe-account.service.js';
@@ -55,7 +55,7 @@ export interface PaymentGatewaySummary {
 @Injectable()
 export class PaymentGatewaysService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     private readonly stripe: StripeAccountService,
     private readonly square: SquareAccountService,
     private readonly authorizeNet: AuthorizeNetAccountService,

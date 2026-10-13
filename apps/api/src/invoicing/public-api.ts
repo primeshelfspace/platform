@@ -9,4 +9,5 @@
 
 // Used by the worker process to run Zoho sync jobs
 export { ZohoPullService } from './zoho-sync/zoho-pull.service.js';
+export { ZohoScheduledSyncService } from './zoho-sync/zoho-scheduled-sync.service.js';
 export { ZohoSyncService } from './zoho-sync/zoho-sync.service.js';

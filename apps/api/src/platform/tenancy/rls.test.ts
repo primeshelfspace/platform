@@ -1,25 +1,28 @@
 /**
  * Row-level security is the backstop layer (TDD-001 §6.1), and a backstop that
- * is never exercised is a comment. These tests talk to a real PostgreSQL with
- * the real policies, as the real non-owner application role.
+ * is never exercised is a comment. These tests talk to the real platform
+ * database with the real policies, as the real non-owner application role
+ * (platform_app). Invoicing's own tables are proved the same way in
+ * invoicing/database/rls.test.ts.
  *
- * They need a migrated, seeded database. Run:
+ * They need migrated, seeded databases. Run:
  *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadEnv } from '../../config/load-env.js';
 
 loadEnv();
 
-const appUrl = process.env['DATABASE_URL'];
-const ownerUrl = process.env['DIRECT_DATABASE_URL'] ?? appUrl;
+const appUrl = process.env['PLATFORM_DATABASE_URL'];
+const ownerUrl = process.env['PLATFORM_DIRECT_DATABASE_URL'] ?? appUrl;
+const invoicingUrl = process.env['INVOICING_DATABASE_URL'];
 
 // Skipped rather than failed when no database is configured, so a unit-test-only
 // run stays useful. The CI integration stage always provides one.
 const describeWithDb = appUrl && ownerUrl ? describe : describe.skip;
 
-describeWithDb('row-level security', () => {
+describeWithDb('row-level security (platform database)', () => {
   const app = new PrismaClient({ datasources: { db: { url: appUrl! } } });
   const owner = new PrismaClient({ datasources: { db: { url: ownerUrl! } } });
 
@@ -46,7 +49,7 @@ describeWithDb('row-level security', () => {
     await Promise.all([app.$disconnect(), owner.$disconnect()]);
   });
 
-  /** Runs `work` with the given scope applied, the way PrismaService does. */
+  /** Runs `work` with the given scope applied, the way PlatformPrismaService does. */
   async function withScope<T>(
     settings: { merchantId: string; allBrands: boolean; brandIds: string[] },
     work: (tx: Omit<PrismaClient, '$transaction'>) => Promise<T>,
@@ -60,10 +63,10 @@ describeWithDb('row-level security', () => {
   }
 
   it('hides everything when no scope is set', async () => {
-    expect(await app.invoice.count()).toBe(0);
     expect(await app.brand.count()).toBe(0);
-    expect(await app.customer.count()).toBe(0);
     expect(await app.merchant.count()).toBe(0);
+    expect(await app.user.count()).toBe(0);
+    expect(await app.integrationConnection.count()).toBe(0);
   });
 
   it('shows every brand in the merchant to an all-brand role', async () => {
@@ -71,11 +74,11 @@ describeWithDb('row-level security', () => {
       { merchantId: sugrpayId, allBrands: true, brandIds: [] },
       async (tx) => ({
         brands: await tx.brand.count(),
-        invoices: await tx.invoice.count(),
+        users: await tx.user.count(),
       }),
     );
     expect(counts.brands).toBe(3);
-    expect(counts.invoices).toBeGreaterThan(0);
+    expect(counts.users).toBeGreaterThan(0);
   });
 
   it('never leaks another merchant to an all-brand role', async () => {
@@ -90,64 +93,21 @@ describeWithDb('row-level security', () => {
       { merchantId: sugrpayId, allBrands: false, brandIds: [solsticeId] },
       async (tx) => ({
         brands: await tx.brand.count(),
-        invoices: await tx.invoice.count(),
-        lineItems: await tx.lineItem.count(),
+        // integration_connection carries a brand_id, held to the same scope.
+        connections: await tx.integrationConnection.count(),
       }),
     );
     expect(counts.brands).toBe(1);
-    expect(counts.invoices).toBeGreaterThan(0);
-    // line_item carries no brand_id; it is reached through its invoice.
-    expect(counts.lineItems).toBeGreaterThan(0);
+    expect(counts.connections).toBe(1);
   });
 
   it('refuses a brand id from another merchant even when named explicitly', async () => {
     // The probe an attacker actually runs: a valid session, someone else's id.
     const visible = await withScope(
       { merchantId: northgateId, allBrands: false, brandIds: [solsticeId] },
-      (tx) => tx.invoice.count(),
+      (tx) => tx.brand.count({ where: { id: solsticeId } }),
     );
     expect(visible).toBe(0);
-  });
-
-  it('holds child tables to the same scope as their parent invoice', async () => {
-    const events = await withScope(
-      { merchantId: northgateId, allBrands: false, brandIds: [solsticeId] },
-      (tx) => tx.invoiceEvent.count(),
-    );
-    expect(events).toBe(0);
-  });
-
-  it('holds customer_contact_person to the same scope as its parent customer', async () => {
-    // customer_contact_person carries no brand_id of its own — reached
-    // exclusively through its parent customer (app_customer_visible), the
-    // same shape line_item/invoice_event already prove above for invoice.
-    // Zoho-sourced in practice, but the row here is created directly so
-    // this test doesn't depend on ever having run a real pull.
-    const customer = await owner.customer.findFirst({ where: { brandId: solsticeId } });
-    if (!customer) throw new Error('seed data missing a Solstice customer — run pnpm db:seed');
-    const person = await owner.customerContactPerson.create({
-      data: { customerId: customer.id, firstName: 'RLS Test Contact' },
-    });
-
-    const visible = await withScope(
-      { merchantId: sugrpayId, allBrands: false, brandIds: [solsticeId] },
-      (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),
-    );
-    expect(visible).toBe(1);
-
-    const wrongBrand = await withScope(
-      { merchantId: sugrpayId, allBrands: false, brandIds: [] },
-      (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),
-    );
-    expect(wrongBrand).toBe(0);
-
-    // Even an all-brand role gets nothing: app_brand_visible requires the
-    // brand to belong to the *caller's* merchant, and Solstice is Sugrpay's.
-    const wrongMerchant = await withScope(
-      { merchantId: northgateId, allBrands: true, brandIds: [] },
-      (tx) => tx.customerContactPerson.count({ where: { id: person.id } }),
-    );
-    expect(wrongMerchant).toBe(0);
   });
 
   it('denies the application role any update on the audit log', async () => {
@@ -155,5 +115,22 @@ describeWithDb('row-level security', () => {
     await expect(app.$executeRawUnsafe(`UPDATE audit_log SET action = 'tampered'`)).rejects.toThrow(
       /permission denied/i,
     );
+  });
+
+  it('lets the application role write to the event outbox but never read it', async () => {
+    await expect(app.$queryRawUnsafe(`SELECT id FROM outbox_event LIMIT 1`)).rejects.toThrow(
+      /permission denied/i,
+    );
+  });
+
+  it.skipIf(!invoicingUrl)('cannot connect to another module’s database at all', async () => {
+    // One database per module: platform_app holds no CONNECT on invoicing's.
+    const url = new URL(invoicingUrl!);
+    const platformRole = new URL(appUrl!);
+    url.username = platformRole.username;
+    url.password = platformRole.password;
+    const intruder = new PrismaClient({ datasources: { db: { url: url.toString() } } });
+    await expect(intruder.$queryRawUnsafe('SELECT 1')).rejects.toThrow(/permission denied|denied/i);
+    await intruder.$disconnect().catch(() => undefined);
   });
 });

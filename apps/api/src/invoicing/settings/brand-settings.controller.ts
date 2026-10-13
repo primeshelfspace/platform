@@ -1,5 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
+import { z } from 'zod';
 import {
+  brandSettingsSchema,
   emailReceiptSettingsSchema,
   emailReceiptTestSendSchema,
   idSchema,
@@ -23,9 +25,29 @@ import {
   type PaymentPageDisplaySettings,
 } from './brand-settings.service.js';
 
+const invoiceNumberingSchema = z.object({
+  invoicePrefix: brandSettingsSchema.shape.invoicePrefix,
+});
+
 @Controller('brands/:brandId/settings')
 export class BrandSettingsController {
   constructor(private readonly settings: BrandSettingsService) {}
+
+  /**
+   * Sets the invoice-number prefix for a brand that has not numbered an
+   * invoice yet — the "create brand" flow calls it right after the platform
+   * creates the brand, since the prefix is an invoicing setting and the
+   * platform does not hold it. Gated like brand creation itself.
+   */
+  @Put('invoice-numbering')
+  @RequirePermission('BRANDS', 'WRITE')
+  setInvoiceNumbering(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Body(zodPipe(invoiceNumberingSchema)) body: { invoicePrefix: string },
+  ): Promise<{ invoicePrefix: string }> {
+    return this.settings.setInitialInvoicePrefix(scope, brandId, body.invoicePrefix);
+  }
 
   @Get('payment-methods')
   @RequirePermission('BRAND_CONFIGURATION', 'READ')

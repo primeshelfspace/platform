@@ -1,5 +1,5 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, type Brand } from '@prisma/client';
+import { Prisma, type Brand } from '../database/client.js';
 import type { BrandInput, Scope, StoragePort } from '@sugrpay/shared';
 import { isPublicScope, storageKeys, STORAGE_PORT } from '@sugrpay/shared';
 import {
@@ -8,11 +8,8 @@ import {
   storeLogo,
   type LogoUpload,
 } from '../../common/logo-upload.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
-
-export interface CreateBrandInput extends BrandInput {
-  readonly invoicePrefix: string;
-}
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
+import { PlatformOutbox } from '../events/platform-outbox.js';
 
 export type BrandWithLogo = Brand & { readonly logoUrl: string | null };
 
@@ -28,12 +25,17 @@ export type BrandWithLogo = Brand & { readonly logoUrl: string | null };
  * Create always targets the calling user's own merchant — a brand has no
  * meaning outside the tenant that owns it, and nothing in this app lets one
  * merchant create a brand for another.
+ *
+ * Every write records a platform.brand.* event in the same transaction and
+ * flushes it after commit, so products holding a copy of the brand (invoicing)
+ * see the change before this call returns.
  */
 @Injectable()
 export class BrandsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    private readonly outbox: PlatformOutbox,
   ) {}
 
   async list(scope: Scope): Promise<BrandWithLogo[]> {
@@ -56,19 +58,25 @@ export class BrandsService {
     return { ...brand, logoUrl };
   }
 
-  async create(scope: Scope, input: CreateBrandInput): Promise<Brand> {
+  /**
+   * Creates the brand and announces it (platform.brand.created). Products set
+   * up their own per-brand settings from that event — invoicing's invoice
+   * prefix, for example, is saved through invoicing afterwards, never here.
+   */
+  async create(scope: Scope, input: BrandInput): Promise<Brand> {
     // A public (token-scoped) caller has no merchantId of its own to create
     // a brand under — this endpoint is never reachable that way today, but
     // the narrowing makes the invariant explicit rather than assumed.
     if (isPublicScope(scope)) {
       throw new Error('brand creation requires an authenticated merchant scope');
     }
-    const { invoicePrefix, ...brandFields } = input;
+    const brandFields = input;
+    const merchantId = scope.merchantId;
 
-    return this.prisma.withScope(scope, (tx) =>
-      tx.brand.create({
+    const brand = await this.prisma.withScope(scope, async (tx) => {
+      const created = await tx.brand.create({
         data: {
-          merchantId: scope.merchantId,
+          merchantId,
           legalName: brandFields.legalName,
           displayName: brandFields.displayName,
           businessType: brandFields.businessType,
@@ -81,10 +89,13 @@ export class BrandsService {
           currency: brandFields.currency,
           timezone: brandFields.timezone,
           themeColor: brandFields.themeColor,
-          settings: { create: { invoicePrefix } },
         },
-      }),
-    );
+      });
+      await this.outbox.recordBrand(tx, 'created', created);
+      return created;
+    });
+    await this.outbox.flush();
+    return brand;
   }
 
   /**
@@ -103,25 +114,48 @@ export class BrandsService {
     );
     if (!existing) throw new NotFoundException('brand not found');
 
-    return this.prisma.withScope(scope, (tx) =>
-      tx.brand.update({
-        where: { id: brandId },
-        data: {
-          legalName: input.legalName,
-          displayName: input.displayName,
-          businessType: input.businessType,
-          salesPerson: input.salesPersonName,
-          phone: input.phone,
-          email: input.email,
-          mailingAddress: input.mailingAddress ?? Prisma.DbNull,
-          billingAddress: input.billingAddress ?? Prisma.DbNull,
-          taxId: input.taxId,
-          currency: input.currency,
-          timezone: input.timezone,
-          themeColor: input.themeColor,
-        },
-      }),
+    return this.updateAndPublish(scope, brandId, {
+      legalName: input.legalName,
+      displayName: input.displayName,
+      businessType: input.businessType,
+      salesPerson: input.salesPersonName,
+      phone: input.phone,
+      email: input.email,
+      mailingAddress: input.mailingAddress ?? Prisma.DbNull,
+      billingAddress: input.billingAddress ?? Prisma.DbNull,
+      taxId: input.taxId,
+      currency: input.currency,
+      timezone: input.timezone,
+      themeColor: input.themeColor,
+    });
+  }
+
+  /**
+   * The brand's primary colour, on its own — the invoicing Branding screens
+   * edit it alongside invoicing's own settings. A no-op (no event, no
+   * updatedAt bump) when the colour is unchanged.
+   */
+  async setThemeColor(scope: Scope, brandId: string, themeColor: string): Promise<Brand> {
+    const existing = await this.prisma.withScope(scope, (tx) =>
+      tx.brand.findUnique({ where: { id: brandId } }),
     );
+    if (!existing) throw new NotFoundException('brand not found');
+    if (existing.themeColor === themeColor) return existing;
+    return this.updateAndPublish(scope, brandId, { themeColor });
+  }
+
+  private async updateAndPublish(
+    scope: Scope,
+    brandId: string,
+    data: Prisma.BrandUpdateInput,
+  ): Promise<Brand> {
+    const brand = await this.prisma.withScope(scope, async (tx) => {
+      const updated = await tx.brand.update({ where: { id: brandId }, data });
+      await this.outbox.recordBrand(tx, 'updated', updated);
+      return updated;
+    });
+    await this.outbox.flush();
+    return brand;
   }
 
   /**
@@ -140,9 +174,7 @@ export class BrandsService {
     const key = storageKeys.brandLogo(brandId, `logo.${extension}`);
     const logoUrl = await storeLogo(this.storage, key, file);
 
-    await this.prisma.withScope(scope, (tx) =>
-      tx.brand.update({ where: { id: brandId }, data: { logoKey: key } }),
-    );
+    await this.updateAndPublish(scope, brandId, { logoKey: key });
 
     return { logoUrl };
   }

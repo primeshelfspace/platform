@@ -18,7 +18,7 @@ import type { CheckImageUpload } from '../../common/check-upload.js';
 import { LOGO_URL_TTL_SECONDS } from '../../common/logo-upload.js';
 import { StripeAccountService } from '../../platform/public-api.js';
 import { ZohoPullService } from '../zoho-sync/zoho-pull.service.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 
 export interface PublicInvoiceView {
   number: string;
@@ -88,7 +88,7 @@ export interface PublicInvoiceView {
 @Injectable()
 export class PublicInvoicesService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     private readonly stripeAccounts: StripeAccountService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly zohoPull: ZohoPullService,

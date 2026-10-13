@@ -7,7 +7,7 @@ import {
   type CustomerListQuery,
   type Scope,
 } from '@sugrpay/shared';
-import type { Customer } from '@prisma/client';
+import type { Customer } from '../database/client.js';
 import { zodPipe } from '../../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../platform/public-api.js';
 import {

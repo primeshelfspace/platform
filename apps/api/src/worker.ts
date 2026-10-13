@@ -4,19 +4,13 @@ import { NestFactory } from '@nestjs/core';
 import { Worker, type Job } from 'bullmq';
 import { AppModule } from './app.module.js';
 import { getEnv } from './config/env.js';
-import { PrismaService } from './infra/prisma/prisma.service.js';
-import { QueueService } from './infra/queue/queue.service.js';
 import { RedisService } from './infra/redis/redis.service.js';
 import { QUEUES, QUEUE_NAMES, type QueueName } from './infra/queue/queues.js';
-import { ZohoPullService } from './invoicing/public-api.js';
-import { ZohoSyncService } from './invoicing/public-api.js';
-
-/**
- * How long a SyncJob may sit in RUNNING before it is treated as abandoned
- * rather than slow. See the reaper in the 'scheduled-sync' handler for why this
- * exists and why thirty minutes is the right side of every legitimate job.
- */
-const STALE_SYNC_JOB_MS = 30 * 60 * 1000;
+import {
+  ZohoPullService,
+  ZohoScheduledSyncService,
+  ZohoSyncService,
+} from './invoicing/public-api.js';
 
 /**
  * Worker entry point.
@@ -42,113 +36,36 @@ async function bootstrap(): Promise<void> {
 
   // A full application context, so handlers get the same services, adapters and
   // scoped database access the API has.
-  const app = await NestFactory.createApplicationContext(AppModule, {
+  const app = await NestFactory.createApplicationContext(AppModule.register(env), {
     logger: ['error', 'warn', 'log'],
   });
   const redis = app.get(RedisService);
 
-  // FR-ZHO-011/012 (push) and FR-ZHO-030 (pull): a brand with no Zoho
-  // connection is a no-op inside each push method, not a failure, so an
-  // unconnected brand's jobs succeed and drain quietly.
-  const zohoSync = app.get(ZohoSyncService);
-  const zohoPull = app.get(ZohoPullService);
-  const prisma = app.get(PrismaService);
-  const queue = app.get(QueueService);
+  if (env.ENABLED_PRODUCTS.includes('invoicing')) {
+    // FR-ZHO-011/012 (push) and FR-ZHO-030 (pull): a brand with no Zoho
+    // connection is a no-op inside each push method, not a failure, so an
+    // unconnected brand's jobs succeed and drain quietly.
+    const zohoSync = app.get(ZohoSyncService);
+    const zohoPull = app.get(ZohoPullService);
 
-  handlers.sync = {
-    'zoho-push-customer': (job) => zohoSync.pushCustomer(job.data.brandId, job.data.customerId),
-    'zoho-push-invoice': (job) => zohoSync.pushInvoice(job.data.brandId, job.data.invoiceId),
-    'zoho-push-payment': (job) => zohoSync.pushPayment(job.data.brandId, job.data.paymentId),
-    // force is set only by the on-demand "pull now" endpoint
-    // (zoho-connect.controller.ts) — it bypasses pullBrand's contacts
-    // full-scan floor, which the scheduled tick below must never do.
-    'zoho-pull-brand': (job) => zohoPull.pullBrand(job.data.brandId, job.data.force === true),
-  };
+    handlers.sync = {
+      'zoho-push-customer': (job) => zohoSync.pushCustomer(job.data.brandId, job.data.customerId),
+      'zoho-push-invoice': (job) => zohoSync.pushInvoice(job.data.brandId, job.data.invoiceId),
+      'zoho-push-payment': (job) => zohoSync.pushPayment(job.data.brandId, job.data.paymentId),
+      // force is set only by the on-demand "pull now" endpoint
+      // (zoho-connect.controller.ts) — it bypasses pullBrand's contacts
+      // full-scan floor, which the scheduled tick below must never do.
+      'zoho-pull-brand': (job) => zohoPull.pullBrand(job.data.brandId, job.data.force === true),
+    };
 
-  // The 'scheduled-sync' repeatable job (queues.ts, registered by the API
-  // process via QueueService.registerScheduledJobs) ticks every minute — that
-  // is just this handler's own resolution, not any one brand's cadence. Each
-  // tick lists every live Zoho connection and enqueues a pull only for the
-  // brands actually due, per their own pullFrequencyMinutes (FR-ZHO-030); a
-  // brand configured for "Daily" is skipped on the other 1,439 ticks.
-  handlers.scheduled = {
-    'scheduled-sync': async () => {
-      // G-11. A SyncJob row is set RUNNING before its work starts and moved to
-      // SUCCEEDED/SKIPPED/FAILED after, so a process that dies mid-job — a
-      // deploy, an OOM kill, a crash — leaves the row RUNNING with nothing that
-      // will ever transition it. They accumulate silently and, because the
-      // integrations panel shows the most recent rows, eventually crowd out the
-      // real activity with jobs that are permanently "in flight".
-      //
-      // Thirty minutes is comfortably longer than any legitimate job: the
-      // per-record pulls are single API calls, the list scans are bounded by the
-      // rate limiter, and BullMQ's own retry budget for this queue is about the
-      // same span — so anything still RUNNING past it is not slow, it is gone.
-      // Guarded: reaping is housekeeping, and it runs before the part of this
-      // tick that actually enqueues pulls. Letting it throw would mean no brand
-      // syncs at all this tick — trading a cosmetic backlog of stale rows for
-      // real data going stale.
-      let reapedCount = 0;
-      try {
-        const reaped = await prisma.withoutScope(
-          'scheduled-sync: failing sync jobs orphaned by a crashed worker',
-          (client) =>
-            client.syncJob.updateMany({
-              where: {
-                status: 'RUNNING',
-                createdAt: { lt: new Date(Date.now() - STALE_SYNC_JOB_MS) },
-              },
-              data: {
-                status: 'FAILED',
-                errorClass: 'PERMANENT',
-                lastError: 'abandoned — the worker processing this job stopped before finishing it',
-              },
-            }),
-        );
-        reapedCount = reaped.count;
-        if (reapedCount > 0) {
-          logger.warn(`scheduled-sync: failed ${reapedCount} sync job(s) orphaned by a crash`);
-        }
-      } catch (error) {
-        logger.warn(
-          `scheduled-sync: could not reap orphaned sync jobs, continuing to the pull scan: ` +
-            `${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-
-      // Zoho → platform sync is webhook-driven; the timed pull only runs when
-      // explicitly re-enabled (ZOHO_SCHEDULED_PULL_ENABLED). The tick itself
-      // stays, for the reaping above — that makes no Zoho calls.
-      if (!env.ZOHO_SCHEDULED_PULL_ENABLED) {
-        return { brandsConnected: 0, brandsEnqueued: 0, staleJobsReaped: reapedCount };
-      }
-
-      const connections = await prisma.withoutScope(
-        'scheduled-sync: listing brands with a live Zoho connection',
-        (client) =>
-          client.integrationConnection.findMany({
-            where: {
-              provider: 'ZOHO_BOOKS',
-              status: 'CONNECTED',
-              encryptedCredentials: { not: null },
-            },
-            select: { brandId: true, lastPulledAt: true, pullFrequencyMinutes: true },
-          }),
-      );
-      const now = Date.now();
-      const due = connections.filter(
-        (c) => !c.lastPulledAt || now - c.lastPulledAt.getTime() >= c.pullFrequencyMinutes * 60_000,
-      );
-      await Promise.all(
-        due.map(({ brandId }) => queue.enqueue('sync', 'zoho-pull-brand', { brandId })),
-      );
-      return {
-        brandsConnected: connections.length,
-        brandsEnqueued: due.length,
-        staleJobsReaped: reapedCount,
-      };
-    },
-  };
+    // The every-minute 'scheduled-sync' tick: reaps orphaned sync jobs and
+    // enqueues the Zoho pulls that are due. Invoicing logic, so it lives in
+    // the invoicing module (ZohoScheduledSyncService).
+    const scheduledSync = app.get(ZohoScheduledSyncService);
+    handlers.scheduled = {
+      'scheduled-sync': () => scheduledSync.tick(),
+    };
+  }
 
   const workers = QUEUE_NAMES.map((name) => {
     const definition = QUEUES[name];

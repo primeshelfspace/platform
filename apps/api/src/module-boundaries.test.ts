@@ -65,6 +65,10 @@ function crossModuleEdges(): Edge[] {
 const describeEdge = (e: Edge) => `${e.from} -> ${e.to}`;
 const isPublicApi = (e: Edge) =>
   e.to === join(e.toOwner, 'public-api.ts') || e.to === join(e.toOwner, 'modules.ts');
+/** Tests and their *.test-support.ts helpers may build fixtures from another
+ * module's internals (a real platform brand for an invoicing test, say). The
+ * direction rules still apply to them; only the public-api rule is relaxed. */
+const isTestCode = (e: Edge) => /\.test(-support)?\.ts$/.test(e.from);
 
 describe('module boundaries', () => {
   const edges = crossModuleEdges();
@@ -96,7 +100,7 @@ describe('module boundaries', () => {
   });
 
   it('modules are reached only through their public-api.ts or modules.ts', () => {
-    const violations = edges.filter((e) => !isPublicApi(e));
+    const violations = edges.filter((e) => !isPublicApi(e) && !isTestCode(e));
     expect(violations.map(describeEdge)).toEqual([]);
   });
 });

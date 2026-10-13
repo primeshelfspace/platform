@@ -3,10 +3,10 @@ import type { Response } from 'express';
 import { ACCOUNTING_PORT, PAYMENT_GATEWAY_PORT, STORAGE_PORT } from '@sugrpay/shared';
 import type { AccountingPort, PaymentGatewayPort, StoragePort } from '@sugrpay/shared';
 import { ENV, type Env } from '../config/env.js';
-import { PrismaService } from '../infra/prisma/prisma.service.js';
 import { RedisService } from '../infra/redis/redis.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';
 import { Public } from '../platform/public-api.js';
+import { HealthChecks } from './health-checks.js';
 
 type CheckState = 'up' | 'down' | 'skipped';
 
@@ -23,13 +23,13 @@ interface CheckResult {
  * They are separate on purpose: liveness answers "is this process wedged", and
  * a dependency outage must not cause the orchestrator to restart a process that
  * is working perfectly well. Readiness answers "should traffic come here", and
- * that one does depend on Postgres and Redis.
+ * that one does depend on every module's database and on Redis.
  */
 @Controller('health')
 export class HealthController {
   constructor(
     @Inject(ENV) private readonly env: Env,
-    private readonly prisma: PrismaService,
+    private readonly moduleChecks: HealthChecks,
     private readonly redis: RedisService,
     private readonly queues: QueueService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
@@ -41,7 +41,7 @@ export class HealthController {
   @Get()
   async summary(@Res() response: Response): Promise<void> {
     const checks = await Promise.all([
-      this.check('postgres', () => this.prisma.ping()),
+      ...this.databaseChecks(),
       this.check('redis', () => this.redis.ping()),
       this.check('queues', async () => {
         await this.queues.counts();
@@ -89,7 +89,7 @@ export class HealthController {
   @Get('ready')
   async ready(@Res() response: Response): Promise<void> {
     const checks = await Promise.all([
-      this.check('postgres', () => this.prisma.ping()),
+      ...this.databaseChecks(),
       this.check('redis', () => this.redis.ping()),
     ]);
     const ready = checks.every((c) => c.state === 'up');
@@ -100,6 +100,11 @@ export class HealthController {
   @Get('queues')
   async queueDepths(): Promise<Record<string, Record<string, number>>> {
     return this.queues.counts();
+  }
+
+  /** One probe per module database, registered by the module that owns it. */
+  private databaseChecks(): Promise<CheckResult>[] {
+    return this.moduleChecks.entries().map(([name, probe]) => this.check(name, probe));
   }
 
   private async check(name: string, probe: () => Promise<unknown>): Promise<CheckResult> {

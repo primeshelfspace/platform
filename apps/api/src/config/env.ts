@@ -23,8 +23,30 @@ const envSchema = z
 
     API_PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
 
-    DATABASE_URL: z.string().url(),
-    DIRECT_DATABASE_URL: z.string().url().optional(),
+    /**
+     * Which product modules this process runs, comma-separated. The platform
+     * always runs. Empty runs the platform alone — CI does exactly that to
+     * prove the platform depends on no product.
+     */
+    ENABLED_PRODUCTS: z
+      .string()
+      .default('invoicing')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((name) => name.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.enum(['invoicing']))),
+
+    // One database per module. Each module's runtime connection uses its own
+    // NON-owner role, which row-level security binds and which can reach no
+    // other module's database; the DIRECT url is that database's owner,
+    // used for migrations and deliberate cross-tenant work.
+    PLATFORM_DATABASE_URL: z.string().url(),
+    PLATFORM_DIRECT_DATABASE_URL: z.string().url().optional(),
+    INVOICING_DATABASE_URL: z.string().url(),
+    INVOICING_DIRECT_DATABASE_URL: z.string().url().optional(),
     REDIS_URL: z.string().url(),
 
     SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
@@ -131,6 +153,12 @@ const envSchema = z
     // CORS_ALLOWED_ORIGINS (the old per-origin allowlist input) is gone —
     // main.ts now sets origin: true and accepts every origin, so there's
     // nothing left for this to feed into.
+
+    /** How often each process polls the event outboxes for due events
+     * (retries and anything a crashed process left behind). Producers also
+     * flush right after committing, so this is not the delivery latency.
+     * 0 disables polling (tests flush explicitly). */
+    OUTBOX_POLL_INTERVAL_MS: z.coerce.number().int().min(0).default(1000),
 
     WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
     ENABLE_SCHEDULER: booleanish.default(true),

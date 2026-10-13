@@ -10,11 +10,10 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Brand } from '@prisma/client';
+import type { Brand } from '../database/client.js';
 import {
   brandObjectSchema,
   brandSchema,
-  brandSettingsSchema,
   idSchema,
   TAX_ID_FORMAT_MESSAGE,
   taxIdMatchesCountry,
@@ -23,11 +22,14 @@ import {
 } from '@sugrpay/shared';
 import { zodPipe } from '../../common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../tenancy/authorisation.js';
-import { BrandsService, type BrandWithLogo, type CreateBrandInput } from './brands.service.js';
+import { BrandsService, type BrandWithLogo } from './brands.service.js';
 
-const createBrandSchema = brandObjectSchema
-  .extend({ invoicePrefix: brandSettingsSchema.shape.invoicePrefix })
-  .refine(taxIdMatchesCountry, { message: TAX_ID_FORMAT_MESSAGE, path: ['taxId'] });
+// No invoicePrefix: that is an invoicing setting, saved through invoicing's
+// PUT /brands/:brandId/settings/invoice-numbering once the brand exists.
+const createBrandSchema = brandObjectSchema.refine(taxIdMatchesCountry, {
+  message: TAX_ID_FORMAT_MESSAGE,
+  path: ['taxId'],
+});
 
 @Controller('brands')
 export class BrandsController {
@@ -43,7 +45,7 @@ export class BrandsController {
   @RequirePermission('BRANDS', 'WRITE', { brandFrom: 'none' })
   create(
     @CurrentScope() scope: Scope,
-    @Body(zodPipe(createBrandSchema)) body: CreateBrandInput,
+    @Body(zodPipe(createBrandSchema)) body: BrandInput,
   ): Promise<Brand> {
     return this.brands.create(scope, body);
   }

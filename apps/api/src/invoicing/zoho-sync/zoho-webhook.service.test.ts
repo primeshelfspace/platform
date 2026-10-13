@@ -4,9 +4,11 @@
  *
  *  1. Existing-record resolution goes through Customer/Invoice's real
  *     zoho_contact_id/zoho_invoice_id unique lookup, and routing for a
- *     brand-new Zoho-native record goes through IntegrationConnection's real
- *     (provider, organization_id) matching — both are exactly the kind of
- *     "looked right in the mock" bug a fake DB would hide.
+ *     brand-new Zoho-native record goes through the platform's real
+ *     IntegrationConnection (provider, organization_id) matching — both are
+ *     exactly the kind of "looked right in the mock" bug a fake DB would hide.
+ *     Brands and connections are therefore real platform records, created
+ *     through the platform harness.
  *  2. Duplicate-webhook dropping is a real Redis TTL key, not a mocked
  *     return value — RedisService is the actual thing ZohoSyncService's
  *     outbound pushes write to.
@@ -19,27 +21,38 @@
  * Needs a migrated database and Redis: pnpm setup:local
  */
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../database/client.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RequestScope } from '@sugrpay/shared';
 import { loadEnv } from '../../config/load-env.js';
 import { getEnv } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
+import type { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
+import { IntegrationConnectionService } from '../../platform/public-api.js';
+import { createPlatformHarness } from '../testing/platform-harness.test-support.js';
 import type { ZohoPullService } from './zoho-pull.service.js';
 import { ZohoWebhookService } from './zoho-webhook.service.js';
 
 loadEnv();
-const hasDb = Boolean(process.env['DATABASE_URL']);
+const hasDb = Boolean(process.env['INVOICING_DATABASE_URL']);
 const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
 
 describeWithDb('ZohoWebhookService', () => {
-  const prisma = new PrismaService(env!);
+  const prisma = new InvoicingPrismaService(env!);
   const owner = new PrismaClient({
-    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+    datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },
   });
   const redis = new RedisService(env!);
+  const platform = createPlatformHarness(env!, prisma);
+  // The real platform service: routing by organization is what is under test.
+  const connections = new IntegrationConnectionService(
+    platform.prisma,
+    env!,
+    {} as ZohoBooksAdapter,
+    redis,
+  );
 
   let merchantId = '';
   let brandA = '';
@@ -48,19 +61,13 @@ describeWithDb('ZohoWebhookService', () => {
   const cleanupBrandIds: string[] = [];
 
   async function makeBrand(): Promise<string> {
-    const brand = await owner.brand.create({
-      data: {
-        merchantId,
-        legalName: `Test Brand ${randomUUID()}`,
-        displayName: `Test Brand ${randomUUID()}`,
-      },
-    });
+    const brand = await platform.createBrand(merchantId, `Test Brand ${randomUUID()}`);
     cleanupBrandIds.push(brand.id);
     return brand.id;
   }
 
   async function connectZoho(brandId: string, organizationId: string): Promise<void> {
-    await owner.integrationConnection.create({
+    await platform.owner.integrationConnection.create({
       data: {
         brandId,
         provider: 'ZOHO_BOOKS',
@@ -72,10 +79,7 @@ describeWithDb('ZohoWebhookService', () => {
   }
 
   beforeEach(async () => {
-    const merchant = await owner.merchant.create({
-      data: { name: `Zoho webhook test ${randomUUID()}`, contactEmail: 'ops@example.com' },
-    });
-    merchantId = merchant.id;
+    merchantId = await platform.createMerchant(`Zoho webhook test ${randomUUID()}`);
     cleanupBrandIds.length = 0;
     brandA = await makeBrand();
     brandB = await makeBrand();
@@ -90,13 +94,21 @@ describeWithDb('ZohoWebhookService', () => {
   });
 
   afterEach(async () => {
-    // Cascades to every brand, customer, invoice, integration connection and
-    // pending assignment created under it.
-    await owner.merchant.delete({ where: { id: merchantId } }).catch(() => undefined);
+    // Pending assignments carry the merchant id but no foreign key to it (the
+    // merchant lives in the platform database), so they are cleared here.
+    await owner.pendingBrandAssignment.deleteMany({ where: { merchantId } });
+    // Platform side cascades brands and connections; invoicing side cascades
+    // every customer and invoice under the brand copies.
+    await platform.deleteMerchant(merchantId, cleanupBrandIds);
   });
 
   afterAll(async () => {
-    await Promise.all([prisma.$disconnect(), owner.$disconnect(), redis.onModuleDestroy()]);
+    await Promise.all([
+      prisma.$disconnect(),
+      owner.$disconnect(),
+      redis.onModuleDestroy(),
+      platform.close(),
+    ]);
   });
 
   function fakePull(): ZohoPullService {
@@ -114,7 +126,7 @@ describeWithDb('ZohoWebhookService', () => {
       data: { brandId: brandA, displayName: 'Acme Co', zohoContactId: contactId },
     });
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
 
     // A deliberately wrong/unrelated organization_id — must not matter at all
     // for a record this platform has already tagged with a brand.
@@ -134,7 +146,7 @@ describeWithDb('ZohoWebhookService', () => {
       data: { brandId: brandA, displayName: 'Acme Co', zohoContactId: contactId },
     });
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
 
     // A 30s guard here used to drop a genuine second edit made in Zoho; a true
     // redelivery is a no-op in pullOneCustomer's last_modified_time check.
@@ -152,7 +164,7 @@ describeWithDb('ZohoWebhookService', () => {
     await connectZoho(brandA, organizationId);
     const contactId = `contact-${randomUUID()}`;
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
 
     const result = await service.handleContactEvent('created', organizationId, contactId);
 
@@ -165,7 +177,7 @@ describeWithDb('ZohoWebhookService', () => {
     await connectZoho(brandA, organizationId);
     const contactId = `contact-${randomUUID()}`;
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
 
     await service.handleContactEvent('created', organizationId, contactId);
     const second = await service.handleContactEvent('created', organizationId, contactId);
@@ -180,7 +192,7 @@ describeWithDb('ZohoWebhookService', () => {
     await connectZoho(brandB, organizationId);
     const invoiceId = `invoice-${randomUUID()}`;
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
     const rawPayload = { invoice: { invoice_id: invoiceId, invoice_number: 'INV-9' } };
 
     const result = await service.handleInvoiceEvent(
@@ -207,7 +219,7 @@ describeWithDb('ZohoWebhookService', () => {
 
   it('returns 404 and creates nothing when the organization is not connected to any brand', async () => {
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
 
     const result = await service.handleContactEvent(
       'created',
@@ -224,7 +236,7 @@ describeWithDb('ZohoWebhookService', () => {
     await connectZoho(brandA, organizationId);
     const contactId = `contact-${randomUUID()}`; // never seen locally
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
 
     const result = await service.handleContactEvent('status_updated', organizationId, contactId);
 
@@ -242,7 +254,7 @@ describeWithDb('ZohoWebhookService', () => {
       data: { brandId: brandB, displayName: 'Shared Co', zohoContactId: contactId },
     });
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
 
     await service.handleContactEvent('unspecified', 'org-x', contactId);
 
@@ -257,7 +269,7 @@ describeWithDb('ZohoWebhookService', () => {
       pullOneCustomerNow: vi.fn().mockResolvedValue(true),
       pullOneInvoiceNow: vi.fn().mockRejectedValue(new Error('invoice not found in Zoho')),
     } as unknown as ZohoPullService;
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
     const invoiceId = `invoice-${randomUUID()}`;
 
     const result = await service.handleInvoiceEvent('created', organizationId, invoiceId);
@@ -280,7 +292,7 @@ describeWithDb('ZohoWebhookService', () => {
     await connectZoho(brandB, organizationId);
     const contactId = `contact-${randomUUID()}`;
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
     await service.handleContactEvent('created', organizationId, contactId);
     const [pending] = await service.listPendingAssignments(scope);
 
@@ -297,7 +309,7 @@ describeWithDb('ZohoWebhookService', () => {
     await connectZoho(brandB, organizationId);
     const outsiderBrand = await makeBrand(); // same merchant, but never connected to this org
     const pull = fakePull();
-    const service = new ZohoWebhookService(prisma, redis, pull);
+    const service = new ZohoWebhookService(prisma, redis, pull, connections);
     await service.handleContactEvent('created', organizationId, `contact-${randomUUID()}`);
     const [pending] = await service.listPendingAssignments(scope);
 

@@ -5,14 +5,14 @@
  *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@sugrpay/shared';
 import { createFakeMailPort } from '../../adapters/mail/fake-mail.port.js';
 import { LocalDiskAdapter } from '../../adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../../config/load-env.js';
 import { getEnv } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { createFakeQueueService } from '../../infra/queue/fake-queue.service.js';
 import { FakeGatewayAdapter } from '../../adapters/gateway/fake-gateway.adapter.js';
 import { CustomersService } from '../customers/customers.service.js';
@@ -22,12 +22,12 @@ import { InvoicePdfService } from '../pay-api/invoice-pdf.service.js';
 import { PaymentsService } from './payments.service.js';
 
 loadEnv();
-const hasDb = Boolean(process.env['DATABASE_URL']);
+const hasDb = Boolean(process.env['INVOICING_DATABASE_URL']);
 const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
 
 describeWithDb('PaymentsService', () => {
-  const prisma = new PrismaService(env!);
+  const prisma = new InvoicingPrismaService(env!);
   const gateway = new FakeGatewayAdapter();
   const queue = createFakeQueueService();
   const customers = new CustomersService(prisma, queue);
@@ -44,7 +44,7 @@ describeWithDb('PaymentsService', () => {
   );
   const payments = new PaymentsService(prisma, env!, gateway, queue);
   const owner = new PrismaClient({
-    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+    datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },
   });
 
   let merchantId = '';

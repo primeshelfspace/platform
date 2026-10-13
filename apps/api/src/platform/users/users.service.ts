@@ -6,7 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type User } from '@prisma/client';
+import { Prisma, type User } from '../database/client.js';
 import {
   coversAllBrands,
   mayAssignRole,
@@ -16,7 +16,7 @@ import {
   type UserListQuery,
   type UserStatus,
 } from '@sugrpay/shared';
-import { PrismaService, type ScopedClient } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService, type ScopedClient } from '../database/platform-prisma.service.js';
 import { hashPassword } from '../auth/password.js';
 import { PasswordResetService } from '../auth/password-reset.service.js';
 import { AuthMailService } from '../auth/auth-mail.service.js';
@@ -48,7 +48,7 @@ type UserWithAssignments = User & { assignments: { brandId: string }[] };
  * row in roles.ts): which role and which brands a given user actually holds,
  * and the seniority/brand-scoping rules around changing either.
  *
- * Every method runs inside PrismaService.withScope — the `user` RLS policy
+ * Every method runs inside PlatformPrismaService.withScope — the `user` RLS policy
  * already confines every query to the caller's merchant; a Brand Admin's
  * narrower view (their own brands only) is enforced here on top of that,
  * since RLS has no concept of "which brands this particular Brand Admin
@@ -57,7 +57,7 @@ type UserWithAssignments = User & { assignments: { brandId: string }[] };
 @Injectable()
 export class UsersService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     private readonly passwordResets: PasswordResetService,
     private readonly mail: AuthMailService,
   ) {}
@@ -388,7 +388,7 @@ export class UsersService {
   /** Same reasoning as CustomersService.translateWriteError: a bare RLS text
    * match is the only signal a WITH CHECK failure gives Prisma. */
   private translateWriteError(error: unknown): Error {
-    if (PrismaService.isUniqueViolation(error)) {
+    if (PlatformPrismaService.isUniqueViolation(error)) {
       return new ConflictException('a user with this email address already exists');
     }
     if (error instanceof Error && /row-level security/i.test(error.message)) {

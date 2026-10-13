@@ -7,12 +7,16 @@
  * authorisation tests something to fail against. The TDD-001 §9.3 worked
  * example is present verbatim as a fixture.
  *
- * Runs as the schema OWNER (DIRECT_DATABASE_URL). Seeding creates rows across
- * merchants, which is precisely what row-level security forbids the runtime
- * role from doing.
+ * Seeds BOTH module databases, each as its OWNER (*_DIRECT_DATABASE_URL).
+ * Seeding creates rows across merchants, which is precisely what row-level
+ * security forbids the runtime roles from doing.
+ *
+ * Platform data (merchants, brands, users, sessions, connections) goes to the
+ * platform database; invoicing data (settings, customers, invoices, payments,
+ * sync jobs) to the invoicing database. Each brand is copied into invoicing's
+ * brand table with the same function the live brand events use.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { PrismaClient, type Prisma } from '@prisma/client';
 import {
   calculate,
   parseMinor,
@@ -22,13 +26,20 @@ import {
   type PaymentMethod,
   type Role,
 } from '@sugrpay/shared';
+import { PrismaClient as InvoicingClient } from '../generated/invoicing/index.js';
+import { PrismaClient as PlatformClient, type Prisma } from '../generated/platform/index.js';
+import { applyBrandSnapshot } from '../src/invoicing/platform-sync/brand-replica.js';
 import { hashPassword } from '../src/platform/auth/password.js';
+import { toBrandSnapshot } from '../src/platform/events/brand-snapshot.js';
 
-const prisma = new PrismaClient({
-  datasources: {
-    db: { url: process.env['DIRECT_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '' },
-  },
-});
+function ownerUrl(module: 'PLATFORM' | 'INVOICING'): string {
+  const url = process.env[`${module}_DIRECT_DATABASE_URL`] ?? process.env[`${module}_DATABASE_URL`];
+  if (!url) throw new Error(`${module}_DIRECT_DATABASE_URL is required to seed`);
+  return url;
+}
+
+const platform = new PlatformClient({ datasources: { db: { url: ownerUrl('PLATFORM') } } });
+const invoicing = new InvoicingClient({ datasources: { db: { url: ownerUrl('INVOICING') } } });
 
 const DEV_PASSWORD = 'sugrpay-dev-password';
 /** Fixed so a developer's saved requests keep working across re-seeds. */
@@ -47,7 +58,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Merchant one — three brands, in three time zones, three theme colours.
   // -------------------------------------------------------------------------
-  const sugrpay = await prisma.merchant.create({
+  const sugrpay = await platform.merchant.create({
     data: {
       name: 'Sugrpay Holdings Inc.',
       contactEmail: 'ops@sugrpay.test',
@@ -136,7 +147,7 @@ async function main(): Promise<void> {
   // Merchant two — exists solely so isolation has something to isolate from.
   // Any query that returns one of these rows to a Sugrpay user is a defect.
   // -------------------------------------------------------------------------
-  const northgate = await prisma.merchant.create({
+  const northgate = await platform.merchant.create({
     data: {
       name: 'Northgate Provisioning Ltd.',
       contactEmail: 'accounts@northgate.test',
@@ -346,7 +357,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // Integration connections and one sync job per error classification.
   // -------------------------------------------------------------------------
-  await prisma.integrationConnection.createMany({
+  await platform.integrationConnection.createMany({
     data: [
       {
         brandId: solstice.id,
@@ -394,7 +405,7 @@ async function main(): Promise<void> {
       status: 'DEAD_LETTERED' as const,
     },
   ];
-  await prisma.syncJob.createMany({
+  await invoicing.syncJob.createMany({
     data: errorClasses.map((entry, index) => ({
       brandId: solstice.id,
       provider: 'ZOHO_BOOKS' as const,
@@ -411,7 +422,7 @@ async function main(): Promise<void> {
   // -------------------------------------------------------------------------
   // A developer session, so the API is callable immediately after seeding.
   // -------------------------------------------------------------------------
-  await prisma.session.create({
+  await platform.session.create({
     data: {
       userId: owner.id,
       tokenHash: createHash('sha256').update(DEV_SESSION_TOKEN).digest('hex'),
@@ -428,13 +439,19 @@ async function main(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function reset(): Promise<void> {
-  // Order matters: children before parents. Merchant cascades cover most of it,
-  // but being explicit keeps a partial failure from leaving orphans.
-  await prisma.$executeRawUnsafe(`
+  // Each database is cleared on its own. Children are listed before parents
+  // so a partial failure cannot leave orphans; CASCADE covers the rest.
+  await invoicing.$executeRawUnsafe(`
     TRUNCATE TABLE
-      audit_log, sync_job, integration_connection, check_submission,
-      invoice_event, payment, line_item, invoice, customer, tax_rate,
-      brand_settings, user_brand_assignment, session, "user", brand, merchant
+      processed_event, pending_brand_assignment, sync_job, check_submission,
+      invoice_event, payment, line_item, invoice, customer_contact_person,
+      customer, tax_rate, brand_settings, brand
+    RESTART IDENTITY CASCADE
+  `);
+  await platform.$executeRawUnsafe(`
+    TRUNCATE TABLE
+      outbox_event, audit_log, integration_connection, password_reset_token,
+      user_brand_assignment, session, "user", brand, merchant
     RESTART IDENTITY CASCADE
   `);
 }
@@ -460,7 +477,8 @@ async function createBrand(
     defaultTaxRateBp: number;
   },
 ) {
-  const brand = await prisma.brand.create({
+  // The brand itself is the platform's.
+  const brand = await platform.brand.create({
     data: {
       merchantId,
       legalName: input.legalName,
@@ -474,27 +492,32 @@ async function createBrand(
       currency: 'USD',
       timezone: input.timezone,
       themeColor: input.themeColor,
-      settings: {
-        create: {
-          invoicePrefix: input.prefix,
-          nextSequence: 1,
-          paymentTermsDays: 30,
-          cardFeeRateBp: input.cardFeeRateBp,
-          partialPaymentEnabled: true,
-          reminderSchedule: [-7, -1, 3, 14],
-        },
-      },
-      taxRates: {
-        create: [
-          { label: 'No tax', rateBp: 0, active: true },
-          {
-            label: `Sales tax ${(input.defaultTaxRateBp / 100).toFixed(2)}%`,
-            rateBp: input.defaultTaxRateBp,
-            active: true,
-          },
-        ],
-      },
     },
+  });
+
+  // Invoicing's copy of it, plus invoicing's own settings and tax rates.
+  await applyBrandSnapshot(invoicing, toBrandSnapshot(brand));
+  await invoicing.brandSettings.update({
+    where: { brandId: brand.id },
+    data: {
+      invoicePrefix: input.prefix,
+      nextSequence: 1,
+      paymentTermsDays: 30,
+      cardFeeRateBp: input.cardFeeRateBp,
+      partialPaymentEnabled: true,
+      reminderSchedule: [-7, -1, 3, 14],
+    },
+  });
+  await invoicing.taxRate.createMany({
+    data: [
+      { brandId: brand.id, label: 'No tax', rateBp: 0, active: true },
+      {
+        brandId: brand.id,
+        label: `Sales tax ${(input.defaultTaxRateBp / 100).toFixed(2)}%`,
+        rateBp: input.defaultTaxRateBp,
+        active: true,
+      },
+    ],
   });
   return brand;
 }
@@ -507,7 +530,7 @@ async function createUser(
   passwordHash: string,
   brandIds: string[],
 ) {
-  return prisma.user.create({
+  return platform.user.create({
     data: {
       merchantId,
       email,
@@ -532,7 +555,7 @@ async function createCustomer(
     type?: 'BUSINESS' | 'INDIVIDUAL';
   },
 ) {
-  return prisma.customer.create({
+  return invoicing.customer.create({
     data: {
       brandId,
       type: input.type ?? 'BUSINESS',
@@ -569,7 +592,7 @@ async function createInvoice(input: {
   dueDaysFromNow?: number;
   settledFraction?: number;
 }) {
-  const settings = await prisma.brandSettings.findUniqueOrThrow({
+  const settings = await invoicing.brandSettings.findUniqueOrThrow({
     where: { brandId: input.brand.id },
   });
 
@@ -596,7 +619,7 @@ async function createInvoice(input: {
     invoiceDate.getTime() + (input.dueDaysFromNow ?? settings.paymentTermsDays) * 24 * 3600 * 1000,
   );
 
-  const invoice = await prisma.invoice.create({
+  const invoice = await invoicing.invoice.create({
     data: {
       brandId: input.brand.id,
       customerId: input.customerId,
@@ -652,13 +675,13 @@ async function createInvoice(input: {
     },
   });
 
-  await prisma.brandSettings.update({
+  await invoicing.brandSettings.update({
     where: { brandId: input.brand.id },
     data: { nextSequence: { increment: 1 } },
   });
 
   if (settledMinor > 0) {
-    await prisma.payment.create({
+    await invoicing.payment.create({
       data: {
         invoiceId: invoice.id,
         brandId: input.brand.id,
@@ -680,13 +703,13 @@ async function createInvoice(input: {
 
 async function summarise(): Promise<void> {
   const [merchants, brands, users, customers, invoices, payments, syncJobs] = await Promise.all([
-    prisma.merchant.count(),
-    prisma.brand.count(),
-    prisma.user.count(),
-    prisma.customer.count(),
-    prisma.invoice.count(),
-    prisma.payment.count(),
-    prisma.syncJob.count(),
+    platform.merchant.count(),
+    platform.brand.count(),
+    platform.user.count(),
+    invoicing.customer.count(),
+    invoicing.invoice.count(),
+    invoicing.payment.count(),
+    invoicing.syncJob.count(),
   ]);
 
   console.log('');
@@ -706,10 +729,12 @@ async function summarise(): Promise<void> {
   console.log('');
 }
 
+const disconnect = () => Promise.all([platform.$disconnect(), invoicing.$disconnect()]);
+
 main()
-  .then(() => prisma.$disconnect())
+  .then(disconnect)
   .catch(async (error: unknown) => {
     console.error(error);
-    await prisma.$disconnect();
+    await disconnect();
     process.exit(1);
   });

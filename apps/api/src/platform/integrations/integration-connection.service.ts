@@ -1,9 +1,9 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../database/client.js';
 import type { AccountingConnection, Pagination, Scope } from '@sugrpay/shared';
 import { decryptCredential, encryptCredential } from '../../common/credential-encryption.js';
 import { ENV, type Env } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
 
@@ -56,22 +56,12 @@ const DEFAULT_SYNC_SETTINGS = {
   invoiceSyncEnabled: true,
 } as const;
 
-export interface ZohoActivityEntry {
-  readonly direction: 'PUSH' | 'PULL';
-  readonly objectType: string;
-  readonly objectId: string | null;
-  readonly status: string;
-  readonly errorClass: string | null;
-  readonly lastError: string | null;
-  readonly updatedAt: Date;
-}
-
-/** Same envelope as the platform's other paginated lists. */
-export interface ZohoActivityPage {
-  readonly data: ZohoActivityEntry[];
-  readonly page: number;
-  readonly pageSize: number;
-  readonly total: number;
+/** A brand whose Zoho connection is live, with what decides when it next
+ * pulls. */
+export interface LiveZohoConnection {
+  readonly brandId: string;
+  readonly lastPulledAt: Date | null;
+  readonly pullFrequencyMinutes: number;
 }
 
 /**
@@ -82,7 +72,7 @@ export interface ZohoActivityPage {
 @Injectable()
 export class IntegrationConnectionService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: PlatformPrismaService,
     @Inject(ENV) private readonly env: Env,
     private readonly zoho: ZohoBooksAdapter,
     private readonly redis: RedisService,
@@ -316,55 +306,24 @@ export class IntegrationConnectionService {
   }
 
   /**
-   * FR-ZHO-020/021, and the direct answer to "is this actually doing
-   * anything real": every push and pull attempt records a SyncJob row with
-   * the provider's own verbatim error, not a paraphrase. This surfaces the
-   * last N of them so that is visible on the page itself, not just in a
-   * database query someone has to ask for.
+   * Every brand with a live Zoho connection, across all tenants — what the
+   * invoicing module's scheduled-sync tick needs to decide whose pull is due.
+   * Cross-tenant by nature, so it runs unscoped; it returns nothing secret.
    */
-  async getRecentActivity(
-    scope: Scope,
-    brandId: string,
-    { page, pageSize }: Pagination,
-  ): Promise<ZohoActivityPage> {
-    const where = { brandId, provider: 'ZOHO_BOOKS' as const };
-    const [rows, total] = await this.prisma.withScope(scope, (tx) =>
-      Promise.all([
-        tx.syncJob.findMany({
-          where,
-          // id as a tiebreaker: a list scan and its per-record jobs often
-          // share an updatedAt, and without a total order the same row can
-          // appear on two pages (or neither) as the log is paged through.
-          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
-          skip: (page - 1) * pageSize,
-          take: pageSize,
+  async listLiveZohoConnections(): Promise<LiveZohoConnection[]> {
+    return this.prisma.withoutScope(
+      'scheduled-sync: listing brands with a live Zoho connection',
+      (client) =>
+        client.integrationConnection.findMany({
+          where: {
+            provider: 'ZOHO_BOOKS',
+            status: 'CONNECTED',
+            encryptedCredentials: { not: null },
+          },
+          select: { brandId: true, lastPulledAt: true, pullFrequencyMinutes: true },
         }),
-        tx.syncJob.count({ where }),
-      ]),
     );
-    return { data: rows.map((row) => this.toActivityEntry(row)), page, pageSize, total };
   }
-
-  private toActivityEntry(row: {
-    direction: 'PUSH' | 'PULL';
-    objectType: string;
-    objectId: string | null;
-    status: string;
-    errorClass: string | null;
-    lastError: string | null;
-    updatedAt: Date;
-  }): ZohoActivityEntry {
-    return {
-      direction: row.direction,
-      objectType: row.objectType,
-      objectId: row.objectId,
-      status: row.status,
-      errorClass: row.errorClass,
-      lastError: row.lastError,
-      updatedAt: row.updatedAt,
-    };
-  }
-
   /**
    * Records *why* a brand's sync is failing without stopping it.
    *
@@ -403,5 +362,59 @@ export class IntegrationConnectionService {
         data: { lastSyncAt: new Date(), health: 'Healthy' },
       }),
     );
+  }
+  /**
+   * Whether any provider (Zoho, a payment gateway) is connected in scope —
+   * one signal for both single-brand and All Brands mode, so the invoicing
+   * dashboard's header banner doesn't need brand-by-brand connection calls of
+   * its own. "In scope" is doing the real work: with brandId omitted, RLS
+   * already restricts this to the readable brands, so "connected" here means
+   * "at least one of my brands is".
+   */
+  async getConnectedSummary(
+    scope: Scope,
+    brandId: string | null,
+  ): Promise<{ connected: boolean; lastSyncAt: Date | null }> {
+    const connections = await this.prisma.withScope(scope, (tx) =>
+      tx.integrationConnection.findMany({
+        where: { status: 'CONNECTED', ...(brandId ? { brandId } : {}) },
+        // Providers that never populate lastSyncAt (Stripe, a payment
+        // gateway with nothing to "sync") must not shadow a real Zoho
+        // timestamp — plain `desc` puts Postgres's default NULLS FIRST
+        // ahead of any actual sync time, so the banner would (silently)
+        // never show "Last synced" as long as a null-lastSyncAt connection
+        // existed for the brand.
+        orderBy: { lastSyncAt: { sort: 'desc', nulls: 'last' } },
+        select: { provider: true, lastSyncAt: true },
+        take: 1,
+      }),
+    );
+    return { connected: connections.length > 0, lastSyncAt: connections[0]?.lastSyncAt ?? null };
+  }
+
+  /**
+   * Every brand whose Zoho connection is for `organizationId`, with its
+   * merchant — what the invoicing Zoho webhook needs to route an inbound
+   * event. Unscoped because which brand(s) the event belongs to is exactly
+   * what routing has to discover. Organization ids are not indexed (config is
+   * opaque Json, and the brand count sharing one Zoho org is always small),
+   * so this is a full scan of connected Zoho connections, not a hot path.
+   */
+  async findBrandsForZohoOrganization(
+    organizationId: string,
+  ): Promise<Array<{ brandId: string; merchantId: string }>> {
+    const rows = await this.prisma.withoutScope(
+      `zoho webhook: resolving which brand(s) organization ${organizationId} belongs to`,
+      (client) =>
+        client.integrationConnection.findMany({
+          where: { provider: 'ZOHO_BOOKS', status: 'CONNECTED' },
+          select: { brandId: true, config: true, brand: { select: { merchantId: true } } },
+        }),
+    );
+    return rows
+      .filter(
+        (row) => (row.config as ZohoConnectionConfig | null)?.organizationId === organizationId,
+      )
+      .map((row) => ({ brandId: row.brandId, merchantId: row.brand.merchantId }));
   }
 }

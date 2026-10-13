@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../database/client.js';
 import {
   IntegrationError,
   isSupportedCurrency,
@@ -10,7 +10,7 @@ import {
   type Scope,
 } from '@sugrpay/shared';
 import { mapWithConcurrency } from '../../common/concurrency.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import { SystemScopeResolver } from '../../platform/public-api.js';
 import {
@@ -143,7 +143,7 @@ export class ZohoPullService {
   private readonly logger = new Logger(ZohoPullService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     private readonly zoho: ZohoBooksAdapter,
     private readonly connections: IntegrationConnectionService,
     private readonly systemScope: SystemScopeResolver,
@@ -1114,7 +1114,7 @@ export class ZohoPullService {
           5,
           ['number'],
         ).catch((error: unknown) => {
-          if (PrismaService.isUniqueViolation(error, 'number')) {
+          if (InvoicingPrismaService.isUniqueViolation(error, 'number')) {
             throw new IntegrationError({
               message:
                 `Zoho invoice ${invoiceId} uses number "${item.invoice_number}", which ` +
@@ -1289,8 +1289,8 @@ export class ZohoPullService {
         // Not every unique violation is a race. Retrying one that isn't just
         // multiplies a single permanent failure into `attempts` of them and
         // delays the error the caller actually needs to see.
-        if (nonRetryableTargets.some((t) => PrismaService.isUniqueViolation(error, t))) throw error;
-        if (attempt === attempts || !PrismaService.isUniqueViolation(error)) throw error;
+        if (nonRetryableTargets.some((t) => InvoicingPrismaService.isUniqueViolation(error, t))) throw error;
+        if (attempt === attempts || !InvoicingPrismaService.isUniqueViolation(error)) throw error;
         await new Promise((resolve) => setTimeout(resolve, 5 + Math.random() * 15));
       }
     }

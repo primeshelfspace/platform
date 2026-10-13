@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { RequestScope } from '@sugrpay/shared';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { PlatformPrismaService } from '../database/platform-prisma.service.js';
 
 /**
  * A scope for work with no human session behind it: worker jobs, webhook
@@ -12,7 +12,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service.js';
  */
 @Injectable()
 export class SystemScopeResolver {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PlatformPrismaService) {}
 
   async forBrand(brandId: string, actor: string): Promise<RequestScope | null> {
     const brand = await this.prisma.withoutScope(

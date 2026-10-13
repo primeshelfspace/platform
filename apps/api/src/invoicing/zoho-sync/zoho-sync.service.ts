@@ -10,7 +10,7 @@ import type {
   Scope,
 } from '@sugrpay/shared';
 import { IntegrationError, isSupportedCurrency } from '@sugrpay/shared';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { QueueService } from '../../infra/queue/queue.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import { SystemScopeResolver } from '../../platform/public-api.js';
@@ -84,7 +84,7 @@ export class ZohoSyncService {
   private readonly logger = new Logger(ZohoSyncService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     private readonly zoho: ZohoBooksAdapter,
     private readonly connections: IntegrationConnectionService,
     private readonly systemScope: SystemScopeResolver,

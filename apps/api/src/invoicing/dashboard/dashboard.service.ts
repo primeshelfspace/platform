@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { InvoiceStatus, SyncErrorClass } from '@prisma/client';
+import type { InvoiceStatus, SyncErrorClass } from '../database/client.js';
 import {
   PAYABLE_STATUSES,
   formatMinorForDisplay,
@@ -7,8 +7,9 @@ import {
   type CurrencyCode,
   type Scope,
 } from '@sugrpay/shared';
-import { PrismaService, type ScopedClient } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService, type ScopedClient } from '../database/invoicing-prisma.service.js';
 import { QueueService } from '../../infra/queue/queue.service.js';
+import { IntegrationConnectionService } from '../../platform/public-api.js';
 
 const DRAFT_UNSENT_ATTENTION_DAYS = 3;
 const DUE_SOON_HOURS = 24;
@@ -189,15 +190,16 @@ function daysBetween(from: Date, to: Date): number {
  * Every method takes `brandId: string | null`. `null` is not "no filter
  * applied" in the unscoped-query sense — it means the WHERE clause omits
  * brandId entirely and PostgreSQL row-level security (pushed into the
- * session by PrismaService.withScope, see packages/shared/src/tenancy.ts)
+ * session by InvoicingPrismaService.withScope, see packages/shared/src/tenancy.ts)
  * restricts the result to exactly the brands the caller's role can read.
  * There is deliberately no separate "loop over every brand" code path here.
  */
 @Injectable()
 export class DashboardService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly prisma: InvoicingPrismaService,
     private readonly queue: QueueService,
+    private readonly connections: IntegrationConnectionService,
   ) {}
 
   async getSummary(
@@ -766,25 +768,8 @@ export class DashboardService {
    * summed across.
    */
   async getIntegrationsStatus(scope: Scope, brandId: string | null): Promise<IntegrationsStatus> {
-    return this.prisma.withScope(scope, async (tx) => {
-      const connections = await tx.integrationConnection.findMany({
-        where: { status: 'CONNECTED', ...(brandId ? { brandId } : {}) },
-        // Providers that never populate lastSyncAt (Stripe, a payment
-        // gateway with nothing to "sync") must not shadow a real Zoho
-        // timestamp — plain `desc` puts Postgres's default NULLS FIRST
-        // ahead of any actual sync time, so the banner would (silently)
-        // never show "Last synced" as long as a null-lastSyncAt connection
-        // existed for the brand.
-        orderBy: { lastSyncAt: { sort: 'desc', nulls: 'last' } },
-        select: { provider: true, lastSyncAt: true },
-        take: 1,
-      });
-      const latest = connections[0];
-      return {
-        connected: connections.length > 0,
-        lastSyncAt: latest?.lastSyncAt ?? null,
-      };
-    });
+    // Connections are the platform's — asked through its public API.
+    return this.connections.getConnectedSummary(scope, brandId);
   }
 
   /**

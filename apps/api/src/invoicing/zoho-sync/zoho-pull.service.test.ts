@@ -15,13 +15,13 @@
  *   pnpm setup:local && pnpm --filter @sugrpay/api test
  */
 import { randomUUID } from 'node:crypto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { IntegrationError } from '@sugrpay/shared';
 import type { AccountingConnection, RequestScope } from '@sugrpay/shared';
 import { loadEnv } from '../../config/load-env.js';
 import { getEnv, type Env } from '../../config/env.js';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
+import { InvoicingPrismaService } from '../database/invoicing-prisma.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import {
   ZohoBooksAdapter,
@@ -35,7 +35,7 @@ import type { SystemScopeResolver } from '../../platform/public-api.js';
 import { ZohoPullService } from './zoho-pull.service.js';
 
 loadEnv();
-const hasDb = Boolean(process.env['DATABASE_URL']);
+const hasDb = Boolean(process.env['INVOICING_DATABASE_URL']);
 const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
 
@@ -152,9 +152,9 @@ function fakeInvoiceDetail(
 }
 
 describeWithDb('ZohoPullService', () => {
-  const prisma = new PrismaService(env!);
+  const prisma = new InvoicingPrismaService(env!);
   const owner = new PrismaClient({
-    datasources: { db: { url: env!.DIRECT_DATABASE_URL ?? env!.DATABASE_URL } },
+    datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },
   });
 
   const redis = new RedisService(env!);

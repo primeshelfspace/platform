@@ -8,6 +8,8 @@ build/
 .next-slot
 apps/api/dist-build/
 apps/api/dist-prev/
+# Per-module Prisma clients — `pnpm db:generate`.
+apps/api/generated/
 out/
 coverage/
 *.tsbuildinfo
