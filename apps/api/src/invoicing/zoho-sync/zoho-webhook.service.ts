@@ -4,7 +4,7 @@ import type { Scope } from '@sugrpay/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import { ZohoPullService } from './zoho-pull.service.js';
-import type { ZohoConnectionConfig } from '../../platform/integrations/integration-connection.service.js';
+import type { ZohoConnectionConfig } from '../../platform/public-api.js';
 
 export type ZohoWebhookObjectType = 'CUSTOMER' | 'INVOICE';
 /** 'unspecified' is a webhook URL with no `event` parameter — the

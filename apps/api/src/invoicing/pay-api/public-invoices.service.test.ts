@@ -16,7 +16,7 @@ import { PrismaService } from '../../infra/prisma/prisma.service.js';
 import { createFakeQueueService } from '../../infra/queue/fake-queue.service.js';
 import { CustomersService } from '../customers/customers.service.js';
 import { InvoicesService } from '../invoices/invoices.service.js';
-import { StripeAccountService } from '../../platform/integrations/stripe-account.service.js';
+import { StripeAccountService } from '../../platform/public-api.js';
 import type { ZohoPullService } from '../zoho-sync/zoho-pull.service.js';
 import { LocalDiskAdapter } from '../../adapters/storage/local-disk.adapter.js';
 import { InvoicePdfService } from './invoice-pdf.service.js';

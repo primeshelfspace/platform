@@ -9,7 +9,7 @@ import {
 } from '@sugrpay/shared';
 import type { Customer } from '@prisma/client';
 import { zodPipe } from '../../common/zod-validation.pipe.js';
-import { CurrentScope, RequirePermission } from '../../platform/tenancy/authorisation.js';
+import { CurrentScope, RequirePermission } from '../../platform/public-api.js';
 import {
   CustomersService,
   type CustomerListResult,

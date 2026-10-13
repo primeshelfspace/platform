@@ -12,7 +12,7 @@ import {
 import { mapWithConcurrency } from '../../common/concurrency.js';
 import { PrismaService } from '../../infra/prisma/prisma.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
-import { SystemScopeResolver } from '../../platform/tenancy/system-scope.js';
+import { SystemScopeResolver } from '../../platform/public-api.js';
 import {
   PUSHED_CARD_FEE_LINE_DESCRIPTION,
   PUSHED_CARD_FEE_LINE_NAME,
@@ -24,7 +24,7 @@ import {
   type ZohoInvoiceLineItem,
   type ZohoInvoiceListItem,
 } from '../../adapters/accounting/zoho-books.adapter.js';
-import { IntegrationConnectionService } from '../../platform/integrations/integration-connection.service.js';
+import { IntegrationConnectionService } from '../../platform/public-api.js';
 
 export interface PullCounts {
   readonly customers: number;

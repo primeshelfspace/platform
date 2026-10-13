@@ -14,7 +14,7 @@ import {
   type Scope,
 } from '@sugrpay/shared';
 import { zodPipe } from '../../common/zod-validation.pipe.js';
-import { CurrentScope, RequirePermission } from '../../platform/tenancy/authorisation.js';
+import { CurrentScope, RequirePermission } from '../../platform/public-api.js';
 import {
   BrandSettingsService,
   type EmailReceiptSettings,

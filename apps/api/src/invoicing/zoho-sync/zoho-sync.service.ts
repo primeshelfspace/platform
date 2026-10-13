@@ -13,9 +13,9 @@ import { IntegrationError, isSupportedCurrency } from '@sugrpay/shared';
 import { PrismaService } from '../../infra/prisma/prisma.service.js';
 import { QueueService } from '../../infra/queue/queue.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
-import { SystemScopeResolver } from '../../platform/tenancy/system-scope.js';
+import { SystemScopeResolver } from '../../platform/public-api.js';
 import { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
-import { IntegrationConnectionService } from '../../platform/integrations/integration-connection.service.js';
+import { IntegrationConnectionService } from '../../platform/public-api.js';
 
 export interface BackfillCounts {
   readonly customers: number;

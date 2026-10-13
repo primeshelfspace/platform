@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AccountingModule } from '../../adapters/accounting/accounting.module.js';
-import { IntegrationsModule } from '../../platform/integrations/integrations.module.js';
+import { IntegrationsModule } from '../../platform/modules.js';
 import { ZohoConnectController } from './zoho-connect.controller.js';
 import { ZohoPullService } from './zoho-pull.service.js';
 import { ZohoSandboxController } from './zoho-sandbox.controller.js';

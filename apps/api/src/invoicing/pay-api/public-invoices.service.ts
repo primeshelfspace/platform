@@ -16,7 +16,7 @@ import {
 } from '../settings/brand-settings.service.js';
 import type { CheckImageUpload } from '../../common/check-upload.js';
 import { LOGO_URL_TTL_SECONDS } from '../../common/logo-upload.js';
-import { StripeAccountService } from '../../platform/integrations/stripe-account.service.js';
+import { StripeAccountService } from '../../platform/public-api.js';
 import { ZohoPullService } from '../zoho-sync/zoho-pull.service.js';
 import { PrismaService } from '../../infra/prisma/prisma.service.js';
 

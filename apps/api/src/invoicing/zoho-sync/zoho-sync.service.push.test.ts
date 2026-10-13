@@ -23,8 +23,8 @@ import { PrismaService } from '../../infra/prisma/prisma.service.js';
 import { createFakeQueueService } from '../../infra/queue/fake-queue.service.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 import type { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
-import type { IntegrationConnectionService } from '../../platform/integrations/integration-connection.service.js';
-import type { SystemScopeResolver } from '../../platform/tenancy/system-scope.js';
+import type { IntegrationConnectionService } from '../../platform/public-api.js';
+import type { SystemScopeResolver } from '../../platform/public-api.js';
 import { ZohoSyncService } from './zoho-sync.service.js';
 
 loadEnv();

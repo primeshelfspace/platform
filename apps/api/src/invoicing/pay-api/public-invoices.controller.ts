@@ -30,7 +30,7 @@ import {
 } from '@sugrpay/shared';
 import { assertCheckImage, MAX_CHECK_IMAGE_BYTES } from '../../common/check-upload.js';
 import { zodPipe } from '../../common/zod-validation.pipe.js';
-import { Public } from '../../platform/tenancy/authorisation.js';
+import { Public } from '../../platform/public-api.js';
 import { PaymentsService, type PaymentAttemptResult } from '../payments/payments.service.js';
 import { InvoicePdfService } from './invoice-pdf.service.js';
 import { PublicInvoicesService, type PublicInvoiceView } from './public-invoices.service.js';

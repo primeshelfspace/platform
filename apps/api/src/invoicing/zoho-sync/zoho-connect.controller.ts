@@ -26,14 +26,14 @@ import { zodPipe } from '../../common/zod-validation.pipe.js';
 import { ENV, type Env } from '../../config/env.js';
 import { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
 import { QueueService } from '../../infra/queue/queue.service.js';
-import { CurrentScope, Public, RequirePermission } from '../../platform/tenancy/authorisation.js';
-import { SystemScopeResolver } from '../../platform/tenancy/system-scope.js';
+import { CurrentScope, Public, RequirePermission } from '../../platform/public-api.js';
+import { SystemScopeResolver } from '../../platform/public-api.js';
 import {
   IntegrationConnectionService,
   type ZohoActivityPage,
   type ZohoConnectionStatus,
-} from '../../platform/integrations/integration-connection.service.js';
-import { signOAuthState, verifyOAuthState } from '../../platform/integrations/oauth-state.js';
+} from '../../platform/public-api.js';
+import { signOAuthState, verifyOAuthState } from '../../platform/public-api.js';
 import { ZohoSyncService, type BackfillCounts } from './zoho-sync.service.js';
 import { zohoWebhookToken } from './zoho-webhook-token.js';
 import { ZohoWebhookService, type ZohoWebhookDelivery } from './zoho-webhook.service.js';

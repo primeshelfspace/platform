@@ -15,12 +15,12 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Response } from 'express';
 import type { Env } from '../../config/env.js';
 import type { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
-import type { IntegrationConnectionService } from '../../platform/integrations/integration-connection.service.js';
-import type { SystemScopeResolver } from '../../platform/tenancy/system-scope.js';
+import type { IntegrationConnectionService } from '../../platform/public-api.js';
+import type { SystemScopeResolver } from '../../platform/public-api.js';
 import type { ZohoSyncService } from './zoho-sync.service.js';
 import type { QueueService } from '../../infra/queue/queue.service.js';
 import { ZohoConnectController } from './zoho-connect.controller.js';
-import { signOAuthState } from '../../platform/integrations/oauth-state.js';
+import { signOAuthState } from '../../platform/public-api.js';
 
 const SESSION_SECRET = 'test-session-secret';
 const BRAND_ID = '11111111-1111-1111-1111-111111111111';

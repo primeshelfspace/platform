@@ -30,8 +30,8 @@ import {
   type ZohoInvoiceDetail,
   type ZohoInvoiceListItem,
 } from '../../adapters/accounting/zoho-books.adapter.js';
-import type { IntegrationConnectionService } from '../../platform/integrations/integration-connection.service.js';
-import type { SystemScopeResolver } from '../../platform/tenancy/system-scope.js';
+import type { IntegrationConnectionService } from '../../platform/public-api.js';
+import type { SystemScopeResolver } from '../../platform/public-api.js';
 import { ZohoPullService } from './zoho-pull.service.js';
 
 loadEnv();

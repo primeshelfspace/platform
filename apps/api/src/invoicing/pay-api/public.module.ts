@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '../../adapters/storage/storage.module.js';
-import { IntegrationsModule } from '../../platform/integrations/integrations.module.js';
+import { IntegrationsModule } from '../../platform/modules.js';
 import { PaymentsModule } from '../payments/payments.module.js';
 import { ZohoSyncModule } from '../zoho-sync/zoho-sync.module.js';
 import { InvoicePdfService } from './invoice-pdf.service.js';

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IntegrationError, type AccountingConnection, type Scope } from '@sugrpay/shared';
 import type { ZohoBooksAdapter } from '../../adapters/accounting/zoho-books.adapter.js';
-import type { IntegrationConnectionService } from '../../platform/integrations/integration-connection.service.js';
+import type { IntegrationConnectionService } from '../../platform/public-api.js';
 import { ZohoSandboxService } from './zoho-sandbox.service.js';
 
 const SCOPE = {} as Scope;
