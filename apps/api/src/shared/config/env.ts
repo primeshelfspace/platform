@@ -25,7 +25,7 @@ const envSchema = z
 
     /**
      * Which product modules this process runs, comma-separated. The platform
-     * always runs. Empty runs the platform alone — CI does exactly that to
+     * always runs. Empty runs the platform alone — `pnpm boot-check` does exactly that to
      * prove the platform depends on no product.
      */
     ENABLED_PRODUCTS: z

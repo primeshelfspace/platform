@@ -10,14 +10,14 @@ it (or any later product) online follows the same steps invoicing did.
    an init migration, and an `rls_and_grants` migration modelled on
    `prisma/invoicing/migrations/*_rls_and_grants`. Add `'HQ'` to `MODULES` in
    `prisma/bootstrap.ts`, the two URLs to `.env.example`, `shared/config/env.ts`
-   and CI, and the schema to the `db:*` scripts in `apps/api/package.json`.
+   and the schema to the `db:*` scripts in `apps/api/package.json`.
 2. **Module skeleton.** Create `modules/hq/` with `database/` (copy
    invoicing's `client.ts`, `*-prisma.service.ts`, `*-database.module.ts`),
    `hq.module.ts`, `modules.ts`, `public-api.ts` and `README.md`.
 3. **Register it.** Add `'hq'` to the `ENABLED_PRODUCTS` enum
    (`shared/config/env.ts`) and to `PRODUCTS` in `app.module.ts`; add `hq` to
    `PRODUCTS` in `module-boundaries.test.ts`; add
-   `node scripts/boot-check.mjs hq` to CI.
+   `node scripts/boot-check.mjs hq` to the root `boot-check` script.
 4. **Platform data it needs.** Subscribe to platform events (copy
    `modules/invoicing/platform-sync/`) for any platform data HQ must join to,
    such as brands and locations. Ask the platform's `public-api.ts` for

@@ -27,7 +27,7 @@ events — lives inside it.
 | Shared code never imports a product                                      | `src/module-boundaries.test.ts` |
 | Only `public-api.ts` / `modules.ts` are importable from outside a module | `src/module-boundaries.test.ts` |
 | A module's database role can't reach another module's database           | `modules/*/…/rls.test.ts`       |
-| The platform boots with no product enabled                               | `pnpm boot-check` (also CI)     |
+| The platform boots with no product enabled                               | `pnpm boot-check`               |
 
 ## A module's entry points
 
@@ -60,5 +60,5 @@ modules/<module>/
 
 `ENABLED_PRODUCTS` (comma-separated, default `invoicing`) selects which product
 modules a process loads. The platform always loads. An empty value runs the
-platform alone, which is how CI proves rule 2 holds at runtime, not just at
+platform alone, which is how `pnpm boot-check` proves rule 2 holds at runtime, not just at
 import time.
