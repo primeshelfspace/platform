@@ -3,8 +3,8 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
-import { getEnv } from './config/env.js';
-import { QueueService } from './infra/queue/queue.service.js';
+import { getEnv } from './shared/config/env.js';
+import { QueueService } from './shared/infra/queue/queue.service.js';
 
 // Prisma's BigInt columns (every *Minor money field) come back from the
 // client as native bigint, which JSON.stringify cannot serialise at all.

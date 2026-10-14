@@ -33,7 +33,7 @@ jobs:
             echo "===== api logs (last 100 lines) ====="
             pm2 logs api --lines 100 --nostream
             echo "===== admin .env (public vars only, no secrets) ====="
-            grep -E '^(NEXT_PUBLIC_|API_PUBLIC_URL|ADMIN_PUBLIC_URL|PAYMENT_PUBLIC_URL|NODE_ENV|APP_ENV)=' ~/Multi-Brand-Invoicing/.env || true
+            grep -E '^(NEXT_PUBLIC_|API_PUBLIC_URL|ADMIN_PUBLIC_URL|PAYMENT_PUBLIC_URL|NODE_ENV|APP_ENV)=' ~/platform/.env || true
             echo "===== disk / memory ====="
             df -h /
             free -h

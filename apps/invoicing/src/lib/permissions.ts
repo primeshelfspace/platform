@@ -10,7 +10,7 @@ import type { CurrentUser } from './api';
  * computes them from the same matrix and the same request scope its guard
  * enforces, so what the UI shows and what the API allows cannot drift.
  * Like every client-side check this is UX only — the API guard is the
- * actual access control (apps/api/src/tenancy/authorisation.ts).
+ * actual access control (apps/api/src/modules/platform/tenancy/interface/authorisation.ts).
  */
 export function hasPermission(
   user: Pick<CurrentUser, 'permissions'> | null | undefined,

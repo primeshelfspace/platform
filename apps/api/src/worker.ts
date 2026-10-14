@@ -3,14 +3,14 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Worker, type Job } from 'bullmq';
 import { AppModule } from './app.module.js';
-import { getEnv } from './config/env.js';
-import { RedisService } from './infra/redis/redis.service.js';
-import { QUEUES, QUEUE_NAMES, type QueueName } from './infra/queue/queues.js';
+import { getEnv } from './shared/config/env.js';
+import { RedisService } from './shared/infra/redis/redis.service.js';
+import { QUEUES, QUEUE_NAMES, type QueueName } from './shared/infra/queue/queues.js';
 import {
   ZohoPullService,
   ZohoScheduledSyncService,
   ZohoSyncService,
-} from './invoicing/public-api.js';
+} from './modules/invoicing/public-api.js';
 
 /**
  * Worker entry point.

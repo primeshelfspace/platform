@@ -2,7 +2,7 @@ node_modules/
 dist/
 build/
 .next/
-# Deploy build slots — see scripts/deploy.sh.
+# Deploy build slots — see deploy/deploy.sh.
 .next-a/
 .next-b/
 .next-slot
@@ -28,7 +28,7 @@ pnpm-debug.log*
 .local/
 dump.rdb
 # Anchored to the API's own runtime upload dir — an unanchored "storage/"
-# would also match apps/api/src/adapters/storage/, which is source code.
+# would also match apps/api/src/shared/adapters/storage/, which is source code.
 apps/api/storage/
 
 # Playwright

@@ -35,7 +35,7 @@ jobs:
           envs: DEPLOY_TOKEN
           script: |
             set -e
-            cd ~/Multi-Brand-Invoicing
+            cd ~/platform
 
             # The box's own `origin` remote has no stored git credentials —
             # every deploy was failing here with "could not read Username for
@@ -49,7 +49,7 @@ jobs:
             # embeds a newline mid-header — curl then rejects the header
             # outright ("A libcurl function was given a bad argument").
             git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$DEPLOY_TOKEN" | base64 -w0)" \
-              fetch https://github.com/primeshelfspace/Multi-Brand-Invoicing.git main
+              fetch https://github.com/primeshelfspace/platform.git main
 
             # Discards nothing that matters: .env and any other untracked file
             # (this workflow file's own runtime config included) survive a
@@ -58,4 +58,4 @@ jobs:
 
             # Builds beside the live apps and only then reloads pm2 — the same
             # script a manual deploy runs. See its header for why.
-            bash scripts/deploy.sh
+            bash deploy/deploy.sh

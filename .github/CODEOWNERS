@@ -12,11 +12,11 @@
 # Authorisation, tenancy and the permission matrix.
 /packages/shared/src/domain/roles.ts    @sugrpay/engineering-leads @sugrpay/security
 /packages/shared/src/tenancy.ts         @sugrpay/engineering-leads @sugrpay/security
-/apps/api/src/platform/tenancy/         @sugrpay/engineering-leads @sugrpay/security
-/apps/api/src/platform/auth/            @sugrpay/engineering-leads @sugrpay/security
+/apps/api/src/modules/platform/tenancy/ @sugrpay/engineering-leads @sugrpay/security
+/apps/api/src/modules/platform/auth/    @sugrpay/engineering-leads @sugrpay/security
 
 # Row-level security policies and grants.
-/apps/api/prisma/migrations/            @sugrpay/engineering-leads @sugrpay/security
+/apps/api/prisma/*/migrations/          @sugrpay/engineering-leads @sugrpay/security
 
 # The public payment application. Every dependency change here is a PCI scope
 # question, so the dependency manifest gets the same treatment as the code.
@@ -24,4 +24,4 @@
 /apps/payment/package.json              @sugrpay/engineering-leads @sugrpay/security
 
 # Gateway adapters.
-/apps/api/src/adapters/gateway/         @sugrpay/engineering-leads @sugrpay/security
+/apps/api/src/shared/adapters/gateway/  @sugrpay/engineering-leads @sugrpay/security

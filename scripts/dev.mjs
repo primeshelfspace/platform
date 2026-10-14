@@ -207,7 +207,13 @@ await reclaim();
 // Once, before anything imports it, so the apps never start against a stale
 // dist. The watch below keeps it fresh from here on.
 step('building @sugrpay/shared and @sugrpay/ui');
-const built = await runToCompletion(['--filter', '@sugrpay/shared', '--filter', '@sugrpay/ui', 'build']);
+const built = await runToCompletion([
+  '--filter',
+  '@sugrpay/shared',
+  '--filter',
+  '@sugrpay/ui',
+  'build',
+]);
 if (built !== 0) {
   fail('@sugrpay/shared or @sugrpay/ui failed to build — fix that before the apps start');
   process.exit(built);

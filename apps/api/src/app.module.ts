@@ -1,18 +1,18 @@
 import { Module, type DynamicModule, type Type } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { AccountingModule } from './adapters/accounting/accounting.module.js';
-import { GatewayModule } from './adapters/gateway/gateway.module.js';
-import { MailModule } from './adapters/mail/mail.module.js';
-import { StorageModule } from './adapters/storage/storage.module.js';
-import { ConfigModule } from './config/config.module.js';
-import { getEnv, type Env } from './config/env.js';
-import { HealthModule } from './health/health.module.js';
-import { EventsModule } from './infra/events/events.module.js';
-import { QueueModule } from './infra/queue/queue.module.js';
-import { RedisModule } from './infra/redis/redis.module.js';
-import { InvoicingModule } from './invoicing/modules.js';
-import { PlatformModule } from './platform/modules.js';
-import { AuthorisationGuard } from './platform/public-api.js';
+import { AccountingModule } from './shared/adapters/accounting/accounting.module.js';
+import { GatewayModule } from './shared/adapters/gateway/gateway.module.js';
+import { MailModule } from './shared/adapters/mail/mail.module.js';
+import { StorageModule } from './shared/adapters/storage/storage.module.js';
+import { ConfigModule } from './shared/config/config.module.js';
+import { getEnv, type Env } from './shared/config/env.js';
+import { HealthModule } from './shared/health/health.module.js';
+import { EventsModule } from './shared/infra/events/events.module.js';
+import { QueueModule } from './shared/infra/queue/queue.module.js';
+import { RedisModule } from './shared/infra/redis/redis.module.js';
+import { InvoicingModule } from './modules/invoicing/modules.js';
+import { PlatformModule } from './modules/platform/modules.js';
+import { AuthorisationGuard } from './modules/platform/public-api.js';
 
 /** Every product this API can run, by the name ENABLED_PRODUCTS uses. HQ
  * joins here when it exists. */

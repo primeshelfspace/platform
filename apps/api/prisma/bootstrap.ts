@@ -40,7 +40,10 @@ function parse(module: string): Target {
   return {
     module,
     database,
-    owner: { role: decodeURIComponent(owner.username), password: decodeURIComponent(owner.password) },
+    owner: {
+      role: decodeURIComponent(owner.username),
+      password: decodeURIComponent(owner.password),
+    },
     app: { role: decodeURIComponent(app.username), password: decodeURIComponent(app.password) },
   };
 }

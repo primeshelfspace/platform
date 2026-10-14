@@ -2,9 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  // scripts/deploy.sh builds into the idle slot (.next-a / .next-b) while the
+  // deploy/deploy.sh builds into the idle slot (.next-a / .next-b) while the
   // live server keeps serving the other, then repoints pm2 (see
-  // ecosystem.config.cjs). Unset locally and in CI, so those still use .next.
+  // deploy/ecosystem.config.cjs). Unset locally and in CI, so those still use .next.
   distDir: process.env.NEXT_DIST_DIR || '.next',
 
   // The shared packages ship compiled CommonJS; transpiling them here keeps
@@ -14,7 +14,7 @@ const nextConfig = {
   // Every Brand Settings save posts the logo file through a server action
   // (see saveLogo in brand-settings/actions.ts), and Next's default server
   // action body cap is 1MB — well under the API's own 5MB logo limit
-  // (MAX_LOGO_BYTES in apps/api/src/common/logo-upload.ts), so any real
+  // (MAX_LOGO_BYTES in apps/api/src/shared/common/logo-upload.ts), so any real
   // photo over ~1MB crashed the whole form with an unhandled "Body exceeded
   // 1 MB limit" error before the request ever reached the API. Raised past
   // the API's cap so that limit is the one that actually applies.

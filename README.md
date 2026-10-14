@@ -8,55 +8,29 @@ subscriptions — and each product is built on top of it:
 - **HQ** — products, stock, suppliers and stores. Placeholder only for now
   (`apps/hq`, `apps/api/src/hq`).
 
-## Architecture in one page
+## Architecture
+
+A **modular monolith**: one NestJS backend made of walled-off modules —
+`platform` (shared core) and one module per product — each with **its own
+PostgreSQL database**. Modules talk only through each other's `public-api.ts`
+(ask) or through events (tell). Inside every feature, code is organised in
+clean-architecture layers: `domain` → `application` → `infrastructure` /
+`interface`. All of it is enforced by tests, not convention.
 
 ```
-apps/
-  api/                 ONE NestJS backend (modular monolith) + workers
-    src/platform/      shared core: auth, companies, brands, users, tenancy,
-                       integrations, audit, events          → platform database
-    src/invoicing/     Sugrpay: customers, invoices, payments, pay API,
-                       settings, Zoho sync, dashboard        → invoicing database
-    src/hq/            HQ (placeholder)                      → hq database (later)
-    src/adapters, infra, config, common, health              shared plumbing
-    prisma/platform/   platform schema + migrations
-    prisma/invoicing/  invoicing schema + migrations
-  invoicing/           Next.js admin app for Sugrpay (was apps/admin)
-  payment/             Next.js public payment pages
-  hq/                  HQ web app (placeholder)
-packages/
-  shared/              money, calculation, domain, schemas
-  ui/                  shared React components
+apps/api/src/
+  modules/platform/    auth, companies, brands, users, tenancy, integrations, audit, events
+  modules/invoicing/   Sugrpay: customers, invoices, payments, pay API, settings, Zoho sync
+  modules/hq/          HQ (placeholder)
+  shared/              adapters, infra, config, common, health
+apps/invoicing/        Sugrpay admin (Next.js)
+apps/payment/          public payment pages (Next.js)
+packages/shared, ui    domain kernel and React components shared by every app
 ```
 
-**One database per module.** The platform and each product have their own
-PostgreSQL database, their own Prisma schema and client, and their own
-database roles. A module's runtime role cannot even connect to another
-module's database, and row-level security still isolates tenants inside each.
-
-**Modules talk in two ways only:**
-
-- **Ask** — call the other module's public API (`<module>/public-api.ts`).
-  In-process today; an HTTP client with the same interface if a module is
-  ever split out.
-- **Tell** — publish an event. The platform writes events to an outbox in
-  the same transaction as the change; a dispatcher delivers them (immediately
-  after commit, plus a retry poll), and subscribers are idempotent.
-
-Example: invoicing keeps a **read-only copy of brands** (to join, render and
-scope by), maintained only from `platform.brand.*` events. To change a brand,
-invoicing calls the platform (`BrandsService`); it never writes the copy.
-
-**Enforced, not remembered:**
-
-| Check                                   | Where                                   |
-| --------------------------------------- | --------------------------------------- |
-| No module imports another's internals   | `src/module-boundaries.test.ts`         |
-| Platform never imports a product        | `src/module-boundaries.test.ts`         |
-| A role can't reach another module's DB  | `*/rls.test.ts`                         |
-| The platform boots with no product      | `pnpm boot-check` (also in CI)          |
-
-`ENABLED_PRODUCTS` (default `invoicing`) picks which products a process runs.
+**Read more:** [docs/architecture](docs/architecture/README.md) — modules,
+layers, databases, events, adding a product, and the decision records behind
+them.
 
 ## Quick start
 
@@ -133,6 +107,7 @@ LEGACY_DATABASE_URL=postgresql://<owner>@<host>/<old db> pnpm db:migrate-legacy
 It needs the module databases bootstrapped, migrated and empty; reads the old
 database only; keeps every id (sessions, payment links, Zoho ids carry over);
 and fails unless every table's row count matches.
+
 ## Testing the invoice → payment flow
 
 The one thing worth actually clicking through. Everything below runs against
@@ -170,7 +145,7 @@ money, no external service, fully deterministic.
    ```
 
    The signing secret (`fake-gateway-local-secret`) is exported from
-   `apps/api/src/adapters/gateway/fake-gateway.adapter.ts` for exactly this —
+   `apps/api/src/shared/adapters/gateway/fake-gateway.adapter.ts` for exactly this —
    it is not a real secret and never should be one.
 
 Card fee only appears on card/wallet payments, never ACH — pay the same
@@ -189,7 +164,7 @@ figure on the invoice, the PDF, the payment page and the Zoho push. The TDD-001
 immutable scope; repositories scope their queries from it; PostgreSQL row-level
 security is the backstop that makes a forgotten predicate return nothing rather
 than someone else's data. The runtime connection deliberately uses a non-owner
-role, because an owner bypasses RLS. `apps/api/src/tenancy/rls.test.ts` proves
+role, because an owner bypasses RLS. `apps/api/src/modules/*/database/rls.test.ts` proves
 all of this against a real database.
 
 One consequence worth knowing before you touch it: `PrismaService.withoutScope`

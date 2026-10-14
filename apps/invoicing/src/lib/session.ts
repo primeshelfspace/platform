@@ -37,7 +37,7 @@ export async function writeSessionToken(token: string, expiresAt: Date): Promise
 
 /**
  * Whether *this* request actually arrived over HTTPS — mirrors the API's own
- * `request.secure` (apps/api/src/auth/auth.controller.ts). `NODE_ENV ===
+ * `request.secure` (apps/api/src/modules/platform/auth/interface/auth.controller.ts). `NODE_ENV ===
  * 'production'` used to stand in for this and is wrong: a production build
  * served over plain HTTP (e.g. hitting an EC2 box directly by IP, no TLS
  * reverse proxy yet) would still mark the cookie Secure, and the browser

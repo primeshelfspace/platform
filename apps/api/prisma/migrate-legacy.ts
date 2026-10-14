@@ -128,7 +128,9 @@ async function main(): Promise<void> {
   try {
     for (const table of ['merchant', 'brand', 'invoice']) {
       if (!(await tableExists(legacy, table))) {
-        throw new Error(`LEGACY_DATABASE_URL has no "${table}" table — is it the pre-split database?`);
+        throw new Error(
+          `LEGACY_DATABASE_URL has no "${table}" table — is it the pre-split database?`,
+        );
       }
     }
     const occupied = (await count(platform, 'merchant')) + (await count(invoicing, 'brand'));
@@ -167,7 +169,12 @@ async function main(): Promise<void> {
         for (const table of INVOICING_TABLES) {
           if (!(await tableExists(legacy, table))) continue;
           const copied = await copyTable(legacy, tx, table);
-          results.push({ database: 'invoicing', table, legacy: await count(legacy, table), copied });
+          results.push({
+            database: 'invoicing',
+            table,
+            legacy: await count(legacy, table),
+            copied,
+          });
         }
         // Every brand has invoicing settings now (the brand event creates
         // them); a legacy brand that never had a row gets the defaults.
@@ -177,7 +184,9 @@ async function main(): Promise<void> {
            WHERE NOT EXISTS (SELECT 1 FROM brand_settings s WHERE s.brand_id = b.id)`,
         );
         if (filled > 0) {
-          console.log(`  + created default invoicing settings for ${filled} brand(s) that had none`);
+          console.log(
+            `  + created default invoicing settings for ${filled} brand(s) that had none`,
+          );
         }
       },
       { timeout: 30 * 60_000, maxWait: 60_000 },
@@ -186,7 +195,9 @@ async function main(): Promise<void> {
     console.log('');
     for (const r of results) {
       const mark = r.legacy === r.copied ? '✓' : '✗';
-      console.log(`  ${mark} ${r.database.padEnd(10)} ${r.table.padEnd(26)} ${r.copied}/${r.legacy}`);
+      console.log(
+        `  ${mark} ${r.database.padEnd(10)} ${r.table.padEnd(26)} ${r.copied}/${r.legacy}`,
+      );
     }
     const mismatched = results.filter((r) => r.legacy !== r.copied);
     if (mismatched.length) {

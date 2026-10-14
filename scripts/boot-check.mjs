@@ -53,7 +53,10 @@ async function healthy() {
 const deadline = Date.now() + timeoutMs;
 let up = false;
 while (Date.now() < deadline) {
-  const done = await Promise.race([exited, new Promise((r) => setTimeout(() => r(undefined), 500))]);
+  const done = await Promise.race([
+    exited,
+    new Promise((r) => setTimeout(() => r(undefined), 500)),
+  ]);
   if (done !== undefined) break;
   if (await healthy()) {
     up = true;
@@ -70,7 +73,8 @@ if (up) {
     .catch(() => 0);
   const expected = products.split(',').includes('invoicing') ? 401 : 404;
   productsMatch = status === expected;
-  if (!productsMatch) fail(`${label}: GET /dashboard/summary returned ${status}, expected ${expected}`);
+  if (!productsMatch)
+    fail(`${label}: GET /dashboard/summary returned ${status}, expected ${expected}`);
 }
 child.kill();
 

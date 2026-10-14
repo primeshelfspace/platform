@@ -29,9 +29,13 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-/** First path segment under src/ — 'platform', 'invoicing', 'adapters', or
- * the file name itself for root files such as app.module.ts. */
-const ownerOf = (abs: string) => relative(SRC, abs).split(sep)[0]!;
+/** Who owns a file: the module name for src/modules/<name>/..., 'shared' for
+ * src/shared/..., or the file name itself for root files such as
+ * app.module.ts. */
+function ownerOf(abs: string): string {
+  const [top, second] = relative(SRC, abs).split(sep);
+  return top === 'modules' && second ? second : top!;
+}
 
 interface Edge {
   readonly from: string;
@@ -64,7 +68,8 @@ function crossModuleEdges(): Edge[] {
 
 const describeEdge = (e: Edge) => `${e.from} -> ${e.to}`;
 const isPublicApi = (e: Edge) =>
-  e.to === join(e.toOwner, 'public-api.ts') || e.to === join(e.toOwner, 'modules.ts');
+  e.to === join('modules', e.toOwner, 'public-api.ts') ||
+  e.to === join('modules', e.toOwner, 'modules.ts');
 /** Tests and their *.test-support.ts helpers may build fixtures from another
  * module's internals (a real platform brand for an invoicing test, say). The
  * direction rules still apply to them; only the public-api rule is relaxed. */
@@ -93,10 +98,68 @@ describe('module boundaries', () => {
 
   it('shared layers never import a product', () => {
     const violations = edges.filter(
-      (e) => !MODULES.includes(e.fromOwner) && e.fromOwner.includes('.') === false &&
-        PRODUCTS.includes(e.toOwner),
+      (e) => e.fromOwner === 'shared' && PRODUCTS.includes(e.toOwner),
     );
     expect(violations.map(describeEdge)).toEqual([]);
+  });
+
+  // Clean-architecture layers inside a feature (docs/architecture/layers.md).
+  // Test files are exempt: a test may wire whatever it needs.
+  describe('feature layers', () => {
+    const LAYERS = ['domain', 'application', 'infrastructure', 'interface'] as const;
+    type Layer = (typeof LAYERS)[number];
+    const layerOf = (rel: string): Layer | null => {
+      const parts = rel.split(sep);
+      // modules/<module>/<feature>/<layer>/...
+      return parts[0] === 'modules' && LAYERS.includes(parts[3] as Layer)
+        ? (parts[3] as Layer)
+        : null;
+    };
+    const imports = sourceFiles(SRC)
+      .filter((f) => !/\.test(-support)?\.ts$/.test(f))
+      .flatMap((file) => {
+        const text = readFileSync(file, 'utf8');
+        return [...text.matchAll(/from\s*['"]([^'"]+)['"]/g)].map((m) => {
+          const spec = m[1]!;
+          const target = spec.startsWith('.') ? relative(SRC, resolve(dirname(file), spec)) : spec;
+          return { from: relative(SRC, file), spec, target };
+        });
+      });
+
+    const forbidden = (layer: Layer, test: (target: string, spec: string) => boolean) =>
+      imports
+        .filter((i) => layerOf(i.from) === layer && test(i.target, i.spec))
+        .map((i) => `${i.from} -> ${i.spec}`);
+
+    it('domain is pure: no Nest, no database, no other layer', () => {
+      expect(
+        forbidden(
+          'domain',
+          (target, spec) =>
+            spec.startsWith('@nestjs/') ||
+            target.split(sep).includes('database') ||
+            ['application', 'infrastructure', 'interface'].includes(layerOf(target) ?? ''),
+        ),
+      ).toEqual([]);
+    });
+
+    it('interface never reaches the database or infrastructure directly', () => {
+      expect(
+        forbidden(
+          'interface',
+          (target) =>
+            target.split(sep).includes('database') || layerOf(target) === 'infrastructure',
+        ),
+      ).toEqual([]);
+    });
+
+    it('infrastructure never depends on application or interface', () => {
+      expect(
+        forbidden('infrastructure', (target) =>
+          ['application', 'interface'].includes(layerOf(target) ?? ''),
+        ),
+      ).toEqual([]);
+    });
   });
 
   it('modules are reached only through their public-api.ts or modules.ts', () => {

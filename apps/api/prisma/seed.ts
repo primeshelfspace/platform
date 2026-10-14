@@ -28,9 +28,9 @@ import {
 } from '@sugrpay/shared';
 import { PrismaClient as InvoicingClient } from '../generated/invoicing/index.js';
 import { PrismaClient as PlatformClient, type Prisma } from '../generated/platform/index.js';
-import { applyBrandSnapshot } from '../src/invoicing/platform-sync/brand-replica.js';
-import { hashPassword } from '../src/platform/auth/password.js';
-import { toBrandSnapshot } from '../src/platform/events/brand-snapshot.js';
+import { applyBrandSnapshot } from '../src/modules/invoicing/platform-sync/infrastructure/brand-replica.js';
+import { hashPassword } from '../src/modules/platform/auth/infrastructure/password.js';
+import { toBrandSnapshot } from '../src/modules/platform/events/brand-snapshot.js';
 
 function ownerUrl(module: 'PLATFORM' | 'INVOICING'): string {
   const url = process.env[`${module}_DIRECT_DATABASE_URL`] ?? process.env[`${module}_DATABASE_URL`];

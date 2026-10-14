@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { API_URL } from '@/lib/env';
 
-/** Mirrors apps/api/src/common/check-upload.ts's own limit — client-side
+/** Mirrors apps/api/src/shared/common/check-upload.ts's own limit — client-side
  * validation is a convenience (fail before the upload even starts), not the
  * enforcement; the API re-checks both independently. */
 const MAX_CHECK_IMAGE_BYTES = 10 * 1024 * 1024;
