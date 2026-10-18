@@ -3,7 +3,7 @@
  * per-module databases (platform, invoicing).
  *
  *   LEGACY_DATABASE_URL=postgresql://owner@host/sugrpay \
- *     pnpm --filter @sugrpay/api db:migrate-legacy
+ *     pnpm --filter @platform/api db:migrate-legacy
  *
  * Preconditions: both module databases exist and are migrated (db:bootstrap,
  * db:migrate) and are EMPTY — this refuses to merge into existing data. The

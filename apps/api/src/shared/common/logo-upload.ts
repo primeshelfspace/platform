@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import type { MailAttachment, StoragePort } from '@sugrpay/shared';
+import type { MailAttachment, StoragePort } from '@platform/shared';
 
 /**
  * The one definition of what a logo may be, and the one path that stores it.

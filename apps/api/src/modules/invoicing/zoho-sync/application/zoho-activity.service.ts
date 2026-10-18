@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Pagination, Scope } from '@sugrpay/shared';
+import type { Pagination, Scope } from '@platform/shared';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 
 export interface ZohoActivityEntry {

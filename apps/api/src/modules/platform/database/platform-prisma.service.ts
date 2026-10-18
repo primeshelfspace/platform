@@ -5,7 +5,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
-import type { Scope } from '@sugrpay/shared';
+import type { Scope } from '@platform/shared';
 import { ENV, type Env } from '../../../shared/config/env.js';
 import {
   applyScope,

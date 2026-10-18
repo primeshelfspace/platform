@@ -1,4 +1,4 @@
-import { hasGrant, type Action, type Resource } from '@sugrpay/shared';
+import { hasGrant, type Action, type Resource } from '@platform/shared';
 import type { CurrentUser } from './api';
 
 /**

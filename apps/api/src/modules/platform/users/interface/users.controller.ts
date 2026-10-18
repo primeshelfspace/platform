@@ -12,7 +12,7 @@ import {
   type UpdateUserRoleInput,
   type UpdateUserStatusInput,
   type UserListQuery,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import {

@@ -25,7 +25,7 @@ import {
   type InvoiceStatus,
   type PaymentMethod,
   type Role,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { PrismaClient as InvoicingClient } from '../generated/invoicing/index.js';
 import { PrismaClient as PlatformClient, type Prisma } from '../generated/platform/index.js';
 import { applyBrandSnapshot } from '../src/modules/invoicing/platform-sync/infrastructure/brand-replica.js';

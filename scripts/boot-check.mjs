@@ -8,7 +8,7 @@
  *   node scripts/boot-check.mjs ""            # platform alone
  *   node scripts/boot-check.mjs invoicing     # platform + invoicing
  *
- * Needs a build (pnpm --filter @sugrpay/api build) and the services running.
+ * Needs a build (pnpm --filter @platform/api build) and the services running.
  */
 import { spawn } from 'node:child_process';
 import path from 'node:path';

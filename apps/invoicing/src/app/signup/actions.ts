@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { emailSchema } from '@sugrpay/shared';
+import { emailSchema } from '@platform/shared';
 import { ApiError, register } from '@/lib/api';
 
 export interface SignupState {

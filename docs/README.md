@@ -1,10 +1,36 @@
 # Documentation
 
-| Folder                                             | What is in it                                                 |
-| -------------------------------------------------- | ------------------------------------------------------------- |
-| [architecture/](architecture/)                     | How the system is built: modules, databases, events, layers   |
-| [architecture/decisions/](architecture/decisions/) | Why it is built that way (architecture decision records)      |
-| [integrations/](integrations/)                     | Notes on third-party systems (Zoho Books sandbox, ...)        |
-| [product/](product/)                               | Product specifications: requirements, flows, MVP feature list |
+## Start here
 
-Start with [architecture/README.md](architecture/README.md).
+| Document                                         | Read it to…                                           |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| [getting-started.md](getting-started.md)         | Install, set up and run everything on your machine    |
+| [architecture/README.md](architecture/README.md) | Understand how the system is built                    |
+| [guides/payment-flow.md](guides/payment-flow.md) | Click through invoice → payment and test each outcome |
+
+## Architecture
+
+| Document                                                             | Covers                                              |
+| -------------------------------------------------------------------- | --------------------------------------------------- |
+| [architecture/README.md](architecture/README.md)                     | Overview, diagram, repository map                   |
+| [architecture/principles.md](architecture/principles.md)             | The rules that must not break (money, isolation, …) |
+| [architecture/modules.md](architecture/modules.md)                   | Modules, public APIs, boundary checks               |
+| [architecture/layers.md](architecture/layers.md)                     | Clean-architecture layers inside a feature          |
+| [architecture/databases.md](architecture/databases.md)               | One database per module, roles, row-level security  |
+| [architecture/events.md](architecture/events.md)                     | Outbox, delivery, published events                  |
+| [architecture/adding-a-product.md](architecture/adding-a-product.md) | Bringing HQ (or any product) online                 |
+| [architecture/decisions/](architecture/decisions/)                   | Why it is built this way (decision records)         |
+
+## Integrations
+
+| Document                                                                 | Covers                            |
+| ------------------------------------------------------------------------ | --------------------------------- |
+| [integrations/zoho-books.md](integrations/zoho-books.md)                 | Connecting and syncing Zoho Books |
+| [integrations/zoho-books-sandbox.md](integrations/zoho-books-sandbox.md) | Testing against a Zoho sandbox    |
+
+## Product
+
+| Document                       | Covers                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------ |
+| [product/](product/)           | Requirements, technical design, flows, MVP feature list (Word documents) |
+| [known-gaps.md](known-gaps.md) | Open decisions and dependencies                                          |

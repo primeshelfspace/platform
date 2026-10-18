@@ -1,5 +1,5 @@
 {
-  "name": "@sugrpay/invoicing",
+  "name": "@platform/invoicing-web",
   "version": "0.1.0",
   "private": true,
   "description": "Authenticated admin application for merchant staff.",
@@ -11,8 +11,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@sugrpay/shared": "workspace:*",
-    "@sugrpay/ui": "workspace:*",
+    "@platform/shared": "workspace:*",
+    "@platform/ui": "workspace:*",
     "lucide-react": "^0.469.0",
     "next": "^15.1.3",
     "react": "^18.3.1",

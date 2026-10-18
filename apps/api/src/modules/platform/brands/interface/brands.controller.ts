@@ -18,7 +18,7 @@ import {
   taxIdMatchesCountry,
   type BrandInput,
   type Scope,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import { BrandsService, type Brand, type BrandWithLogo } from '../application/brands.service.js';

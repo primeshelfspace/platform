@@ -4,7 +4,7 @@
  *
  *   pnpm install && pnpm setup:local && pnpm dev
  *
- * Steps: env file → services → migrations → seed → browser binaries → verify.
+ * Steps: env file → services → databases → migrations → seed → verify.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,14 +32,14 @@ runOrExit(process.execPath, [path.join(ROOT, 'scripts', 'services.mjs'), 'up'], 
 
 // 3. Shared package build (api and both web apps import its types) ----------
 log();
-step('building @sugrpay/shared');
-runOrExit('pnpm', ['--filter', '@sugrpay/shared', 'build'], { cwd: ROOT });
+step('building @platform/shared');
+runOrExit('pnpm', ['--filter', '@platform/shared', 'build'], { cwd: ROOT });
 ok('shared package built');
 
 // 4. Databases (one per module) --------------------------------------------
 log();
 step('creating module databases and roles (DATABASE_ADMIN_URL)');
-const bootstrap = run('pnpm', ['--filter', '@sugrpay/api', 'db:bootstrap'], {
+const bootstrap = run('pnpm', ['--filter', '@platform/api', 'db:bootstrap'], {
   cwd: ROOT,
   stdio: 'inherit',
 });
@@ -53,25 +53,15 @@ if (bootstrap.code !== 0) {
 ok('platform and invoicing databases ready');
 
 step('applying migrations (platform, invoicing)');
-runOrExit('pnpm', ['--filter', '@sugrpay/api', 'db:migrate'], { cwd: ROOT });
+runOrExit('pnpm', ['--filter', '@platform/api', 'db:migrate'], { cwd: ROOT });
 ok('schemas up to date');
 
 step('seeding multi-brand dataset');
-runOrExit('pnpm', ['--filter', '@sugrpay/api', 'db:seed'], { cwd: ROOT });
+runOrExit('pnpm', ['--filter', '@platform/api', 'db:seed'], { cwd: ROOT });
 ok('seed data loaded');
 
-// 5. Browser binaries -------------------------------------------------------
-log();
-step('playwright browsers (PDF rendering + e2e)');
-const pw = run('pnpm', ['exec', 'playwright', 'install', 'chromium'], {
-  cwd: ROOT,
-  stdio: 'inherit',
-});
-if (pw.code === 0) ok('chromium installed');
-else
-  warn('playwright install failed — PDF generation and e2e tests will not run until it succeeds');
-
-// 6. Verify -----------------------------------------------------------------
+// 5. Verify -----------------------------------------------------------------
+// (PDF rendering's Chromium comes with puppeteer at install time.)
 log();
 step('verifying');
 const checks = [

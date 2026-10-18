@@ -1,12 +1,12 @@
 /**
  * InvoicesService against a real database (TDD-001 §9.4, §5.3). Needs a
  * migrated, seeded database:
- *   pnpm setup:local && pnpm --filter @sugrpay/api test
+ *   pnpm setup:local && pnpm --filter @platform/api test
  */
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '../../database/client.js';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { CustomerInput, InvoiceDraftInput, RequestScope } from '@sugrpay/shared';
+import type { CustomerInput, InvoiceDraftInput, RequestScope } from '@platform/shared';
 import { createFakeMailPort } from '../../../../shared/adapters/mail/fake-mail.port.js';
 import { LocalDiskAdapter } from '../../../../shared/adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../../../../shared/config/load-env.js';

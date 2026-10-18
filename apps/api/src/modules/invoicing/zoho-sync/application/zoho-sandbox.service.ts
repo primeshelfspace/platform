@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { Scope } from '@sugrpay/shared';
+import type { Scope } from '@platform/shared';
 import { ZohoBooksAdapter } from '../../../../shared/adapters/accounting/zoho-books.adapter.js';
 import { IntegrationConnectionService } from '../../../platform/public-api.js';
 

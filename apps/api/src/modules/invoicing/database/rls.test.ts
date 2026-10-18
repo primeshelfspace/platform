@@ -7,7 +7,7 @@
  * database's own tables are proved in platform/tenancy/rls.test.ts.
  *
  * They need migrated, seeded databases. Run:
- *   pnpm setup:local && pnpm --filter @sugrpay/api test
+ *   pnpm setup:local && pnpm --filter @platform/api test
  */
 import { PrismaClient } from './client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

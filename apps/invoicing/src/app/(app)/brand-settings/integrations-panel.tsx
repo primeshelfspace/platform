@@ -13,8 +13,8 @@ import {
   RefreshCw,
   Unlink,
 } from 'lucide-react';
-import { Pagination } from '@sugrpay/ui/pagination';
-import { toast } from '@sugrpay/ui/toast';
+import { Pagination } from '@platform/ui/pagination';
+import { toast } from '@platform/ui/toast';
 import type {
   ZohoActivityEntry,
   ZohoActivityPage,

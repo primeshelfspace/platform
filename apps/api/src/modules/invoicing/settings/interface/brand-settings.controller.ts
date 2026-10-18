@@ -14,7 +14,7 @@ import {
   type PaymentMethodSettingsInput,
   type PaymentPageDisplayInput,
   type Scope,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
 import {

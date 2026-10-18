@@ -14,7 +14,7 @@ import {
   type PaymentMethod,
   type PublicScope,
   type Scope,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 import {
   InvoicingPrismaService,

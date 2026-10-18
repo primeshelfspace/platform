@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { toast } from '@sugrpay/ui/toast';
+import { toast } from '@platform/ui/toast';
 
 interface FormStatus {
   error?: string | null;

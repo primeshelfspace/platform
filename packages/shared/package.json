@@ -1,5 +1,5 @@
 {
-  "name": "@sugrpay/shared",
+  "name": "@platform/shared",
   "version": "0.1.0",
   "private": true,
   "description": "Domain primitives shared by the admin app, the payment app and the API: money, calculation, tokens, ports and validation schemas.",

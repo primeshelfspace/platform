@@ -3,9 +3,9 @@
 import { useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FileCheck, Search } from 'lucide-react';
-import { Pagination } from '@sugrpay/ui/pagination';
-import { formatDateForDisplay } from '@sugrpay/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
+import { Pagination } from '@platform/ui/pagination';
+import { formatDateForDisplay } from '@platform/shared';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
 import { NoBrandsState } from '@/components/no-brands-state';
 import type {
   Brand,

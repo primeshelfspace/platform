@@ -2,13 +2,13 @@
  * DashboardService against a real database (same convention as
  * InvoicesService — see its own test file for why: needs a migrated,
  * seeded database:
- *   pnpm setup:local && pnpm --filter @sugrpay/api test
+ *   pnpm setup:local && pnpm --filter @platform/api test
  */
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '../../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { RequestScope } from '@sugrpay/shared';
+import type { RequestScope } from '@platform/shared';
 import { loadEnv } from '../../../../shared/config/load-env.js';
 import { getEnv } from '../../../../shared/config/env.js';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';

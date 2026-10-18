@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, Pencil, X } from 'lucide-react';
-import { toast } from '@sugrpay/ui/toast';
-import { formatDateForDisplay } from '@sugrpay/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
+import { toast } from '@platform/ui/toast';
+import { formatDateForDisplay } from '@platform/shared';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
 import type { Brand, EmailReceiptLayout, InvoiceDetail } from '@/lib/api';
 import { getInvoiceEmailDraftAction, issueInvoiceAction, sendInvoiceEmailAction } from './actions';
 

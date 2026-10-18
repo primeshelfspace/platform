@@ -11,7 +11,7 @@
  * Test-only: the module-boundary rule lets *.test-support.ts files reach
  * platform internals for fixtures; production invoicing code never does.
  */
-import type { RequestScope, StoragePort } from '@sugrpay/shared';
+import type { RequestScope, StoragePort } from '@platform/shared';
 import { LocalDiskAdapter } from '../../../shared/adapters/storage/local-disk.adapter.js';
 import type { Env } from '../../../shared/config/env.js';
 import { EventBus } from '../../../shared/infra/events/event-bus.js';

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../../database/client.js';
-import type { PaymentGatewayProvider, Scope } from '@sugrpay/shared';
+import type { PaymentGatewayProvider, Scope } from '@platform/shared';
 import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
 import { AuthorizeNetAccountService } from './authorize-net-account.service.js';
 import { SquareAccountService } from './square-account.service.js';

@@ -13,7 +13,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { z } from 'zod';
-import { idSchema, type Scope } from '@sugrpay/shared';
+import { idSchema, type Scope } from '@platform/shared';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 import { CurrentScope, Public, RequirePermission } from '../../../platform/public-api.js';

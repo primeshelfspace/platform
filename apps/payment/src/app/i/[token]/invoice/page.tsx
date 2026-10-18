@@ -1,4 +1,4 @@
-import { brandThemeVariables } from '@sugrpay/shared/tokens';
+import { brandThemeVariables } from '@platform/shared/tokens';
 import { lookupInvoice } from '@/lib/invoice';
 import { InvoiceDocument } from '../invoice-document';
 import { Terminal, Unavailable } from '../states';

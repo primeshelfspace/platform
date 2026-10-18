@@ -23,7 +23,7 @@ import {
   paymentIntentRequestSchema,
   publicTokenSchema,
   type CreateCheckSubmissionInput,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { assertCheckImage, MAX_CHECK_IMAGE_BYTES } from '../../../../shared/common/check-upload.js';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { Public } from '../../../platform/public-api.js';

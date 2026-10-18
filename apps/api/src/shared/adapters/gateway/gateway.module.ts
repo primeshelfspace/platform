@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { PAYMENT_GATEWAY_PORT } from '@sugrpay/shared';
+import { PAYMENT_GATEWAY_PORT } from '@platform/shared';
 import { ENV, type Env } from '../../config/env.js';
 import { IntegrationsModule } from '../../../modules/platform/modules.js';
 import { FakeGatewayAdapter } from './fake-gateway.adapter.js';

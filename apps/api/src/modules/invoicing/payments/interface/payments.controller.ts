@@ -4,7 +4,7 @@ import {
   paymentListQuerySchema,
   type PaymentListQuery,
   type Scope,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
 import { PaymentsService, type PaymentListResult } from '../application/payments.service.js';

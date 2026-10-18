@@ -18,7 +18,7 @@ import {
   type PaymentPageDisplayInput,
   type Scope,
   type StoragePort,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 import { AuditLogService, BrandsService } from '../../../platform/public-api.js';
 import {

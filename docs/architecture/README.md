@@ -50,6 +50,7 @@ There is deliberately no arrow between the two products.
 
 | Document                                   | Covers                                                   |
 | ------------------------------------------ | -------------------------------------------------------- |
+| [principles.md](principles.md)             | The rules that must not break: money, tenant isolation   |
 | [modules.md](modules.md)                   | The module rules, public APIs, and the folder layout     |
 | [layers.md](layers.md)                     | Clean architecture inside a feature (domain → interface) |
 | [databases.md](databases.md)               | One database per module, roles, row-level security       |

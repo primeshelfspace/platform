@@ -21,15 +21,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 pnpm install --frozen-lockfile
-pnpm --filter @sugrpay/shared build
-pnpm --filter @sugrpay/ui build
+pnpm --filter @platform/shared build
+pnpm --filter @platform/ui build
 
 # Reads each module's *_DIRECT_DATABASE_URL from this box's own .env. The
 # module databases must exist first (pnpm db:bootstrap, once per box).
-pnpm --filter @sugrpay/api db:migrate
+pnpm --filter @platform/api db:migrate
 
 rm -rf apps/api/dist-build
-pnpm --filter @sugrpay/api exec tsc -p tsconfig.build.json --outDir dist-build
+pnpm --filter @platform/api exec tsc -p tsconfig.build.json --outDir dist-build
 
 declare -A slot
 for app in invoicing payment; do
@@ -42,7 +42,7 @@ for app in invoicing payment; do
   # alongside the new ones and fail the build on any route this deploy removed.
   rm -rf "${dir:?}/$live/types"
 
-  NEXT_DIST_DIR=${slot[$app]} pnpm --filter "@sugrpay/$app" build
+  NEXT_DIST_DIR=${slot[$app]} pnpm --filter "@platform/$app-web" build
 done
 
 # next build rewrites these to point at the slot it built into; keep the

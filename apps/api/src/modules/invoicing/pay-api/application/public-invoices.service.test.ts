@@ -3,12 +3,12 @@
  * resolution here is the entire security model of the anonymous payment
  * path, so it is exercised against real RLS rather than mocked. Needs a
  * migrated, seeded database:
- *   pnpm setup:local && pnpm --filter @sugrpay/api test
+ *   pnpm setup:local && pnpm --filter @platform/api test
  */
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '../../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@sugrpay/shared';
+import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@platform/shared';
 import { createFakeMailPort } from '../../../../shared/adapters/mail/fake-mail.port.js';
 import { loadEnv } from '../../../../shared/config/load-env.js';
 import { getEnv } from '../../../../shared/config/env.js';

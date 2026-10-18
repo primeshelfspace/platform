@@ -15,7 +15,7 @@ import {
   type Role,
   type UserListQuery,
   type UserStatus,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import {
   PlatformPrismaService,
   type ScopedClient,

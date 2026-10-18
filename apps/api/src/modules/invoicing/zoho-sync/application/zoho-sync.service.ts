@@ -8,8 +8,8 @@ import type {
   AccountingPayment,
   IntegrationError as IntegrationErrorType,
   Scope,
-} from '@sugrpay/shared';
-import { IntegrationError, isSupportedCurrency } from '@sugrpay/shared';
+} from '@platform/shared';
+import { IntegrationError, isSupportedCurrency } from '@platform/shared';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { QueueService } from '../../../../shared/infra/queue/queue.service.js';
 import { RedisService } from '../../../../shared/infra/redis/redis.service.js';

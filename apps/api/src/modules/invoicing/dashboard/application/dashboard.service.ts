@@ -6,7 +6,7 @@ import {
   toCurrencyCode,
   type CurrencyCode,
   type Scope,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import {
   InvoicingPrismaService,
   type ScopedClient,

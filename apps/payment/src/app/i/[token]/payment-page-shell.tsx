@@ -1,7 +1,7 @@
 'use client';
 
-import { formatDateForDisplay } from '@sugrpay/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
+import { formatDateForDisplay } from '@platform/shared';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
 import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
 import { useAmountDue } from './amount-due-context';

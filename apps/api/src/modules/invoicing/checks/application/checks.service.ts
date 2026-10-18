@@ -10,7 +10,7 @@ import {
   type ReviewCheckSubmissionInput,
   type Scope,
   type StoragePort,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { InvoicesService } from '../../invoices/application/invoices.service.js';
 

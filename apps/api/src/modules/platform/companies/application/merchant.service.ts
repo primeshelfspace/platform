@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import type { CompanyDetailsInput, Scope, StoragePort } from '@sugrpay/shared';
-import { storageKeys, STORAGE_PORT } from '@sugrpay/shared';
+import type { CompanyDetailsInput, Scope, StoragePort } from '@platform/shared';
+import { storageKeys, STORAGE_PORT } from '@platform/shared';
 import {
   logoExtensionFor,
   storeLogo,

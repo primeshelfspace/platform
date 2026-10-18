@@ -20,7 +20,7 @@ const nextConfig = {
   // live server keeps serving the other, then repoints pm2 (see
   // deploy/ecosystem.config.cjs). Unset locally and in CI, so those still use .next.
   distDir: process.env.NEXT_DIST_DIR || '.next',
-  transpilePackages: ['@sugrpay/shared', '@sugrpay/ui'],
+  transpilePackages: ['@platform/shared', '@platform/ui'],
 
   // No build id derived from source paths, no source maps in production: the
   // payment bundle should reveal as little about internals as possible.

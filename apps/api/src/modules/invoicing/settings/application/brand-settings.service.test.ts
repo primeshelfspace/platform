@@ -8,12 +8,12 @@
  * something a mocked Prisma can demonstrate — RLS, the event round trip and
  * the append-only audit row are all database behaviour. Needs migrated,
  * seeded databases:
- *   pnpm setup:local && pnpm --filter @sugrpay/api test
+ *   pnpm setup:local && pnpm --filter @platform/api test
  */
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '../../database/client.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { RequestScope } from '@sugrpay/shared';
+import type { RequestScope } from '@platform/shared';
 import { createFakeMailPort } from '../../../../shared/adapters/mail/fake-mail.port.js';
 import { LocalDiskAdapter } from '../../../../shared/adapters/storage/local-disk.adapter.js';
 import { loadEnv } from '../../../../shared/config/load-env.js';

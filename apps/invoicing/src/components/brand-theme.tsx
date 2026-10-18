@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { brandThemeVariables } from '@sugrpay/shared/tokens';
+import { brandThemeVariables } from '@platform/shared/tokens';
 
 /**
  * Applies a brand's colours to everything inside it.

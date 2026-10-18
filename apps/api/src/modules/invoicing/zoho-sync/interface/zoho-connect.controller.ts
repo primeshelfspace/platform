@@ -21,7 +21,7 @@ import {
   zohoSyncSettingsSchema,
   type Scope,
   type ZohoSyncSettingsInput,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 import { ZohoBooksAdapter } from '../../../../shared/adapters/accounting/zoho-books.adapter.js';

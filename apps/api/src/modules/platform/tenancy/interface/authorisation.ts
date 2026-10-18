@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import { type Action, type RequestScope, type Resource, checkAccess } from '@sugrpay/shared';
+import { type Action, type RequestScope, type Resource, checkAccess } from '@platform/shared';
 import { SESSION_COOKIE, SessionService } from '../../auth/application/session.service.js';
 
 export const PERMISSION_KEY = 'sugrpay:permission';

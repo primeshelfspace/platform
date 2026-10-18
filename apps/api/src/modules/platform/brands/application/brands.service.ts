@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Brand } from '../../database/client.js';
-import type { BrandInput, Scope, StoragePort } from '@sugrpay/shared';
-import { isPublicScope, storageKeys, STORAGE_PORT } from '@sugrpay/shared';
+import type { BrandInput, Scope, StoragePort } from '@platform/shared';
+import { isPublicScope, storageKeys, STORAGE_PORT } from '@platform/shared';
 import {
   LOGO_URL_TTL_SECONDS,
   logoExtensionFor,

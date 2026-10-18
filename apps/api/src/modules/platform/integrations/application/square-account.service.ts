@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '../../database/client.js';
-import { IntegrationError, type Scope } from '@sugrpay/shared';
+import { IntegrationError, type Scope } from '@platform/shared';
 import {
   decryptCredential,
   encryptCredential,

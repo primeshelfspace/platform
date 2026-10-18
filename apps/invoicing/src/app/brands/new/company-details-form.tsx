@@ -11,9 +11,9 @@ import {
   normalizeWebsiteDomain,
   checkBusinessEmail,
   emailSchema,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 
-import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@sugrpay/shared';
+import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@platform/shared';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import {

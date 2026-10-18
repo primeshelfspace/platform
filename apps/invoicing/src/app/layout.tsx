@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
-import { Toaster } from '@sugrpay/ui/toast';
+import { Toaster } from '@platform/ui/toast';
 import './globals.css';
 
 export const metadata: Metadata = {

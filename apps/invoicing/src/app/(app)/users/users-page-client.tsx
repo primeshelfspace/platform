@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, Plus, Search } from 'lucide-react';
-import { toast } from '@sugrpay/ui/toast';
-import { Pagination } from '@sugrpay/ui/pagination';
-import { ROLES, type Role } from '@sugrpay/shared';
+import { toast } from '@platform/ui/toast';
+import { Pagination } from '@platform/ui/pagination';
+import { ROLES, type Role } from '@platform/shared';
 import { Select } from '@/components/ui/select';
 import type { Brand, ManagedUser } from '@/lib/api';
 import { InviteUserModal } from './invite-user-modal';

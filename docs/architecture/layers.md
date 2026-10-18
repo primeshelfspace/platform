@@ -23,7 +23,7 @@ flowchart LR
 
 | Layer            | Contains                                                       | May import                                             | Must not import          |
 | ---------------- | -------------------------------------------------------------- | ------------------------------------------------------ | ------------------------ |
-| `domain`         | Calculations, state rules, value types, pure helpers           | `@sugrpay/shared`, own domain                          | Nest, Prisma, adapters   |
+| `domain`         | Calculations, state rules, value types, pure helpers           | `@platform/shared`, own domain                         | Nest, Prisma, adapters   |
 | `application`    | `*.service.ts` — one method per use case; transactions; events | domain, infrastructure, other modules' `public-api.ts` | interface                |
 | `infrastructure` | Repositories (Prisma queries), external clients, mappers       | domain, the module's `database/`                       | interface, application   |
 | `interface`      | `*.controller.ts`, input schemas / DTOs, response mapping      | application, domain                                    | infrastructure, database |

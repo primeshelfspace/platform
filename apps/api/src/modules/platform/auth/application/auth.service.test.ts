@@ -8,7 +8,7 @@
  */
 import { UnauthorizedException } from '@nestjs/common';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { RequestScope } from '@sugrpay/shared';
+import type { RequestScope } from '@platform/shared';
 import type { PlatformPrismaService } from '../../database/platform-prisma.service.js';
 import type { RedisService } from '../../../../shared/infra/redis/redis.service.js';
 import { AuthService } from './auth.service.js';

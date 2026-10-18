@@ -10,7 +10,7 @@ import {
   type PaymentIntentStatus,
   type RefundInput,
   type RefundResult,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 
 /**
  * FakeGateway — the local and test implementation of PaymentGatewayPort

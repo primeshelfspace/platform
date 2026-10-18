@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type Customer, type CustomerContactPerson } from '../../database/client.js';
-import type { CustomerInput, CustomerListQuery, Scope } from '@sugrpay/shared';
+import type { CustomerInput, CustomerListQuery, Scope } from '@platform/shared';
 import {
   InvoicingPrismaService,
   type ScopedClient,
@@ -40,7 +40,7 @@ export interface CustomerListResult {
 
 /** Payment statuses that count as "collected" for the list view's Payments
  * column — mirrors the settled/terminal split invoices.service.ts already
- * draws using PAYABLE_STATUSES (@sugrpay/shared) and the rest. */
+ * draws using PAYABLE_STATUSES (@platform/shared) and the rest. */
 const COLLECTED_PAYMENT_STATUSES = ['SETTLED'] as const;
 
 /**

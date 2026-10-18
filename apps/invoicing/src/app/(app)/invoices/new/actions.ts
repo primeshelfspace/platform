@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, createInvoice, issueInvoice, type LineItemFormInput } from '@/lib/api';
 import { describeApiError, emptyToNull } from '@/lib/form';
-import { MoneyError, parseBasisPoints, toCurrencyCode } from '@sugrpay/shared';
+import { MoneyError, parseBasisPoints, toCurrencyCode } from '@platform/shared';
 
 export interface CreateInvoiceState {
   readonly error?: string;

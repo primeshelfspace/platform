@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import type { RequestScope, Role } from '@sugrpay/shared';
+import type { RequestScope, Role } from '@platform/shared';
 import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
 
 /**

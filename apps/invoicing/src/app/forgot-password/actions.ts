@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { emailSchema } from '@sugrpay/shared';
+import { emailSchema } from '@platform/shared';
 import { requestPasswordReset } from '@/lib/api';
 
 export interface ForgotPasswordState {

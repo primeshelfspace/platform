@@ -1,5 +1,5 @@
-import { formatDateForDisplay, terminalStatusLabel } from '@sugrpay/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@sugrpay/shared/money';
+import { formatDateForDisplay, terminalStatusLabel } from '@platform/shared';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
 import {
   ApiError,
   getCurrentUser,

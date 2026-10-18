@@ -4,7 +4,7 @@ import {
   formatMinorForDisplay,
   renderInvoicePdfHtml,
   toCurrencyCode,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { InvoicePdfService } from '../infrastructure/invoice-pdf.service.js';
 import { PublicInvoicesService } from './public-invoices.service.js';
 

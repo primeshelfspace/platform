@@ -8,7 +8,7 @@ import {
   type RenderPreviewInput,
   type SendMailInput,
   type SendMailResult,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { ENV, type Env } from '../../config/env.js';
 
 /**

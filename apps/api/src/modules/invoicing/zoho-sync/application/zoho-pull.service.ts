@@ -8,7 +8,7 @@ import {
   type CurrencyCode,
   type InvoiceStatus,
   type Scope,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { mapWithConcurrency } from '../../../../shared/common/concurrency.js';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { RedisService } from '../../../../shared/infra/redis/redis.service.js';

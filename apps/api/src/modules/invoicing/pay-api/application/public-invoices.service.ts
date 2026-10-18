@@ -8,7 +8,7 @@ import {
   type CreateCheckSubmissionInput,
   type PublicScope,
   type StoragePort,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import {
   formatBrandAddress,
   toInvoicePdfSettings,

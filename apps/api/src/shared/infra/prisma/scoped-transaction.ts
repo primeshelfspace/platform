@@ -1,4 +1,4 @@
-import { type Scope, databaseScopeSettings } from '@sugrpay/shared';
+import { type Scope, databaseScopeSettings } from '@platform/shared';
 
 /**
  * The tenant-isolation mechanics shared by every module's own Prisma service.

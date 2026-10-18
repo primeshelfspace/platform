@@ -33,7 +33,7 @@ import {
   type RecordManualPaymentInput,
   type Scope,
   type StoragePort,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import {
   formatBrandAddress,
   parseFrom,

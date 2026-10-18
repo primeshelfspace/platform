@@ -8,7 +8,7 @@ import {
   type PaymentIntent,
   type RefundInput,
   type RefundResult,
-} from '@sugrpay/shared';
+} from '@platform/shared';
 import { ENV, type Env } from '../../config/env.js';
 
 /**

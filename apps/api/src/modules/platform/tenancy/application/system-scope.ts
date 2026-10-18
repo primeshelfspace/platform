@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { RequestScope } from '@sugrpay/shared';
+import type { RequestScope } from '@platform/shared';
 import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
 
 /**
