@@ -30,9 +30,9 @@ if (!fs.existsSync(envPath)) {
 log();
 runOrExit(process.execPath, [path.join(ROOT, 'scripts', 'services.mjs'), 'up'], { cwd: ROOT });
 
-// 3. Shared package build (api and both web apps import its types) ----------
+// 3. Shared package build (the api imports its types) ----------------------
 log();
-step('building the shared packages (kernel, contracts, ui)');
+step('building the shared packages (kernel, contracts)');
 runOrExit('pnpm', ['--filter', './packages/*', 'build'], { cwd: ROOT });
 ok('shared packages built');
 
@@ -82,10 +82,9 @@ if (healthy) {
   log(
     `${c.green}${c.bold}Ready in ${secs}s.${c.reset} Start the stack with ${c.bold}pnpm dev${c.reset}:`,
   );
-  log(`  ${c.dim}admin  ${c.reset}http://localhost:3000`);
-  log(`  ${c.dim}payment${c.reset} http://localhost:3001`);
   log(`  ${c.dim}api    ${c.reset}http://localhost:4000/health`);
   log(`  ${c.dim}mail   ${c.reset}http://localhost:1080`);
+  log(`  ${c.dim}web apps live in the sugrpay-frontend repository${c.reset}`);
 } else {
   warn(`setup finished in ${secs}s with unhealthy services — see above`);
   process.exit(1);

@@ -1,13 +1,19 @@
-# Platform
+# Platform (backend)
 
-One platform, several products. The platform owns what every product needs —
-sign-in, companies, brands, users, roles, integrations and audit — and each
-product is built on top of it:
+The backend for every product: one API and its databases. The platform owns
+what every product needs — sign-in, companies, brands, users, roles,
+subscriptions, locations, integrations and audit — and each product is built
+on top of it:
 
 | Product     | What it does                          | Status             |
 | ----------- | ------------------------------------- | ------------------ |
 | **Sugrpay** | Send invoices and get paid            | Live               |
 | **HQ**      | Products, stock, suppliers and stores | Next (placeholder) |
+
+**The web apps are in a separate repository:**
+[primeshelfspace/sugrpay-frontend](https://github.com/primeshelfspace/sugrpay-frontend)
+(Accounts, the Sugrpay admin app and the payment pages). They call this API
+over HTTP.
 
 ## Run it
 
@@ -18,7 +24,8 @@ pnpm setup:local          # services, databases, migrations, demo data
 pnpm dev
 ```
 
-Then open http://localhost:3002 (Accounts) and sign in as `owner@sugrpay.test` /
+The API answers at http://localhost:4000/health. Then start the web apps from
+the sugrpay-frontend repository and sign in there as `owner@sugrpay.test` /
 `sugrpay-dev-password`.
 
 **New machine, or something not working?** Follow the full guide:
@@ -41,22 +48,18 @@ apps/
     src/modules/invoicing/  Sugrpay: customers, invoices, payments, settings, Zoho sync
     src/modules/hq/         HQ (placeholder)
     src/shared/             adapters, infrastructure, config, health
-  accounts/               Accounts web app: sign-in, team, brands, locations, billing
-  invoicing/              Sugrpay admin web app (Next.js)
-  payment/                public payment pages (Next.js)
 packages/
   kernel/                 money, calculations, tenancy, design tokens — used everywhere
   platform-contracts/     what the platform publishes (schemas, events)
   invoicing-contracts/    what Sugrpay publishes (schemas, statuses, email/PDF)
   hq-contracts/           what HQ will publish (placeholder)
-  ui/                     React components shared by the web apps
 docs/                     all documentation
 deploy/                   staging deploy scripts
 scripts/                  local setup and checks
 ```
 
 Everything installs into one `node_modules` at the root; `pnpm dev`, `build`,
-`test` and `typecheck` run across every app in the right order through
+`test` and `typecheck` run across the API and packages in the right order through
 [Turborepo](https://turbo.build/repo).
 
 ## Documentation

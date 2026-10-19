@@ -2,7 +2,7 @@
   "name": "platform",
   "version": "0.1.0",
   "private": true,
-  "description": "One platform, many products — shared login, companies, brands and billing, with Sugrpay (invoicing) as the first product and HQ next.",
+  "description": "The platform backend — one API and its databases: shared login, companies, brands, subscriptions and locations, with Sugrpay (invoicing) as the first product and HQ next. The web apps live in primeshelfspace/sugrpay-frontend.",
   "packageManager": "pnpm@11.10.0",
   "engines": {
     "node": ">=22.0.0",
@@ -33,12 +33,10 @@
     "db:studio:invoicing": "pnpm --filter @platform/api db:studio:invoicing"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "15.1.3",
     "@types/node": "^22.10.2",
     "eslint": "9.17.0",
     "eslint-import-resolver-typescript": "3.7.0",
     "eslint-plugin-import": "2.31.0",
-    "eslint-plugin-react-hooks": "5.1.0",
     "prettier": "^3.4.2",
     "turbo": "2.3.3",
     "typescript": "^5.7.2",

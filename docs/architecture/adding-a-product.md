@@ -1,6 +1,7 @@
 # Adding a product (HQ)
 
-HQ already has placeholders: `apps/api/src/modules/hq/` and `apps/hq/`. Bringing
+HQ already has placeholders: `apps/api/src/modules/hq/` here and `apps/hq/`
+in the sugrpay-frontend repository. Bringing
 it (or any later product) online follows the same steps invoicing did.
 
 ## Backend
@@ -35,12 +36,14 @@ it (or any later product) online follows the same steps invoicing did.
 
 ## Frontend
 
-`apps/hq` becomes a Next.js app modelled on `apps/invoicing` (its own port in
+In the **sugrpay-frontend** repository, `apps/hq` becomes a Next.js app
+modelled on `apps/invoicing` (its own port in
 `.env`, the shared `@platform/ui` and `@platform/kernel` packages, plus `@platform/hq-contracts`).
 Copy invoicing's `middleware.ts` and `lib/session.ts`: sign-in stays in
 Accounts and the session cookie is shared. Set `NEXT_PUBLIC_HQ_URL` so the
-Accounts launcher can open it, and add `hq` to `deploy/deploy.sh` and
-`deploy/ecosystem.config.cjs`.
+Accounts launcher can open it, and add `hq` to that repository's
+`deploy/deploy.sh` and `deploy/ecosystem.config.cjs`. Copy
+`packages/hq-contracts` across the same way as the other contracts.
 
 ## Done when
 

@@ -84,7 +84,8 @@ HQ can keep its own copy later.
 
 ## One sign-in for every app
 
-People sign in on **Accounts** (`apps/accounts`, port 3002). The session token
+People sign in on **Accounts** (`apps/accounts` in the sugrpay-frontend
+repository, port 3002). The session token
 is stored in one httpOnly cookie, `platform_session`
 (`@platform/platform-contracts` `session.ts`), which every web app reads and
 replays to the API:

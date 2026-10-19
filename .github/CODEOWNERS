@@ -14,17 +14,10 @@
 /packages/kernel/src/tenancy.ts         @sugrpay/engineering-leads @sugrpay/security
 /apps/api/src/modules/platform/tenancy/ @sugrpay/engineering-leads @sugrpay/security
 /apps/api/src/modules/platform/auth/    @sugrpay/engineering-leads @sugrpay/security
-/apps/accounts/src/lib/session.ts       @sugrpay/engineering-leads @sugrpay/security
-/apps/accounts/src/middleware.ts        @sugrpay/engineering-leads @sugrpay/security
 /packages/platform-contracts/src/session.ts @sugrpay/engineering-leads @sugrpay/security
 
 # Row-level security policies and grants.
 /apps/api/prisma/*/migrations/          @sugrpay/engineering-leads @sugrpay/security
-
-# The public payment application. Every dependency change here is a PCI scope
-# question, so the dependency manifest gets the same treatment as the code.
-/apps/payment/                          @sugrpay/engineering-leads @sugrpay/security
-/apps/payment/package.json              @sugrpay/engineering-leads @sugrpay/security
 
 # Gateway adapters.
 /apps/api/src/shared/adapters/gateway/  @sugrpay/engineering-leads @sugrpay/security

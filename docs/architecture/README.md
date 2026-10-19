@@ -10,16 +10,23 @@ walled-off modules, each with **its own database**. Any module can later be run
 as its own service without a rewrite (see
 [decisions/0001](decisions/0001-modular-monolith.md)).
 
+**Two repositories.** This one (`platform`) is the backend only: the API,
+its databases and the packages it is built from. Every web app lives in
+[primeshelfspace/sugrpay-frontend](https://github.com/primeshelfspace/sugrpay-frontend)
+and reaches the backend only over HTTP. The front end keeps copies of
+`kernel`, `platform-contracts` and `invoicing-contracts` (see its
+`packages/README.md`); the copies here are the source of truth.
+
 ```mermaid
 flowchart TB
-  subgraph web["Web apps (Next.js)"]
-    ACC_APP["apps/accounts<br/>sign-in · team · billing"]
-    INV_APP["apps/invoicing<br/>Sugrpay admin"]
-    PAY_APP["apps/payment<br/>public pay pages"]
-    HQ_APP["apps/hq<br/>(placeholder)"]
+  subgraph web["sugrpay-frontend repository — web apps (Next.js)"]
+    ACC_APP["accounts<br/>sign-in · team · billing"]
+    INV_APP["invoicing<br/>Sugrpay admin"]
+    PAY_APP["payment<br/>public pay pages"]
+    HQ_APP["hq<br/>(placeholder)"]
   end
 
-  subgraph api["apps/api — one NestJS backend"]
+  subgraph api["platform repository — apps/api, one NestJS backend"]
     direction TB
     INV["modules/invoicing"]
     HQ["modules/hq<br/>(placeholder)"]
@@ -91,17 +98,12 @@ apps/
       bootstrap.ts          creates module databases and roles
       seed.ts               development data for every module
       migrate-legacy.ts     one-off import of a pre-split database
-  accounts/                 Next.js app: sign-in, team, brands, locations, billing
-  invoicing/                Next.js admin app for Sugrpay
-  payment/                  Next.js public payment pages
-  hq/                       HQ web app (placeholder)
 packages/
   kernel/                   money, calculation, tenancy scope + roles, design tokens,
                             port interfaces, generic validation and reference data
   platform-contracts/       what the platform publishes: request schemas, events
   invoicing-contracts/      what invoicing publishes: schemas, statuses, email/PDF renderers
   hq-contracts/             what HQ will publish (placeholder)
-  ui/                       shared React components
 deploy/                     staging deploy (pm2 + build-slot script)
 docs/                       this documentation, product specs, integration notes
 scripts/                    local setup, services, boot check, dependency check

@@ -4,16 +4,13 @@
 // src/module-boundaries.test.ts checks the same rules from the test suite.
 //
 // See docs/architecture/modules.md and docs/architecture/layers.md.
-import nextPlugin from '@next/eslint-plugin-next';
 import importPlugin from 'eslint-plugin-import';
-import reactHooksPlugin from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 const API = './apps/api/src';
 const MODULES = ['platform', 'invoicing', 'hq'];
 const PRODUCTS = ['invoicing', 'hq'];
 const PUBLIC_ENTRY = ['./public-api.ts', './modules.ts'];
-const WEB_APPS = ['invoicing', 'payment', 'accounts', 'hq'];
 
 const mod = (name) => `${API}/modules/${name}`;
 
@@ -36,12 +33,6 @@ const directionZones = [
     from: PRODUCTS.map(mod),
     message: 'Shared code never imports a product.',
   },
-  ...WEB_APPS.map((app) => ({
-    target: `./apps/${app}`,
-    from: './apps/api',
-    message:
-      'Web apps talk to the API over HTTP and share code through packages/*, never by importing apps/api.',
-  })),
 ];
 
 /** Outside a module, only its public-api.ts and modules.ts may be imported. */
@@ -90,8 +81,6 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
-      '**/.next/**',
-      '**/.next-*/**',
       '**/generated/**',
       '**/coverage/**',
       '**/.turbo/**',
@@ -109,8 +98,6 @@ export default tseslint.config(
     plugins: {
       import: importPlugin,
       '@typescript-eslint': tseslint.plugin,
-      'react-hooks': reactHooksPlugin,
-      '@next/next': nextPlugin,
     },
     settings: {
       'import/parsers': { '@typescript-eslint/parser': ['.ts', '.tsx', '.mts', '.cts'] },
@@ -166,7 +153,6 @@ export default tseslint.config(
         ['@platform/platform-contracts', 'The kernel depends on nothing above it.'],
         ['@platform/invoicing-contracts', 'The kernel depends on nothing above it.'],
         ['@platform/hq-contracts', 'The kernel depends on nothing above it.'],
-        ['@platform/ui', 'The kernel depends on nothing above it.'],
       ]),
     },
   },

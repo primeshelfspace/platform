@@ -1,7 +1,9 @@
 # Getting started
 
 Everything needed to run the platform on your own machine, from an empty
-computer to a signed-in admin screen. Works on Windows, macOS and Linux.
+computer to a running API. The web apps live in the separate
+[sugrpay-frontend](https://github.com/primeshelfspace/sugrpay-frontend)
+repository and run against this API. Works on Windows, macOS and Linux.
 
 **Time needed:** about 20 minutes the first time, mostly installs.
 
@@ -9,13 +11,10 @@ computer to a signed-in admin screen. Works on Windows, macOS and Linux.
 
 ## 1. What you are going to run
 
-| Part              | What it is                                                   | Address               |
-| ----------------- | ------------------------------------------------------------ | --------------------- |
-| **API**           | The one backend (platform + every product)                   | http://localhost:4000 |
-| **Accounts**      | Sign in, team, brands, locations, billing — every product    | http://localhost:3002 |
-| **Sugrpay admin** | Web app for merchants (invoices, payments…)                  | http://localhost:3000 |
-| **Payment pages** | Public pages customers pay invoices on                       | http://localhost:3001 |
-| **Mail catcher**  | Shows every email the system sends (none leave your machine) | http://localhost:1080 |
+| Part             | What it is                                                   | Address               |
+| ---------------- | ------------------------------------------------------------ | --------------------- |
+| **API**          | The one backend (platform + every product)                   | http://localhost:4000 |
+| **Mail catcher** | Shows every email the system sends (none leave your machine) | http://localhost:1080 |
 
 They need three services underneath:
 
@@ -143,13 +142,10 @@ It ends with **"Ready in …s."** Run it again any time — it is safe to repeat
 pnpm dev
 ```
 
-This builds the shared packages first, then starts the API and all three web apps
-together, reloading on every code change. Wait for the API to print
+This builds the shared packages first, then starts the API, reloading on every
+code change. Wait for the API to print
 `api listening on http://localhost:4000`, then open:
 
-- **http://localhost:3002** — Accounts: sign in here, then pick a product
-- **http://localhost:3000** — Sugrpay admin (sends you to Accounts to sign in)
-- **http://localhost:3001** — payment pages (opened from an invoice's payment link)
 - **http://localhost:4000/health** — should show `postgres:platform`, `postgres:invoicing` and `redis` as `up`
 - **http://localhost:1080** — emails the system "sent"
 
@@ -166,7 +162,11 @@ pnpm --filter @platform/api dev:worker
 
 ## 7. Sign in
 
-Open **http://localhost:3002** (Accounts). Every demo user has the password
+The web apps are in the
+[sugrpay-frontend](https://github.com/primeshelfspace/sugrpay-frontend)
+repository. With the API running, follow its README (`pnpm install`, copy
+`.env.example` to `.env`, `pnpm dev`), then open **http://localhost:3002**
+(Accounts). Every demo user has the password
 **`sugrpay-dev-password`**. One sign-in opens every product: Accounts shows
 the products you can use, and **Open Sugrpay** takes you straight in, still
 signed in.
@@ -237,8 +237,8 @@ pnpm dev
 | `setup:local` says it could not create the databases | `DATABASE_ADMIN_URL` in `.env` must be a PostgreSQL **superuser** (see step 4).                                                                                                                                                                    |
 | `postgres is not running on :5432`                   | Start Docker Desktop, or start the PostgreSQL service (Windows: _Services_ → `postgresql-x64-16`).                                                                                                                                                 |
 | `redis is not running on :6379`                      | Start Docker Desktop, or the Memurai service on Windows.                                                                                                                                                                                           |
-| A port (3000, 3001, 3002, 4000) is already in use    | Set `ADMIN_PORT`, `PAYMENT_PORT`, `ACCOUNTS_PORT` or `API_PORT` in `.env`. Change the matching URL too (`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_INVOICING_URL`, `NEXT_PUBLIC_ACCOUNTS_URL` / `ACCOUNTS_PUBLIC_URL`). Restart `pnpm dev`.               |
-| Admin page shows an error right after `pnpm dev`     | Wait until the API prints `api listening…`; the web apps start faster than the API.                                                                                                                                                                |
+| Port 4000 is already in use                          | Set `API_PORT` and `API_PUBLIC_URL` in `.env`, and `NEXT_PUBLIC_API_URL` in the front end's `.env`. If a web app moves port, update `ADMIN_PUBLIC_URL`, `PAYMENT_PUBLIC_URL` or `ACCOUNTS_PUBLIC_URL` here. Restart `pnpm dev`.                    |
+| A web page shows an error right after `pnpm dev`     | Wait until the API prints `api listening…`; the web apps start faster than the API.                                                                                                                                                                |
 | Sign-in says the account is locked                   | Five wrong passwords lock it for 30 minutes. `pnpm db:seed` clears it.                                                                                                                                                                             |
 | A test fails with "unique constraint"                | Some tests expect fresh demo data: run `pnpm db:seed`, then the tests again.                                                                                                                                                                       |
 | `Cannot find module '…/generated/…'`                 | Run `pnpm db:generate`.                                                                                                                                                                                                                            |

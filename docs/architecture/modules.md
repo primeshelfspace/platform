@@ -30,7 +30,7 @@ Every rule is checked twice: by the linter as you type (`pnpm lint`,
 | Shared code never imports a product                                      | `pnpm lint`, `module-boundaries.test.ts` |
 | Only `public-api.ts` / `modules.ts` are importable from outside a module | `pnpm lint`, `module-boundaries.test.ts` |
 | Feature layers: pure domain, interface never touches data directly       | `pnpm lint`, `module-boundaries.test.ts` |
-| The kernel depends on nothing above it; web apps never import `apps/api` | `pnpm lint`                              |
+| The kernel depends on nothing above it                                   | `pnpm lint`                              |
 | A module's database role can't reach another module's database           | `modules/*/…/rls.test.ts`                |
 | The platform boots with no product enabled                               | `pnpm boot-check`                        |
 
