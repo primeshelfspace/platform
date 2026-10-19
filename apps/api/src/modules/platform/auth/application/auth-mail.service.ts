@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { MAIL_PORT, type MailPort } from '@platform/shared';
+import { MAIL_PORT, type MailPort } from '@platform/kernel';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 
 /**

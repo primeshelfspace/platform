@@ -1,5 +1,6 @@
-import { formatDateForDisplay, terminalStatusLabel } from '@platform/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { terminalStatusLabel } from '@platform/invoicing-contracts';
+import { formatDateForDisplay } from '@platform/kernel';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import {
   ApiError,
   getCurrentUser,

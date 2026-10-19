@@ -7,7 +7,8 @@
  * (TDD-001 §12.1 step 4).
  */
 
-import { type InvoiceStatus, publicTokenSchema } from '@platform/shared';
+import { type InvoiceStatus } from '@platform/invoicing-contracts';
+import { publicTokenSchema } from '@platform/kernel';
 import { API_URL } from './env';
 
 /** Brand Settings > Branding > Invoice PDF — the same settings the admin's

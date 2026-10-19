@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import type { BrandRollup } from '@/lib/api';
 
 function initialOf(value: string): string {

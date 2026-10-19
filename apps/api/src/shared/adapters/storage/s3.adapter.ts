@@ -14,7 +14,7 @@ import type {
   SignedUrlOptions,
   StoragePort,
   StoredObject,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { ENV, type Env } from '../../config/env.js';
 
 /**

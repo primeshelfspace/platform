@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { isPublicScope, type Scope } from '@platform/shared';
+import { isPublicScope, type Scope } from '@platform/kernel';
 import type { Prisma } from '../../database/client.js';
 import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
 

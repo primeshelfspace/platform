@@ -1,0 +1,32 @@
+{
+  "name": "@platform/invoicing-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Invoicing's (Sugrpay's) published contracts: validation schemas for its endpoints, invoice and payment statuses, and the email/PDF renderers the API and the web apps share.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@platform/kernel": "workspace:*",
+    "@platform/platform-contracts": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

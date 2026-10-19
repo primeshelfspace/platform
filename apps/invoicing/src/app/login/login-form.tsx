@@ -2,7 +2,7 @@
 
 import { useActionState, useId, useState } from 'react';
 import Link from 'next/link';
-import { emailSchema } from '@platform/shared';
+import { emailSchema } from '@platform/kernel';
 import {
   FIELD_INVALID_BORDER as invalidBorder,
   FIELD_VALID_BORDER_SECONDARY as validBorder,

@@ -1,14 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { evaluateTransition, type CreateCheckSubmissionInput } from '@platform/invoicing-contracts';
 import {
-  evaluateTransition,
   formatQuantity,
   storageKeys,
   STORAGE_PORT,
-  type CreateCheckSubmissionInput,
   type PublicScope,
   type StoragePort,
-} from '@platform/shared';
+} from '@platform/kernel';
 import {
   formatBrandAddress,
   toInvoicePdfSettings,

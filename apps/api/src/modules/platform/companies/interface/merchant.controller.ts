@@ -9,13 +9,13 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { type Scope } from '@platform/kernel';
 import {
   brandStructureChoiceSchema,
   companyDetailsSchema,
   type BrandStructureChoiceInput,
   type CompanyDetailsInput,
-  type Scope,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import {

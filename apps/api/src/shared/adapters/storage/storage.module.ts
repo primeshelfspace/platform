@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { STORAGE_PORT } from '@platform/shared';
+import { STORAGE_PORT } from '@platform/kernel';
 import { ENV, type Env } from '../../config/env.js';
 import { LocalDiskAdapter } from './local-disk.adapter.js';
 import { S3Adapter } from './s3.adapter.js';

@@ -1,7 +1,12 @@
 'use client';
 
 import { type ReactNode, createContext, useContext } from 'react';
-import { type Action, type PermissionGrants, type Resource, hasGrant } from '@platform/shared';
+import {
+  type Action,
+  type PermissionGrants,
+  type Resource,
+  hasGrant,
+} from '@platform/platform-contracts';
 
 /**
  * The signed-in user's permissions, as GET /auth/me returned them, made

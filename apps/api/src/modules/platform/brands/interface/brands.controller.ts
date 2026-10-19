@@ -10,15 +10,14 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { idSchema, type Scope } from '@platform/kernel';
 import {
   brandObjectSchema,
   brandSchema,
-  idSchema,
   TAX_ID_FORMAT_MESSAGE,
   taxIdMatchesCountry,
   type BrandInput,
-  type Scope,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import { BrandsService, type Brand, type BrandWithLogo } from '../application/brands.service.js';

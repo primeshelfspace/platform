@@ -9,7 +9,8 @@
  * forwarded — see lib/session.ts.
  */
 
-import type { BusinessType, InvoiceStatus, PermissionGrants, Role } from '@platform/shared';
+import type { InvoiceStatus } from '@platform/invoicing-contracts';
+import type { BusinessType, PermissionGrants, Role } from '@platform/platform-contracts';
 import { readSessionToken } from './session';
 
 const API_URL = process.env['NEXT_PUBLIC_API_URL'] ?? 'http://localhost:4000';
@@ -247,7 +248,7 @@ export function setPassword(newPassword: string): Promise<{ ok: true }> {
 // --- Users & Roles (FR-USR) --------------------------------------------------
 //
 // Role -> permission mapping is not fetched from anywhere — it's the fixed
-// matrix in @platform/shared (ROLES/RESOURCES/actionsFor), imported directly
+// matrix in @platform/platform-contracts (ROLES/RESOURCES/actionsFor), imported directly
 // wherever the UI needs to show or check it. What's dynamic, and what these
 // calls manage, is which role and which brands a given user holds.
 
@@ -292,7 +293,7 @@ export function getUser(id: string): Promise<ManagedUser> {
   return apiFetch<ManagedUser>(`/users/${id}`);
 }
 
-/** Mirrors inviteUserSchema in packages/shared exactly. */
+/** Mirrors inviteUserSchema in @platform/platform-contracts exactly. */
 export interface InviteUserFormInput {
   name: string;
   email: string;
@@ -585,7 +586,7 @@ export function getCustomer(brandId: string, id: string): Promise<CustomerWithCo
   return apiFetch<CustomerWithContacts>(`/brands/${brandId}/customers/${id}`);
 }
 
-/** Mirrors customerSchema in packages/shared exactly — nullable fields must be
+/** Mirrors customerSchema in @platform/invoicing-contracts exactly — nullable fields must be
  * sent as `null`, not omitted; Zod's .nullable() requires the key to be present. */
 export interface CustomerFormInput {
   type: 'BUSINESS' | 'INDIVIDUAL';
@@ -733,7 +734,7 @@ export interface LineItemFormInput {
   taxExempt: boolean;
 }
 
-/** Mirrors invoiceDraftSchema in packages/shared. brandId travels in the URL,
+/** Mirrors invoiceDraftSchema in @platform/invoicing-contracts. brandId travels in the URL,
  * not this payload — the field the schema still requires there is ignored by
  * the service (see InvoicesController). */
 export interface InvoiceFormInput {
@@ -760,7 +761,7 @@ export function issueInvoice(brandId: string, id: string): Promise<Invoice> {
   return apiFetch<Invoice>(`/brands/${brandId}/invoices/${id}/issue`, { method: 'POST' });
 }
 
-/** Mirrors recordManualPaymentSchema in packages/shared — money received
+/** Mirrors recordManualPaymentSchema in @platform/invoicing-contracts — money received
  * outside the platform. `amount` is a decimal string ("125.50"); `paidAt`
  * a YYYY-MM-DD date. */
 export interface ManualPaymentInput {

@@ -17,15 +17,15 @@
  * brand table with the same function the live brand events use.
  */
 import { createHash, randomBytes } from 'node:crypto';
+import { type InvoiceStatus } from '@platform/invoicing-contracts';
 import {
   calculate,
   parseMinor,
   quantityFrom,
   type CalculationResult,
-  type InvoiceStatus,
   type PaymentMethod,
-  type Role,
-} from '@platform/shared';
+} from '@platform/kernel';
+import { type Role } from '@platform/platform-contracts';
 import { PrismaClient as InvoicingClient } from '../generated/invoicing/index.js';
 import { PrismaClient as PlatformClient, type Prisma } from '../generated/platform/index.js';
 import { applyBrandSnapshot } from '../src/modules/invoicing/platform-sync/infrastructure/brand-replica.js';

@@ -1,16 +1,18 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '../../database/client.js';
 import {
+  type CheckReviewStatus,
+  type CheckSubmissionListQuery,
+  type ReviewCheckSubmissionInput,
+} from '@platform/invoicing-contracts';
+import {
   formatMinor,
   isPublicScope,
   STORAGE_PORT,
   toCurrencyCode,
-  type CheckReviewStatus,
-  type CheckSubmissionListQuery,
-  type ReviewCheckSubmissionInput,
   type Scope,
   type StoragePort,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { InvoicesService } from '../../invoices/application/invoices.service.js';
 

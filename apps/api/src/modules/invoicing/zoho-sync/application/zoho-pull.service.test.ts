@@ -17,8 +17,8 @@
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '../../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { IntegrationError } from '@platform/shared';
-import type { AccountingConnection, RequestScope } from '@platform/shared';
+import { IntegrationError } from '@platform/kernel';
+import type { AccountingConnection, RequestScope } from '@platform/kernel';
 import { loadEnv } from '../../../../shared/config/load-env.js';
 import { getEnv, type Env } from '../../../../shared/config/env.js';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';

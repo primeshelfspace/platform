@@ -19,8 +19,8 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from '@platform/ui/toast';
-import { formatDateForDisplay } from '@platform/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatDateForDisplay } from '@platform/kernel';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import type { Brand, InvoiceActivityEntry, InvoiceDetail } from '@/lib/api';
 import {
   invoiceDetailStatus,

@@ -5,8 +5,8 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { Eye, X } from 'lucide-react';
 import { toast } from '@platform/ui/toast';
-import { formatDateForDisplay } from '@platform/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatDateForDisplay } from '@platform/kernel';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import type { CheckSubmissionDetail } from '@/lib/api';
 import { useCan } from '@/hooks/use-permissions';
 import {

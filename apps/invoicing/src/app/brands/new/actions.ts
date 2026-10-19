@@ -9,7 +9,7 @@ import {
   type CustomerAddress,
 } from '@/lib/api';
 import { addressFromForm, describeApiError, emptyToNull } from '@/lib/form';
-import { isBusinessType } from '@platform/shared';
+import { isBusinessType } from '@platform/platform-contracts';
 
 export interface CompanyDetailsState {
   readonly error?: string;

@@ -1,6 +1,6 @@
-import type { Role } from '@platform/shared';
+import type { Role } from '@platform/platform-contracts';
 
-/** Display copy for the fixed Role enum — the matrix itself (@platform/shared)
+/** Display copy for the fixed Role enum — the matrix itself (@platform/platform-contracts)
  * only knows the enum values, not how to present them to a person. */
 export const ROLE_LABELS: Record<Role, string> = {
   MERCHANT_OWNER: 'Owner',

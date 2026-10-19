@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { type RequestScope } from '@platform/kernel';
 import {
   assignableRolesFor,
   coversAllBrands,
@@ -13,11 +14,10 @@ import {
   type LoginInput,
   type PermissionGrants,
   type RegisterInput,
-  type RequestScope,
   type Role,
   type SetPasswordInput,
   type SetPasswordWithTokenInput,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, Public, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import { AuthService, type AuthenticatedUser } from '../application/auth.service.js';

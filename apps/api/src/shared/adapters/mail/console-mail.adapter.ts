@@ -6,7 +6,7 @@ import type {
   RenderPreviewInput,
   SendMailInput,
   SendMailResult,
-} from '@platform/shared';
+} from '@platform/kernel';
 
 /**
  * ConsoleMailAdapter — logs instead of sending. Used in CI and in unit tests,

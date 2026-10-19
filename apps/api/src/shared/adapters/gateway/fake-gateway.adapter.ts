@@ -10,7 +10,7 @@ import {
   type PaymentIntentStatus,
   type RefundInput,
   type RefundResult,
-} from '@platform/shared';
+} from '@platform/kernel';
 
 /**
  * FakeGateway — the local and test implementation of PaymentGatewayPort

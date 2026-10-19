@@ -2,19 +2,21 @@ import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger } from '@nestjs/common';
 import type { Payment, Prisma } from '../../database/client.js';
 import {
+  evaluateTransition,
+  type InvoiceStatus,
+  type PaymentListQuery,
+} from '@platform/invoicing-contracts';
+import {
   IntegrationError,
   PAYMENT_GATEWAY_PORT,
   calculate,
-  evaluateTransition,
   type CurrencyCode,
-  type InvoiceStatus,
   type PaymentGatewayPort,
   type PaymentIntentStatus,
-  type PaymentListQuery,
   type PaymentMethod,
   type PublicScope,
   type Scope,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 import {
   InvoicingPrismaService,

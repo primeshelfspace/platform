@@ -9,8 +9,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown, Info, Plus, ScrollText, Search, Send, X } from 'lucide-react';
 import { toast } from '@platform/ui/toast';
 import { Pagination } from '@platform/ui/pagination';
-import { formatDateForDisplay } from '@platform/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatDateForDisplay } from '@platform/kernel';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import type {
   Brand,
   Invoice,

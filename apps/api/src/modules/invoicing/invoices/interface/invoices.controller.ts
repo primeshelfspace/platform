@@ -1,7 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import {
   bulkSendInvoicesSchema,
-  idSchema,
   invoiceDraftSchema,
   invoiceListQuerySchema,
   invoiceTabCountsQuerySchema,
@@ -13,9 +12,9 @@ import {
   type InvoiceListQuery,
   type InvoiceTabCountsQuery,
   type RecordManualPaymentInput,
-  type Scope,
   type SendInvoiceEmailInput,
-} from '@platform/shared';
+} from '@platform/invoicing-contracts';
+import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
 import {

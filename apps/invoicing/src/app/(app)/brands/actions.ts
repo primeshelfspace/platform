@@ -6,7 +6,7 @@ import {
   DEFAULT_BRAND_CURRENCY,
   DEFAULT_BRAND_THEME_COLOR,
   DEFAULT_BRAND_TIMEZONE,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 import { createBrand, uploadBrandLogo, type Brand, type BrandFormInput } from '@/lib/api';
 import { describeActionError } from '@/lib/form';
 

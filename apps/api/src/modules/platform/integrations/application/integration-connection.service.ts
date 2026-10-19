@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../../database/client.js';
-import type { AccountingConnection, Pagination, Scope } from '@platform/shared';
+import type { AccountingConnection, Pagination, Scope } from '@platform/kernel';
 import {
   decryptCredential,
   encryptCredential,

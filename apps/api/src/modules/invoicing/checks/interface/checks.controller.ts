@@ -1,12 +1,11 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import {
   checkSubmissionListQuerySchema,
-  idSchema,
   reviewCheckSubmissionSchema,
   type CheckSubmissionListQuery,
   type ReviewCheckSubmissionInput,
-  type Scope,
-} from '@platform/shared';
+} from '@platform/invoicing-contracts';
+import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
 import {

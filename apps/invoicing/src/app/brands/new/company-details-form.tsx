@@ -7,13 +7,15 @@ import {
   regionsFor,
   normalizeUsPhone,
   isValidUsZip,
+  emailSchema,
+} from '@platform/kernel';
+import {
   isValidEin,
   normalizeWebsiteDomain,
   checkBusinessEmail,
-  emailSchema,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 
-import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@platform/shared';
+import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@platform/platform-contracts';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import {

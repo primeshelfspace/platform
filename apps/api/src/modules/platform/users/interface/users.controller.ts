@@ -1,18 +1,17 @@
 import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { idSchema, type RequestScope } from '@platform/kernel';
 import {
   assignUserBrandsSchema,
-  idSchema,
   inviteUserSchema,
   updateUserRoleSchema,
   updateUserStatusSchema,
   userListQuerySchema,
   type AssignUserBrandsInput,
   type InviteUserInput,
-  type RequestScope,
   type UpdateUserRoleInput,
   type UpdateUserStatusInput,
   type UserListQuery,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import {
@@ -26,7 +25,7 @@ import {
  * by merchant_id, not by brand), so every route opts out of the guard's
  * default params.brandId lookup with brandFrom: 'none'. A Brand Admin's
  * narrower, brand-scoped view is enforced inside UsersService instead — see
- * the footnote on the USERS row in packages/shared/src/domain/roles.ts.
+ * the footnote on the USERS row in packages/kernel/src/domain/roles.ts.
  */
 @Controller('users')
 export class UsersController {

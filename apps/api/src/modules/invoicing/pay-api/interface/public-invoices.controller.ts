@@ -18,12 +18,11 @@ import type { Request, Response } from 'express';
 import type { z } from 'zod';
 import {
   createCheckSubmissionSchema,
-  idSchema,
   paymentIntentReconcileSchema,
   paymentIntentRequestSchema,
-  publicTokenSchema,
   type CreateCheckSubmissionInput,
-} from '@platform/shared';
+} from '@platform/invoicing-contracts';
+import { idSchema, publicTokenSchema } from '@platform/kernel';
 import { assertCheckImage, MAX_CHECK_IMAGE_BYTES } from '../../../../shared/common/check-upload.js';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { Public } from '../../../platform/public-api.js';

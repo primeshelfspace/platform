@@ -1,5 +1,5 @@
 import type { Config } from 'tailwindcss';
-import { tailwindPreset } from '@platform/shared/tokens';
+import { tailwindPreset } from '@platform/kernel/tokens';
 
 export default {
   // @platform/ui ships source .tsx (not just compiled dist) specifically so its

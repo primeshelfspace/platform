@@ -1,7 +1,7 @@
 import { Controller, Get, Inject, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import { ACCOUNTING_PORT, PAYMENT_GATEWAY_PORT, STORAGE_PORT } from '@platform/shared';
-import type { AccountingPort, PaymentGatewayPort, StoragePort } from '@platform/shared';
+import { ACCOUNTING_PORT, PAYMENT_GATEWAY_PORT, STORAGE_PORT } from '@platform/kernel';
+import type { AccountingPort, PaymentGatewayPort, StoragePort } from '@platform/kernel';
 import { ENV, type Env } from '../config/env.js';
 import { RedisService } from '../infra/redis/redis.service.js';
 import { QueueService } from '../infra/queue/queue.service.js';

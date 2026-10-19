@@ -7,11 +7,11 @@
 *                                       @sugrpay/engineering
 
 # Money. A defect here is a financial defect, not a rendering glitch.
-/packages/shared/src/money/             @sugrpay/engineering-leads @sugrpay/security
+/packages/kernel/src/money/             @sugrpay/engineering-leads @sugrpay/security
 
 # Authorisation, tenancy and the permission matrix.
-/packages/shared/src/domain/roles.ts    @sugrpay/engineering-leads @sugrpay/security
-/packages/shared/src/tenancy.ts         @sugrpay/engineering-leads @sugrpay/security
+/packages/kernel/src/domain/roles.ts      @sugrpay/engineering-leads @sugrpay/security
+/packages/kernel/src/tenancy.ts         @sugrpay/engineering-leads @sugrpay/security
 /apps/api/src/modules/platform/tenancy/ @sugrpay/engineering-leads @sugrpay/security
 /apps/api/src/modules/platform/auth/    @sugrpay/engineering-leads @sugrpay/security
 

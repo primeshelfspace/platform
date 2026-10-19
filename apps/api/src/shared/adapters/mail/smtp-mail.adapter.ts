@@ -8,7 +8,7 @@ import {
   type RenderPreviewInput,
   type SendMailInput,
   type SendMailResult,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { ENV, type Env } from '../../config/env.js';
 
 /**

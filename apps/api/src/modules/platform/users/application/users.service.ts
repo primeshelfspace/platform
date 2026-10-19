@@ -7,15 +7,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type User } from '../../database/client.js';
+import { type RequestScope } from '@platform/kernel';
 import {
   coversAllBrands,
   mayAssignRole,
   type InviteUserInput,
-  type RequestScope,
   type Role,
   type UserListQuery,
   type UserStatus,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 import {
   PlatformPrismaService,
   type ScopedClient,

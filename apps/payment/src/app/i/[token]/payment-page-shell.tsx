@@ -1,7 +1,7 @@
 'use client';
 
-import { formatDateForDisplay } from '@platform/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatDateForDisplay } from '@platform/kernel';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import { API_URL } from '@/lib/env';
 import type { PublicInvoice } from '@/lib/invoice';
 import { useAmountDue } from './amount-due-context';

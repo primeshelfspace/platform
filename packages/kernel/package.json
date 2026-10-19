@@ -1,8 +1,8 @@
 {
-  "name": "@platform/shared",
+  "name": "@platform/kernel",
   "version": "0.1.0",
   "private": true,
-  "description": "Domain primitives shared by the admin app, the payment app and the API: money, calculation, tokens, ports and validation schemas.",
+  "description": "The kernel every module and app shares: money and invoice arithmetic, tenancy scope, design tokens, port interfaces, and generic validation/reference data. No module-specific contracts live here.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

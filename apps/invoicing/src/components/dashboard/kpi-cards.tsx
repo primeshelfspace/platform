@@ -1,4 +1,4 @@
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import type { DashboardSummary } from '@/lib/api';
 
 function Card({

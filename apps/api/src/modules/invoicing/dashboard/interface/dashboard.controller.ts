@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { dashboardQuerySchema, idSchema, type DashboardQuery, type Scope } from '@platform/shared';
+import { dashboardQuerySchema, type DashboardQuery } from '@platform/invoicing-contracts';
+import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
 import {
@@ -27,7 +28,7 @@ function rangeFrom(query: DashboardQuery): DateRange | undefined {
  * `brandId` is an optional query param here (dashboardQuerySchema), and
  * omitting it is the "All Brands" request: RequirePermission's `brandFrom:
  * 'query'` only enforces brand-assignment when a brandId is actually
- * present (see checkAccess, packages/shared/src/domain/roles.ts), so the
+ * present (see checkAccess, packages/kernel/src/domain/roles.ts), so the
  * omitted case falls through to row-level security scoping the result to
  * every brand the caller can read, same as BrandsController.list.
  */

@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { MAIL_PORT } from '@platform/shared';
+import { MAIL_PORT } from '@platform/kernel';
 import { ENV, type Env } from '../../config/env.js';
 import { ConsoleMailAdapter } from './console-mail.adapter.js';
 import { SmtpMailAdapter } from './smtp-mail.adapter.js';

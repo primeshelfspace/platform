@@ -23,7 +23,7 @@
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '../../database/client.js';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RequestScope } from '@platform/shared';
+import type { RequestScope } from '@platform/kernel';
 import { loadEnv } from '../../../../shared/config/load-env.js';
 import { getEnv } from '../../../../shared/config/env.js';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';

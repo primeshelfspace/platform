@@ -13,15 +13,14 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { zohoSyncSettingsSchema, type ZohoSyncSettingsInput } from '@platform/invoicing-contracts';
 import {
   IntegrationError,
   idSchema,
   paginationSchema,
   type Pagination,
-  zohoSyncSettingsSchema,
   type Scope,
-  type ZohoSyncSettingsInput,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 import { ZohoBooksAdapter } from '../../../../shared/adapters/accounting/zoho-books.adapter.js';

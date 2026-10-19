@@ -11,7 +11,7 @@ import {
   type PaymentIntentStatus,
   type RefundInput,
   type RefundResult,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { ENV, type Env } from '../../config/env.js';
 import { StripeAccountService } from '../../../modules/platform/public-api.js';
 

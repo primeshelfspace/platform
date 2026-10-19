@@ -21,7 +21,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 pnpm install --frozen-lockfile
-pnpm --filter @platform/shared build
+pnpm --filter "./packages/*" build
 pnpm --filter @platform/ui build
 
 # Reads each module's *_DIRECT_DATABASE_URL from this box's own .env. The

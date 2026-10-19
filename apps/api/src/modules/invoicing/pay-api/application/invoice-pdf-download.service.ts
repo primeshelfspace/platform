@@ -1,10 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import {
-  formatDateForDisplay,
-  formatMinorForDisplay,
-  renderInvoicePdfHtml,
-  toCurrencyCode,
-} from '@platform/shared';
+import { renderInvoicePdfHtml } from '@platform/invoicing-contracts';
+import { formatDateForDisplay, formatMinorForDisplay, toCurrencyCode } from '@platform/kernel';
 import { InvoicePdfService } from '../infrastructure/invoice-pdf.service.js';
 import { PublicInvoicesService } from './public-invoices.service.js';
 

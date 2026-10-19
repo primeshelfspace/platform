@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { companyDetailsSchema } from './entities.js';
+import { companyDetailsSchema } from './schemas.js';
 
 function baseInput(overrides: Record<string, unknown> = {}) {
   return {

@@ -8,13 +8,11 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
+import { idSchema, IntegrationError, type Scope } from '@platform/kernel';
 import {
   authorizeNetConnectSchema,
-  idSchema,
-  IntegrationError,
   type AuthorizeNetConnectInput,
-  type Scope,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import {

@@ -1,12 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { InvoiceStatus, SyncErrorClass } from '../../database/client.js';
+import { PAYABLE_STATUSES } from '@platform/invoicing-contracts';
 import {
-  PAYABLE_STATUSES,
   formatMinorForDisplay,
   toCurrencyCode,
   type CurrencyCode,
   type Scope,
-} from '@platform/shared';
+} from '@platform/kernel';
 import {
   InvoicingPrismaService,
   type ScopedClient,
@@ -156,7 +156,7 @@ export interface IntegrationsStatus {
 
 /** Bucket a single invoice into the donut chart's five-way grouping. The
  * `overdue` overlay always wins over the raw status, same convention as
- * `invoiceListStatus` (packages/shared/src/tokens/tokens.ts) — this is a
+ * `invoiceListStatus` (packages/kernel/src/tokens/tokens.ts) — this is a
  * distinct grouping from that one only because Partially Paid needs its own
  * slice here, where the list page collapses it into "Unpaid". */
 export function bucketFor(status: InvoiceStatus, overdue: boolean): StatusBucket | null {
@@ -193,7 +193,7 @@ function daysBetween(from: Date, to: Date): number {
  * Every method takes `brandId: string | null`. `null` is not "no filter
  * applied" in the unscoped-query sense — it means the WHERE clause omits
  * brandId entirely and PostgreSQL row-level security (pushed into the
- * session by InvoicingPrismaService.withScope, see packages/shared/src/tenancy.ts)
+ * session by InvoicingPrismaService.withScope, see packages/kernel/src/tenancy.ts)
  * restricts the result to exactly the brands the caller's role can read.
  * There is deliberately no separate "loop over every brand" code path here.
  */

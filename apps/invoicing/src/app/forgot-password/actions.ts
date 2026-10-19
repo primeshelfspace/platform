@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { emailSchema } from '@platform/shared';
+import { emailSchema } from '@platform/kernel';
 import { requestPasswordReset } from '@/lib/api';
 
 export interface ForgotPasswordState {

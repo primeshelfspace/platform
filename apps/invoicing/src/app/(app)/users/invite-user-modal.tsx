@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useRef, useState } from 'react';
-import { coversAllBrands, type Role } from '@platform/shared';
+import { coversAllBrands, type Role } from '@platform/platform-contracts';
 import { Modal } from '@/components/ui/modal';
 import { Select } from '@/components/ui/select';
 import {

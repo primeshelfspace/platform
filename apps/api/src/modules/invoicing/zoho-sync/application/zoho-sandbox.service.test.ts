@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { IntegrationError, type AccountingConnection, type Scope } from '@platform/shared';
+import { IntegrationError, type AccountingConnection, type Scope } from '@platform/kernel';
 import type { ZohoBooksAdapter } from '../../../../shared/adapters/accounting/zoho-books.adapter.js';
 import type { IntegrationConnectionService } from '../../../platform/public-api.js';
 import { ZohoSandboxService } from './zoho-sandbox.service.js';

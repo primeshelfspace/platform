@@ -1,14 +1,14 @@
 import { randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '../../database/client.js';
+import { type InvoiceStatus } from '@platform/invoicing-contracts';
 import {
   IntegrationError,
   isSupportedCurrency,
   type AccountingConnection,
   type CurrencyCode,
-  type InvoiceStatus,
   type Scope,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { mapWithConcurrency } from '../../../../shared/common/concurrency.js';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { RedisService } from '../../../../shared/infra/redis/redis.service.js';
@@ -1256,7 +1256,7 @@ export class ZohoPullService {
       position,
       itemName: line.name ?? `Line ${position + 1}`,
       description: line.description ?? null,
-      // Our Quantity type is fixed-point scaled by 10,000 (packages/shared
+      // Our Quantity type is fixed-point scaled by 10,000 (packages/kernel
       // money/quantity.ts) — Zoho's quantity is a plain decimal.
       quantity: Math.round(line.quantity * 10_000),
       unitPriceMinor: BigInt(this.zoho.decimalToMinor(line.rate, currency)),

@@ -1,10 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import {
-  idSchema,
-  paymentListQuerySchema,
-  type PaymentListQuery,
-  type Scope,
-} from '@platform/shared';
+import { paymentListQuerySchema, type PaymentListQuery } from '@platform/invoicing-contracts';
+import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
 import { PaymentsService, type PaymentListResult } from '../application/payments.service.js';

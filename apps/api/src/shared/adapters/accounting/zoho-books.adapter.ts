@@ -15,7 +15,7 @@ import {
   type PullChangesInput,
   type PullChangesResult,
   type RemoteRef,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { ENV, type Env } from '../../config/env.js';
 import { RedisService } from '../../infra/redis/redis.service.js';
 

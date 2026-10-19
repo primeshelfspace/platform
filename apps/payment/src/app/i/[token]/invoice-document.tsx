@@ -1,5 +1,5 @@
-import { formatDateForDisplay } from '@platform/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatDateForDisplay } from '@platform/kernel';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import type { PublicInvoice, PublicInvoicePdfSettings } from '@/lib/invoice';
 
 function initialOf(value: string): string {

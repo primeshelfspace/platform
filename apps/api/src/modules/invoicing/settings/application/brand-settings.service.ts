@@ -1,24 +1,26 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma, type Brand, type BrandSettings } from '../../database/client.js';
 import {
-  formatDateForDisplay,
-  formatMinorForDisplay,
-  MAIL_PORT,
   renderEmailReceiptHtml,
   renderEmailReceiptTemplate,
-  STORAGE_PORT,
-  toCurrencyCode,
   type BrandElementsInput,
   type EmailReceiptLayout,
   type EmailReceiptSettingsInput,
   type EmailReceiptTestSendInput,
   type InvoicePdfSettingsInput,
-  type MailPort,
   type PaymentMethodSettingsInput,
   type PaymentPageDisplayInput,
+} from '@platform/invoicing-contracts';
+import {
+  formatDateForDisplay,
+  formatMinorForDisplay,
+  MAIL_PORT,
+  STORAGE_PORT,
+  toCurrencyCode,
+  type MailPort,
   type Scope,
   type StoragePort,
-} from '@platform/shared';
+} from '@platform/kernel';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 import { AuditLogService, BrandsService } from '../../../platform/public-api.js';
 import {

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '../../database/client.js';
-import type { Scope } from '@platform/shared';
+import type { Scope } from '@platform/kernel';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { RedisService } from '../../../../shared/infra/redis/redis.service.js';
 import { ZohoPullService } from './zoho-pull.service.js';

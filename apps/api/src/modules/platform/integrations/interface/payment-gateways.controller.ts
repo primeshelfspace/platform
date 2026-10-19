@@ -1,10 +1,9 @@
 import { Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { idSchema, type Scope } from '@platform/kernel';
 import {
-  idSchema,
   paymentGatewayProviderSchema,
   type PaymentGatewayProvider,
-  type Scope,
-} from '@platform/shared';
+} from '@platform/platform-contracts';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import {

@@ -1,4 +1,4 @@
-import { type Scope, databaseScopeSettings } from '@platform/shared';
+import { type Scope, databaseScopeSettings } from '@platform/kernel';
 
 /**
  * The tenant-isolation mechanics shared by every module's own Prisma service.

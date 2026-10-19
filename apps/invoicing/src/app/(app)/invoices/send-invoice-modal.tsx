@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertCircle, Eye, Pencil, X } from 'lucide-react';
 import { toast } from '@platform/ui/toast';
-import { formatDateForDisplay } from '@platform/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatDateForDisplay } from '@platform/kernel';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import type { Brand, EmailReceiptLayout, InvoiceDetail } from '@/lib/api';
 import { getInvoiceEmailDraftAction, issueInvoiceAction, sendInvoiceEmailAction } from './actions';
 

@@ -13,7 +13,12 @@ import { builtinModules } from 'node:module';
 import { ROOT } from './lib/env.mjs';
 import { fail, ok } from './lib/proc.mjs';
 
-const WORKSPACES = ['apps/api', 'apps/invoicing', 'apps/payment', 'packages/shared', 'packages/ui'];
+const WORKSPACES = ['apps', 'packages'].flatMap((group) =>
+  fs
+    .readdirSync(path.join(ROOT, group), { withFileTypes: true })
+    .filter((d) => d.isDirectory() && fs.existsSync(path.join(ROOT, group, d.name, 'package.json')))
+    .map((d) => `${group}/${d.name}`),
+);
 const SOURCE = /\.(ts|tsx|mts|js|mjs|jsx)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', 'generated', 'coverage']);
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((m) => `node:${m}`)]);

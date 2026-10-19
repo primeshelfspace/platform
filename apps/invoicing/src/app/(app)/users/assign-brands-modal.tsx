@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { useFormStatusToast } from '@/hooks/use-form-status-toast';
-import type { Role } from '@platform/shared';
+import type { Role } from '@platform/platform-contracts';
 import type { Brand, ManagedUser } from '@/lib/api';
 import { ROLE_LABELS } from './role-labels';
 import { updateUserBrandsAction, updateUserRoleAction, type UpdateUserState } from './actions';

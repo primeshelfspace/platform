@@ -7,7 +7,7 @@ not a refactor.
 
 Every amount is an integer number of **minor units** (cents) and every rate an
 integer number of **basis points** (6% = 600), end to end: database columns,
-the API, and all arithmetic. `packages/shared/src/money/` is the only place
+the API, and all arithmetic. `packages/kernel/src/money/` is the only place
 money is calculated, and its `calculation.ts` is the single code path behind
 the figure on the invoice, the PDF, the payment page and the Zoho push. The
 TDD-001 §9.3 worked example is both a test fixture and a seeded invoice.

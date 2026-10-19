@@ -32,9 +32,9 @@ runOrExit(process.execPath, [path.join(ROOT, 'scripts', 'services.mjs'), 'up'], 
 
 // 3. Shared package build (api and both web apps import its types) ----------
 log();
-step('building @platform/shared');
-runOrExit('pnpm', ['--filter', '@platform/shared', 'build'], { cwd: ROOT });
-ok('shared package built');
+step('building the shared packages (kernel, contracts, ui)');
+runOrExit('pnpm', ['--filter', './packages/*', 'build'], { cwd: ROOT });
+ok('shared packages built');
 
 // 4. Databases (one per module) --------------------------------------------
 log();

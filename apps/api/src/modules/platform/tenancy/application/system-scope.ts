@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { RequestScope } from '@platform/shared';
+import type { RequestScope } from '@platform/kernel';
 import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
 
 /**

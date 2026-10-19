@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { emailSchema } from '@platform/shared';
+import { emailSchema } from '@platform/kernel';
 import { ApiError, login } from '@/lib/api';
 import { resolveOnboardingStep, routeForStep, type OnboardingStep } from '@/lib/onboarding';
 import { safeReturnPath, writeSessionToken } from '@/lib/session';

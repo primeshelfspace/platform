@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ACCOUNTING_PORT } from '@platform/shared';
+import { ACCOUNTING_PORT } from '@platform/kernel';
 import { ENV, type Env } from '../../config/env.js';
 import { FakeAccountingAdapter } from './fake-accounting.adapter.js';
 import { ZohoBooksAdapter } from './zoho-books.adapter.js';

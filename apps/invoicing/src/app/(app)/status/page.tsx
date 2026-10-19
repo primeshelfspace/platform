@@ -1,5 +1,5 @@
 import { Activity, CircleCheck, CircleX, Plug } from 'lucide-react';
-import { BRAND_COLOUR_PRESETS, assessBrandColour } from '@platform/shared/tokens';
+import { BRAND_COLOUR_PRESETS, assessBrandColour } from '@platform/kernel/tokens';
 import { BrandTheme } from '@/components/brand-theme';
 import { API_URL, getHealth, type HealthResponse } from '@/lib/api';
 import { PageContainer } from '@/components/page-container';

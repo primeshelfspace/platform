@@ -23,7 +23,7 @@ flowchart LR
 
 | Layer            | Contains                                                       | May import                                             | Must not import          |
 | ---------------- | -------------------------------------------------------------- | ------------------------------------------------------ | ------------------------ |
-| `domain`         | Calculations, state rules, value types, pure helpers           | `@platform/shared`, own domain                         | Nest, Prisma, adapters   |
+| `domain`         | Calculations, state rules, value types, pure helpers           | `@platform/kernel`, contracts, own domain              | Nest, Prisma, adapters   |
 | `application`    | `*.service.ts` — one method per use case; transactions; events | domain, infrastructure, other modules' `public-api.ts` | interface                |
 | `infrastructure` | Repositories (Prisma queries), external clients, mappers       | domain, the module's `database/`                       | interface, application   |
 | `interface`      | `*.controller.ts`, input schemas / DTOs, response mapping      | application, domain                                    | infrastructure, database |
@@ -33,7 +33,7 @@ Tests sit next to what they test (`application/invoices.service.test.ts`).
 ## Where things already are
 
 Money arithmetic, invoice calculation, the status machine and the role matrix
-are already pure and shared — they live in `packages/shared` (the domain
+are already pure and shared — they live in `packages/kernel` and the contracts packages (the domain
 kernel both the API and the web apps use). A feature's own `domain/` holds the
 rules that belong to that feature alone.
 

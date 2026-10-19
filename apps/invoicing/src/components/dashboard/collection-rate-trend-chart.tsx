@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts';
 import { LineChart as LineChartIcon } from 'lucide-react';
-import { palette } from '@platform/shared/tokens';
+import { palette } from '@platform/kernel/tokens';
 import type { DashboardTrendPoint } from '@/lib/api';
 
 /** A single series names itself via the card title — no legend needed. */

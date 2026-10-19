@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { toast } from '@platform/ui/toast';
-import { formatMinorForDisplay, minorUnitExponent, toCurrencyCode } from '@platform/shared/money';
+import { formatMinorForDisplay, minorUnitExponent, toCurrencyCode } from '@platform/kernel/money';
 import type { Brand, InvoiceDetail, ManualPaymentInput } from '@/lib/api';
 import { recordInvoicePaymentAction } from './actions';
 

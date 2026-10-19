@@ -1,4 +1,4 @@
-import { hasGrant, type Action, type Resource } from '@platform/shared';
+import { hasGrant, type Action, type Resource } from '@platform/platform-contracts';
 import type { CurrentUser } from './api';
 
 /**

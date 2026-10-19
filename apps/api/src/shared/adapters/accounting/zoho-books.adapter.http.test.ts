@@ -19,7 +19,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { IntegrationError, type AccountingConnection } from '@platform/shared';
+import { IntegrationError, type AccountingConnection } from '@platform/kernel';
 import { loadEnv } from '../../config/load-env.js';
 import { getEnv, type Env } from '../../config/env.js';
 import { RedisService } from '../../infra/redis/redis.service.js';

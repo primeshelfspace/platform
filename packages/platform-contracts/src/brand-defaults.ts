@@ -1,4 +1,4 @@
-import type { CurrencyCode } from '../money/money.js';
+import type { CurrencyCode } from '@platform/kernel';
 import type { BusinessType } from './business-type.js';
 
 /**

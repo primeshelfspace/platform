@@ -31,7 +31,7 @@ it (or any later product) online follows the same steps invoicing did.
 ## Frontend
 
 `apps/hq` becomes a Next.js app modelled on `apps/invoicing` (its own port in
-`.env`, the shared `@platform/ui` and `@platform/shared` packages).
+`.env`, the shared `@platform/ui` and `@platform/kernel` packages, plus `@platform/hq-contracts`).
 
 ## Done when
 

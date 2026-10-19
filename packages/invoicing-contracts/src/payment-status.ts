@@ -1,6 +1,6 @@
 /** Mirrors Prisma's PaymentStatus enum (apps/api/prisma/schema.prisma) — kept
  * here, not imported from @prisma/client, so this package stays framework
- * and database free (see packages/shared/src/index.ts's own doc comment).
+ * and database free (see packages/kernel/src/index.ts's own doc comment).
  * Used by the Transaction Log's status filter (FR-PAY). */
 export const PAYMENT_STATUSES = [
   'INITIATED',

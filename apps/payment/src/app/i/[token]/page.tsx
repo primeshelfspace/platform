@@ -1,5 +1,5 @@
-import { isPayable, terminalStatusLabel } from '@platform/shared';
-import { brandThemeVariables } from '@platform/shared/tokens';
+import { isPayable, terminalStatusLabel } from '@platform/invoicing-contracts';
+import { brandThemeVariables } from '@platform/kernel/tokens';
 import { lookupInvoice } from '@/lib/invoice';
 import { AmountDueProvider } from './amount-due-context';
 import { PaymentPageShell } from './payment-page-shell';

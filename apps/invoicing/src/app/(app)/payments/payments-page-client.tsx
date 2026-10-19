@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { FileCheck, Search } from 'lucide-react';
 import { Pagination } from '@platform/ui/pagination';
-import { formatDateForDisplay } from '@platform/shared';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatDateForDisplay } from '@platform/kernel';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import { NoBrandsState } from '@/components/no-brands-state';
 import type {
   Brand,

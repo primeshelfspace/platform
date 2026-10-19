@@ -2,7 +2,8 @@
 
 import { useActionState, useEffect, useId, useRef, useState } from 'react';
 import { Pencil } from 'lucide-react';
-import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS, COUNTRIES, regionsFor } from '@platform/shared';
+import { COUNTRIES, regionsFor } from '@platform/kernel';
+import { BUSINESS_TYPES, BUSINESS_TYPE_LABELS } from '@platform/platform-contracts';
 import type { Brand, CustomerAddress } from '@/lib/api';
 import { Select } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';

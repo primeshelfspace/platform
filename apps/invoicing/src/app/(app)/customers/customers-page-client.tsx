@@ -8,7 +8,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Plus, Search, Users } from 'lucide-react';
 import { toast } from '@platform/ui/toast';
 import { Pagination } from '@platform/ui/pagination';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
 import { Toggle } from '@/components/ui/toggle';
 import type { Brand, Customer, CustomerListRow, CustomerWithContacts, Invoice } from '@/lib/api';
 import { AddCustomerModal } from './add-customer-modal';

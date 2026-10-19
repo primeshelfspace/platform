@@ -2,11 +2,10 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common
 import {
   customerListQuerySchema,
   customerSchema,
-  idSchema,
   type CustomerInput,
   type CustomerListQuery,
-  type Scope,
-} from '@platform/shared';
+} from '@platform/invoicing-contracts';
+import { idSchema, type Scope } from '@platform/kernel';
 
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';

@@ -11,7 +11,9 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@platform/shared": "workspace:*",
+    "@platform/invoicing-contracts": "workspace:*",
+    "@platform/kernel": "workspace:*",
+    "@platform/platform-contracts": "workspace:*",
     "@platform/ui": "workspace:*",
     "lucide-react": "^0.469.0",
     "next": "^15.1.3",

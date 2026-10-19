@@ -11,21 +11,19 @@ import {
   Query,
 } from '@nestjs/common';
 import {
-  IntegrationError,
-  idSchema,
   zohoSandboxActivationSchema,
   zohoSandboxChangeReviewSchema,
   zohoSandboxChangesScopeSchema,
   zohoSandboxCreateSchema,
   zohoSandboxPushConfirmSchema,
   zohoSandboxUpdateSchema,
-  type Scope,
   type ZohoSandboxActivationInput,
   type ZohoSandboxChangeReviewInput,
   type ZohoSandboxChangesScopeInput,
   type ZohoSandboxCreateInput,
   type ZohoSandboxUpdateInput,
-} from '@platform/shared';
+} from '@platform/invoicing-contracts';
+import { IntegrationError, idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
 import {

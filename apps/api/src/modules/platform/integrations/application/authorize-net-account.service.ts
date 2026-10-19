@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '../../database/client.js';
-import { IntegrationError, type AuthorizeNetConnectInput, type Scope } from '@platform/shared';
+import { IntegrationError, type Scope } from '@platform/kernel';
+import { type AuthorizeNetConnectInput } from '@platform/platform-contracts';
 import { encryptCredential } from '../../../../shared/common/credential-encryption.js';
 import { ENV, type Env } from '../../../../shared/config/env.js';
 import { PlatformPrismaService } from '../../database/platform-prisma.service.js';

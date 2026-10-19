@@ -2,8 +2,8 @@
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { PieChart as PieChartIcon } from 'lucide-react';
-import { formatMinorForDisplay, toCurrencyCode } from '@platform/shared/money';
-import { palette } from '@platform/shared/tokens';
+import { formatMinorForDisplay, toCurrencyCode } from '@platform/kernel/money';
+import { palette } from '@platform/kernel/tokens';
 import type { DashboardStatusBucket, DashboardStatusBucketName } from '@/lib/api';
 
 /** Status colours, reused verbatim from the same statusTone vocabulary the

@@ -8,7 +8,7 @@
  * folded in here — it colours SyncJob states (QUEUED/RUNNING/FAILED), a
  * different vocabulary that only looks similar.
  */
-import type { InvoiceStatus } from '@platform/shared';
+import type { InvoiceStatus } from '@platform/invoicing-contracts';
 
 /** Tailwind text colour for an invoice status. */
 export function invoiceStatusTone(status: string): string {
@@ -130,7 +130,7 @@ export type InvoiceListTabKey = (typeof INVOICE_LIST_TABS)[number]['key'];
  * A tab key -> the `listInvoices` filter that reproduces it server-side.
  * Mirrors `invoiceListStatus` above exactly: Unpaid/Partial exclude the
  * overdue overlay (Overdue is where those rows show up instead), Overdue
- * needs no status filter of its own since `isOverdue` (packages/shared) is
+ * needs no status filter of its own since `isOverdue` (@platform/invoicing-contracts) is
  * already false for DRAFT/PAID/CANCELLED.
  */
 export function invoiceListTabFilter(tab: string): {

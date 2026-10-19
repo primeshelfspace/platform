@@ -12,7 +12,7 @@ import {
   type PullChangesInput,
   type PullChangesResult,
   type RemoteRef,
-} from '@platform/shared';
+} from '@platform/kernel';
 
 /**
  * FakeAccounting — in-memory AccountingPort for local development and tests

@@ -9,31 +9,33 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Invoice, type LineItem } from '../../database/client.js';
 import {
+  PAYABLE_STATUSES,
+  evaluateTransition,
+  renderEmailReceiptHtml,
+  renderEmailReceiptTemplate,
+  renderInvoicePdfHtml,
+  type EmailReceiptLayout,
+  type InvoiceDraftInput,
+  type InvoiceListQuery,
+  type InvoiceTabCountsQuery,
+  type RecordManualPaymentInput,
+} from '@platform/invoicing-contracts';
+import {
   formatQuantity,
   IntegrationError,
   MAIL_PORT,
-  PAYABLE_STATUSES,
   calculate,
-  evaluateTransition,
   formatDateForDisplay,
   formatMinorForDisplay,
   isPublicScope,
   parseMinor,
   quantityFrom,
-  renderEmailReceiptHtml,
-  renderEmailReceiptTemplate,
-  renderInvoicePdfHtml,
   STORAGE_PORT,
   toCurrencyCode,
-  type EmailReceiptLayout,
-  type InvoiceDraftInput,
-  type InvoiceListQuery,
-  type InvoiceTabCountsQuery,
   type MailPort,
-  type RecordManualPaymentInput,
   type Scope,
   type StoragePort,
-} from '@platform/shared';
+} from '@platform/kernel';
 import {
   formatBrandAddress,
   parseFrom,
@@ -156,7 +158,7 @@ export class InvoicesService {
 
   /**
    * Paginated, matching CustomersService.list — `invoiceListQuerySchema` has
-   * existed in packages/shared since the first cut but nothing passed it here,
+   * existed in the shared packages since the first cut but nothing passed it here,
    * so this loaded every invoice a brand has ever issued, each with all of its
    * line items eagerly joined, on every dashboard and list render.
    */

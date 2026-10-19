@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, Plus, Search } from 'lucide-react';
 import { toast } from '@platform/ui/toast';
 import { Pagination } from '@platform/ui/pagination';
-import { ROLES, type Role } from '@platform/shared';
+import { ROLES, type Role } from '@platform/platform-contracts';
 import { Select } from '@/components/ui/select';
 import type { Brand, ManagedUser } from '@/lib/api';
 import { InviteUserModal } from './invite-user-modal';

@@ -8,7 +8,8 @@
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '../../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CustomerInput, InvoiceDraftInput, PublicScope, RequestScope } from '@platform/shared';
+import type { CustomerInput, InvoiceDraftInput } from '@platform/invoicing-contracts';
+import type { PublicScope, RequestScope } from '@platform/kernel';
 import { createFakeMailPort } from '../../../../shared/adapters/mail/fake-mail.port.js';
 import { loadEnv } from '../../../../shared/config/load-env.js';
 import { getEnv } from '../../../../shared/config/env.js';

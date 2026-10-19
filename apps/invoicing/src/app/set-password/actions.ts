@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { setPasswordSchema } from '@platform/shared';
+import { setPasswordSchema } from '@platform/platform-contracts';
 import { ApiError, getCurrentUser, setPassword, setPasswordWithToken } from '@/lib/api';
 import { resolveOnboardingStep, routeForStep, type OnboardingStep } from '@/lib/onboarding';
 import { safeReturnPath, writeSessionToken } from '@/lib/session';
