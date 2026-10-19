@@ -7,10 +7,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type User } from '../../database/client.js';
-import { type RequestScope } from '@platform/kernel';
+import { type Product, type RequestScope } from '@platform/kernel';
 import {
   coversAllBrands,
   mayAssignRole,
+  productRoleError,
   type InviteUserInput,
   type Role,
   type UserListQuery,
@@ -31,6 +32,9 @@ export interface ManagedUser {
   readonly role: Role;
   readonly status: string;
   readonly assignedBrandIds: string[];
+  /** The user's role in each product they may use; a missing product means no access. */
+  readonly productRoles: Partial<Record<Product, string>>;
+  readonly assignedLocationIds: string[];
   readonly createdAt: Date;
   readonly lastLoginAt: Date | null;
 }
@@ -42,7 +46,13 @@ export interface ManagedUserListResult {
   readonly total: number;
 }
 
-type UserWithAssignments = User & { assignments: { brandId: string }[] };
+const USER_INCLUDE = { assignments: true, productRoles: true, locations: true } as const;
+
+type UserWithAssignments = User & {
+  assignments: { brandId: string }[];
+  productRoles: { product: Product; role: string }[];
+  locations: { locationId: string }[];
+};
 
 /**
  * FR-USR. Permissions themselves are never stored here — the matrix in
@@ -72,7 +82,7 @@ export class UsersService {
       const [rows, total] = await Promise.all([
         tx.user.findMany({
           where,
-          include: { assignments: true },
+          include: USER_INCLUDE,
           orderBy: { createdAt: 'desc' },
           skip: (query.page - 1) * query.pageSize,
           take: query.pageSize,
@@ -117,6 +127,14 @@ export class UsersService {
       throw new ForbiddenException('you may only assign brands you administer');
     }
 
+    // The platform role is always the invoicing role.
+    const productRoles = Object.fromEntries(
+      Object.entries({ ...input.productRoles, INVOICING: input.role }).filter(([, role]) => role),
+    ) as Partial<Record<Product, string>>;
+    for (const [product, role] of Object.entries(productRoles) as [Product, string][]) {
+      this.assertMayGrantProductRole(scope, product, role);
+    }
+
     const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
 
     const created = await this.prisma.withScope(scope, async (tx) => {
@@ -132,8 +150,13 @@ export class UsersService {
             assignments: brandIds.length
               ? { create: brandIds.map((brandId) => ({ brandId })) }
               : undefined,
+            productRoles: {
+              create: (Object.entries(productRoles) as [Product, string][]).map(
+                ([product, role]) => ({ product, role }),
+              ),
+            },
           },
-          include: { assignments: true },
+          include: USER_INCLUDE,
         });
       } catch (error) {
         throw this.translateWriteError(error);
@@ -193,7 +216,15 @@ export class UsersService {
             // previous, brand-scoped role so a later demotion doesn't
             // silently resurrect stale brand access.
             ...(coversAllBrands(role) ? { assignments: { deleteMany: {} } } : {}),
+            ...(coversAllBrands(role) ? { locations: { deleteMany: {} } } : {}),
           },
+        });
+        // The platform role and the invoicing role move together, so the
+        // existing users screen keeps working exactly as before.
+        await tx.userProductRole.upsert({
+          where: { userId_product: { userId: existing.id, product: 'INVOICING' } },
+          create: { userId: existing.id, product: 'INVOICING', role },
+          update: { role },
         });
         if (!coversAllBrands(role) && brandIds !== undefined) {
           await this.replaceAssignments(tx, scope, existing.id, dedupe(brandIds));
@@ -205,7 +236,7 @@ export class UsersService {
       return toManagedUser(
         await tx.user.findUniqueOrThrow({
           where: { id: existing.id },
-          include: { assignments: true },
+          include: USER_INCLUDE,
         }),
       );
     });
@@ -248,7 +279,7 @@ export class UsersService {
 
       const updated = await tx.user.findUniqueOrThrow({
         where: { id: existing.id },
-        include: { assignments: true },
+        include: USER_INCLUDE,
       });
       return toManagedUser(updated);
     });
@@ -299,6 +330,114 @@ export class UsersService {
     }
   }
 
+  /**
+   * Gives a user a role in one product, or takes the product away (`null`).
+   * Invoicing roles follow the same seniority rule as the platform role (and
+   * stay in step with it — the platform role is the invoicing role). Other
+   * products' roles are granted by Owner/Merchant Admin only.
+   */
+  async updateProductRole(
+    scope: RequestScope,
+    id: string,
+    product: Product,
+    role: string | null,
+  ): Promise<ManagedUser> {
+    if (id === scope.userId) {
+      throw new ForbiddenException('you cannot change your own product access');
+    }
+    if (role !== null) this.assertMayGrantProductRole(scope, product, role);
+    if (product === 'INVOICING') {
+      if (role === null) {
+        throw new BadRequestException(
+          'invoicing access follows the user’s role; suspend the user to remove it',
+        );
+      }
+      // The invoicing role is the platform role: every rule of a role change applies.
+      return this.updateRole(scope, id, role as Role);
+    }
+
+    return this.prisma.withScope(scope, async (tx) => {
+      const existing = await this.requireVisible(tx, scope, id);
+      if (!mayAssignRole(scope.role, existing.role)) {
+        throw new ForbiddenException('insufficient permissions for this user');
+      }
+
+      if (role === null) {
+        await tx.userProductRole.deleteMany({ where: { userId: existing.id, product } });
+      } else {
+        await tx.userProductRole.upsert({
+          where: { userId_product: { userId: existing.id, product } },
+          create: { userId: existing.id, product, role },
+          update: { role },
+        });
+      }
+
+      return toManagedUser(
+        await tx.user.findUniqueOrThrow({ where: { id: existing.id }, include: USER_INCLUDE }),
+      );
+    });
+  }
+
+  /**
+   * Replaces a user's location assignments. Row-level security confines both
+   * the delete and the insert to locations the caller can see, so a Brand
+   * Admin cannot touch assignments to another brand's stores.
+   */
+  async updateLocations(
+    scope: RequestScope,
+    id: string,
+    locationIds: readonly string[],
+  ): Promise<ManagedUser> {
+    if (id === scope.userId) {
+      throw new ForbiddenException('you cannot change your own location assignments');
+    }
+    const deduped = dedupe(locationIds);
+
+    return this.prisma.withScope(scope, async (tx) => {
+      const existing = await this.requireVisible(tx, scope, id);
+      if (!mayAssignRole(scope.role, existing.role)) {
+        throw new ForbiddenException('insufficient permissions for this user');
+      }
+      if (coversAllBrands(existing.role)) {
+        throw new ForbiddenException('this role already covers every location');
+      }
+
+      const visible = await tx.location.count({ where: { id: { in: deduped } } });
+      if (visible !== deduped.length) {
+        throw new BadRequestException('location not found');
+      }
+
+      try {
+        await tx.userLocationAssignment.deleteMany({ where: { userId: existing.id } });
+        if (deduped.length) {
+          await tx.userLocationAssignment.createMany({
+            data: deduped.map((locationId) => ({ userId: existing.id, locationId })),
+          });
+        }
+      } catch (error) {
+        throw this.translateWriteError(error);
+      }
+
+      return toManagedUser(
+        await tx.user.findUniqueOrThrow({ where: { id: existing.id }, include: USER_INCLUDE }),
+      );
+    });
+  }
+
+  private assertMayGrantProductRole(scope: RequestScope, product: Product, role: string): void {
+    const invalid = productRoleError(product, role);
+    if (invalid) throw new BadRequestException(invalid);
+    if (product === 'INVOICING') {
+      if (!mayAssignRole(scope.role, role as Role)) {
+        throw new ForbiddenException('you may not assign a role above your own');
+      }
+      return;
+    }
+    if (!coversAllBrands(scope.role)) {
+      throw new ForbiddenException('only an owner or admin may grant access to this product');
+    }
+  }
+
   async updateStatus(scope: RequestScope, id: string, status: UserStatus): Promise<ManagedUser> {
     if (id === scope.userId) {
       throw new ForbiddenException('you cannot change your own account status');
@@ -323,7 +462,7 @@ export class UsersService {
           status,
           ...(status === 'SUSPENDED' ? { failedLogins: 0, lockedUntil: null } : {}),
         },
-        include: { assignments: true },
+        include: USER_INCLUDE,
       });
       return toManagedUser(updated);
     });
@@ -371,7 +510,7 @@ export class UsersService {
     const clauses = this.visibilityWhere(scope);
     const row = await tx.user.findFirst({
       where: clauses.length ? { AND: [{ id }, ...clauses] } : { id },
-      include: { assignments: true },
+      include: USER_INCLUDE,
     });
     if (!row) throw new NotFoundException('user not found');
     return row;
@@ -409,6 +548,8 @@ function toManagedUser(row: UserWithAssignments): ManagedUser {
     role: row.role,
     status: row.status,
     assignedBrandIds: row.assignments.map((a) => a.brandId),
+    productRoles: Object.fromEntries(row.productRoles.map((r) => [r.product, r.role])),
+    assignedLocationIds: row.locations.map((l) => l.locationId),
     createdAt: row.createdAt,
     lastLoginAt: row.lastLoginAt,
   };

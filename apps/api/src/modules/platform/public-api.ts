@@ -21,6 +21,7 @@
 export {
   AuthorisationGuard,
   CurrentScope,
+  ProductScope,
   Public,
   RequirePermission,
 } from './tenancy/interface/authorisation.js';

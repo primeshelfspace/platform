@@ -25,7 +25,7 @@ import {
 } from '@platform/invoicing-contracts';
 import { IntegrationError, idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
-import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
+import { CurrentScope, RequirePermission, ProductScope } from '../../../platform/public-api.js';
 import {
   ZohoSandboxService,
   type ZohoSandbox,
@@ -44,6 +44,7 @@ import {
  * management is exactly that kind of administrative action, not a new tier
  * of privilege the app needs to grow for this one feature.
  */
+@ProductScope('INVOICING')
 @Controller('brands/:brandId/integrations/zoho/sandboxes')
 export class ZohoSandboxController {
   constructor(private readonly sandboxes: ZohoSandboxService) {}

@@ -26,6 +26,7 @@ export const RESOURCES = [
   'PLAN_AND_BILLING',
   'USERS',
   'BRANDS',
+  'LOCATIONS',
   'BRAND_CONFIGURATION',
   'TEMPLATES',
   'CUSTOM_DOMAIN',
@@ -67,6 +68,9 @@ const MATRIX: Record<Resource, readonly [string, string, string, string, string,
   PLAN_AND_BILLING: ['RWD', '', '', '', '', ''],
   USERS: ['RWD', 'RWD', 'RW', '', '', ''],
   BRANDS: ['RWD', 'RWD', 'R', 'R', 'R', 'R'],
+  // Stores and warehouses (phase 2): same shape as BRANDS; a brand-scoped role
+  // sees the locations of its brands plus any assigned to it.
+  LOCATIONS: ['RWD', 'RWD', 'R', 'R', 'R', 'R'],
   BRAND_CONFIGURATION: ['RWD', 'RWD', 'RWD', 'R', 'R', 'R'],
   TEMPLATES: ['RWD', 'RWD', 'RWD', 'R', 'R', 'R'],
   CUSTOM_DOMAIN: ['RWD', 'RWD', 'RWD', '', '', ''],

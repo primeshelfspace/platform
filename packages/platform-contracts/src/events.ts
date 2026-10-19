@@ -13,6 +13,12 @@ export const PLATFORM_EVENTS = {
   /** Any brand field changed, including status (archive/unarchive) and logo.
    * Payload: BrandEventPayload, always the complete current brand. */
   brandUpdated: 'platform.brand.updated',
+  /** A product was switched on or off for a company. Payload: SubscriptionEventPayload. */
+  subscriptionChanged: 'platform.subscription.changed',
+  /** A location was created. Payload: LocationEventPayload. */
+  locationCreated: 'platform.location.created',
+  /** Any location field changed, including status. Payload: LocationEventPayload. */
+  locationUpdated: 'platform.location.updated',
 } as const;
 
 export type PlatformEventTopic = (typeof PLATFORM_EVENTS)[keyof typeof PLATFORM_EVENTS];
@@ -52,4 +58,40 @@ export interface BrandSnapshot {
 
 export interface BrandEventPayload {
   readonly brand: BrandSnapshot;
+}
+
+export interface SubscriptionSnapshot {
+  readonly id: string;
+  readonly merchantId: string;
+  readonly product: 'INVOICING' | 'HQ';
+  readonly status: 'ACTIVE' | 'CANCELLED';
+  readonly plan: string;
+  /** ISO 8601. */
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  /** ISO 8601 — also the snapshot's version. */
+  readonly updatedAt: string;
+}
+
+export interface SubscriptionEventPayload {
+  readonly subscription: SubscriptionSnapshot;
+}
+
+/** The complete location as of the event; same versioning rule as brands. */
+export interface LocationSnapshot {
+  readonly id: string;
+  readonly merchantId: string;
+  readonly brandId: string | null;
+  readonly name: string;
+  readonly kind: 'STORE' | 'WAREHOUSE';
+  readonly address: AddressSnapshot | null;
+  readonly status: 'ACTIVE' | 'ARCHIVED';
+  /** ISO 8601. */
+  readonly createdAt: string;
+  /** ISO 8601 — also the snapshot's version. */
+  readonly updatedAt: string;
+}
+
+export interface LocationEventPayload {
+  readonly location: LocationSnapshot;
 }

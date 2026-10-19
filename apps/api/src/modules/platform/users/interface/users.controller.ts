@@ -1,7 +1,12 @@
 import { Body, Controller, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
-import { idSchema, type RequestScope } from '@platform/kernel';
+import { idSchema, type Product, type RequestScope } from '@platform/kernel';
 import {
   assignUserBrandsSchema,
+  assignUserLocationsSchema,
+  productSchema,
+  updateProductRoleSchema,
+  type AssignUserLocationsInput,
+  type UpdateProductRoleInput,
   inviteUserSchema,
   updateUserRoleSchema,
   updateUserStatusSchema,
@@ -76,6 +81,28 @@ export class UsersController {
     @Body(zodPipe(assignUserBrandsSchema)) body: AssignUserBrandsInput,
   ): Promise<ManagedUser> {
     return this.users.updateBrands(scope, id, body.brandIds);
+  }
+
+  /** A role in one product, or `{ role: null }` to remove the product. */
+  @Put(':id/product-roles/:product')
+  @RequirePermission('USERS', 'WRITE', { brandFrom: 'none' })
+  updateProductRole(
+    @CurrentScope() scope: RequestScope,
+    @Param('id', zodPipe(idSchema)) id: string,
+    @Param('product', zodPipe(productSchema)) product: Product,
+    @Body(zodPipe(updateProductRoleSchema)) body: UpdateProductRoleInput,
+  ): Promise<ManagedUser> {
+    return this.users.updateProductRole(scope, id, product, body.role);
+  }
+
+  @Put(':id/locations')
+  @RequirePermission('USERS', 'WRITE', { brandFrom: 'none' })
+  updateLocations(
+    @CurrentScope() scope: RequestScope,
+    @Param('id', zodPipe(idSchema)) id: string,
+    @Body(zodPipe(assignUserLocationsSchema)) body: AssignUserLocationsInput,
+  ): Promise<ManagedUser> {
+    return this.users.updateLocations(scope, id, body.locationIds);
   }
 
   /** Matrix gives Brand Admin `RW` but not `D` on USERS, so suspending or

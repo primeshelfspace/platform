@@ -15,7 +15,7 @@ import {
 } from '@platform/invoicing-contracts';
 import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
-import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
+import { CurrentScope, RequirePermission, ProductScope } from '../../../platform/public-api.js';
 import {
   BrandSettingsService,
   type EmailReceiptSettings,
@@ -28,6 +28,7 @@ const invoiceNumberingSchema = z.object({
   invoicePrefix: brandSettingsSchema.shape.invoicePrefix,
 });
 
+@ProductScope('INVOICING')
 @Controller('brands/:brandId/settings')
 export class BrandSettingsController {
   constructor(private readonly settings: BrandSettingsService) {}

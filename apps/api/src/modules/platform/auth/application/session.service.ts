@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import type { RequestScope } from '@platform/kernel';
+import { type Product, type RequestScope, isProduct } from '@platform/kernel';
 import type { Role } from '@platform/platform-contracts';
 import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
 
@@ -28,6 +28,9 @@ interface ResolvedSessionRow {
   expires_at: Date;
   revoked_at: Date | null;
   brand_ids: string[];
+  products: string[];
+  product_roles: Record<string, string> | null;
+  location_ids: string[];
 }
 
 @Injectable()
@@ -86,6 +89,11 @@ export class SessionService {
       assignedBrandIds: row.brand_ids ?? [],
       sessionId: row.session_id,
       sourceIp,
+      products: (row.products ?? []).filter(isProduct),
+      productRoles: Object.fromEntries(
+        Object.entries(row.product_roles ?? {}).filter(([product]) => isProduct(product)),
+      ) as Partial<Record<Product, string>>,
+      assignedLocationIds: row.location_ids ?? [],
     };
   }
 

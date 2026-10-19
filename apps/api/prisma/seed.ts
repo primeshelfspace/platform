@@ -64,6 +64,7 @@ async function main(): Promise<void> {
       contactEmail: 'ops@sugrpay.test',
       address: address('1 Harbour Street', 'Boston', 'MA', '02110'),
       plan: 'standard',
+      subscriptions: { create: { product: 'INVOICING' } },
     },
   });
 
@@ -143,6 +144,18 @@ async function main(): Promise<void> {
     [solstice.id, cobalt.id],
   );
 
+  // Locations: one store per brand and one company-wide warehouse. Brand-scoped
+  // users see their brands' stores; nobody but Owner/Admin sees the warehouse
+  // unless it is assigned to them.
+  await platform.location.createMany({
+    data: [
+      { merchantId: sugrpay.id, brandId: solstice.id, name: 'Solstice Boston', kind: 'STORE' },
+      { merchantId: sugrpay.id, brandId: meridian.id, name: 'Meridian Denver', kind: 'STORE' },
+      { merchantId: sugrpay.id, brandId: cobalt.id, name: 'Cobalt Seattle', kind: 'STORE' },
+      { merchantId: sugrpay.id, brandId: null, name: 'Central Warehouse', kind: 'WAREHOUSE' },
+    ],
+  });
+
   // -------------------------------------------------------------------------
   // Merchant two — exists solely so isolation has something to isolate from.
   // Any query that returns one of these rows to a Sugrpay user is a defect.
@@ -152,6 +165,7 @@ async function main(): Promise<void> {
       name: 'Northgate Provisioning Ltd.',
       contactEmail: 'accounts@northgate.test',
       address: address('88 Kingsway', 'Vancouver', 'BC', 'V5T 3J7'),
+      subscriptions: { create: { product: 'INVOICING' } },
     },
   });
   const northgateBrand = await createBrand(northgate.id, {
@@ -451,6 +465,7 @@ async function reset(): Promise<void> {
   await platform.$executeRawUnsafe(`
     TRUNCATE TABLE
       outbox_event, audit_log, integration_connection, password_reset_token,
+      user_location_assignment, location, user_product_role, subscription,
       user_brand_assignment, session, "user", brand, merchant
     RESTART IDENTITY CASCADE
   `);
@@ -539,6 +554,8 @@ async function createUser(
       passwordHash,
       status: 'ACTIVE',
       assignments: { create: brandIds.map((brandId) => ({ brandId })) },
+      // The platform role is the user's invoicing role.
+      productRoles: { create: { product: 'INVOICING', role } },
     },
   });
 }

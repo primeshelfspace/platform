@@ -16,7 +16,12 @@ import { z } from 'zod';
 import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { ENV, type Env } from '../../../../shared/config/env.js';
-import { CurrentScope, Public, RequirePermission } from '../../../platform/public-api.js';
+import {
+  CurrentScope,
+  Public,
+  RequirePermission,
+  ProductScope,
+} from '../../../platform/public-api.js';
 import { isValidZohoWebhookToken } from '../domain/zoho-webhook-token.js';
 import {
   ZohoWebhookService,
@@ -68,6 +73,7 @@ const assignBodySchema = z.object({ brandId: idSchema });
  * all the platform takes from the body; the record itself is always re-read
  * from Zoho's API, so nothing in a webhook body is trusted as data.
  */
+@ProductScope('INVOICING')
 @Controller('webhooks/zoho')
 export class ZohoWebhookController {
   private readonly logger = new Logger(ZohoWebhookController.name);

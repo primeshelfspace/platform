@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { type RequestScope } from '@platform/kernel';
+import { PRODUCTS, PRODUCT_NAMES, type Product, type RequestScope } from '@platform/kernel';
 import {
   assignableRolesFor,
   coversAllBrands,
@@ -185,6 +185,17 @@ export class AuthController {
       permissions: grantsFor(scope.role),
       allBrands: coversAllBrands(scope.role),
       assignableRoles: assignableRolesFor(scope.role),
+      // The products this user can open: the company subscribes to it AND the
+      // user holds a role in it. The web apps build the product switcher
+      // from this, and a product app sends anyone not listed back to Accounts.
+      products: PRODUCTS.filter(
+        (product) => scope.products?.includes(product) && scope.productRoles?.[product],
+      ).map((product) => ({
+        product,
+        name: PRODUCT_NAMES[product],
+        role: scope.productRoles?.[product] ?? '',
+      })),
+      assignedLocationIds: scope.assignedLocationIds ?? [],
     };
   }
 
@@ -215,6 +226,9 @@ export interface CurrentUserResponse {
   mustResetPassword: boolean;
   /** Effective permissions, resource → actions. Empty array = no access. */
   permissions: PermissionGrants;
+  /** Products the user can open, with their role in each. */
+  products: { product: Product; name: string; role: string }[];
+  assignedLocationIds: readonly string[];
   /** True for Owner/Merchant Admin: every brand, no assignments needed. */
   allBrands: boolean;
   /** Roles this user may invite as or change others to (rank rule). */

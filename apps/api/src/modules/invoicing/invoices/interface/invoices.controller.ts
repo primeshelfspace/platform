@@ -16,7 +16,7 @@ import {
 } from '@platform/invoicing-contracts';
 import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
-import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
+import { CurrentScope, RequirePermission, ProductScope } from '../../../platform/public-api.js';
 import {
   InvoicesService,
   type BulkSendResult,
@@ -29,6 +29,7 @@ import {
 } from '../application/invoices.service.js';
 
 /** FR-INV. Nested under the brand, matching CustomersController's convention. */
+@ProductScope('INVOICING')
 @Controller('brands/:brandId/invoices')
 export class InvoicesController {
   constructor(private readonly invoices: InvoicesService) {}

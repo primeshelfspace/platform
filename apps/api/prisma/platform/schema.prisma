@@ -86,6 +86,28 @@ enum ConnectionStatus {
   REVOKED
 }
 
+/// The products a company can subscribe to (kernel PRODUCTS). The platform
+/// itself is not a product: it is always on.
+enum Product {
+  INVOICING
+  HQ
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum LocationKind {
+  STORE
+  WAREHOUSE
+}
+
+enum LocationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -128,9 +150,11 @@ model Merchant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users     User[]
-  brands    Brand[]
-  auditLogs AuditLog[]
+  users         User[]
+  brands        Brand[]
+  auditLogs     AuditLog[]
+  subscriptions Subscription[]
+  locations     Location[]
 
   @@map("merchant")
 }
@@ -154,6 +178,8 @@ model User {
   assignments    UserBrandAssignment[]
   sessions       Session[]
   passwordTokens PasswordResetToken[]
+  productRoles   UserProductRole[]
+  locations      UserLocationAssignment[]
 
   /// Email is unique within a merchant, not globally: the same person may hold
   /// accounts at two client organisations.
@@ -244,9 +270,88 @@ model Brand {
   merchant    Merchant                @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   assignments UserBrandAssignment[]
   connections IntegrationConnection[]
+  locations   Location[]
 
   @@index([merchantId])
   @@map("brand")
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions, product roles, locations (architecture plan, phase 2)
+// ---------------------------------------------------------------------------
+
+/// Which products a company has switched on. A product's endpoints answer
+/// 403 for a company without an ACTIVE row here. One row per company and
+/// product; cancelling keeps the row (status CANCELLED) for history.
+model Subscription {
+  id         String             @id @default(uuid()) @db.Uuid
+  merchantId String             @map("merchant_id") @db.Uuid
+  product    Product
+  status     SubscriptionStatus @default(ACTIVE)
+  plan       String             @default("standard")
+  startedAt  DateTime           @default(now()) @map("started_at")
+  endedAt    DateTime?          @map("ended_at")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, product])
+  @@map("subscription")
+}
+
+/// A user's role inside one product. Absent row means the user cannot use
+/// that product. The role is text because each product has its own role set
+/// (kernel PRODUCT_ROLES); the application validates it.
+model UserProductRole {
+  userId    String   @map("user_id") @db.Uuid
+  product   Product
+  role      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, product])
+  @@map("user_product_role")
+}
+
+/// A physical place the company operates — a store or a warehouse. Optionally
+/// belongs to a brand. Users reach locations the same way they reach brands:
+/// all-brand roles see every location, others only the ones assigned to them.
+model Location {
+  id         String         @id @default(uuid()) @db.Uuid
+  merchantId String         @map("merchant_id") @db.Uuid
+  brandId    String?        @map("brand_id") @db.Uuid
+  name       String
+  kind       LocationKind
+  address    Json?
+  status     LocationStatus @default(ACTIVE)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  merchant    Merchant                 @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  brand       Brand?                   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  assignments UserLocationAssignment[]
+
+  @@index([merchantId])
+  @@index([brandId])
+  @@map("location")
+}
+
+/// Absent row means no access to that location (for roles that do not cover
+/// every brand).
+model UserLocationAssignment {
+  userId     String   @map("user_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, locationId])
+  @@index([locationId])
+  @@map("user_location_assignment")
 }
 
 model IntegrationConnection {

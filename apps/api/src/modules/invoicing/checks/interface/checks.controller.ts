@@ -7,7 +7,7 @@ import {
 } from '@platform/invoicing-contracts';
 import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
-import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
+import { CurrentScope, RequirePermission, ProductScope } from '../../../platform/public-api.js';
 import {
   ChecksService,
   type CheckSubmissionDetail,
@@ -19,6 +19,7 @@ import {
  * Approve/reject are CHECK_APPROVAL APPROVE — the only action letter that
  * resource grants (roles.ts), deliberately distinct from PAYMENTS so a role
  * can see pending checks without being trusted to clear them. */
+@ProductScope('INVOICING')
 @Controller('brands/:brandId/checks')
 export class ChecksController {
   constructor(private readonly checks: ChecksService) {}

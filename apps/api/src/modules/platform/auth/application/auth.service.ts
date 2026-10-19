@@ -227,8 +227,12 @@ export class AuthService {
                 // to identify the tenant in the interim.
                 name: input.fullName,
                 contactEmail: input.email,
+                // Signing up today means signing up for invoicing (Sugrpay).
+                // Other products are switched on later from Accounts → Billing.
+                subscriptions: { create: { product: 'INVOICING' } },
               },
             },
+            productRoles: { create: { product: 'INVOICING', role: 'MERCHANT_OWNER' } },
           },
         });
       },

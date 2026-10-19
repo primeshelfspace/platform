@@ -5,10 +5,16 @@ import {
   retryDelayMs,
   type OutboxSource,
 } from '../../../shared/infra/events/outbox-dispatcher.js';
-import type { Brand, Prisma } from '../database/client.js';
-import { toBrandSnapshot } from './brand-snapshot.js';
+import type { Brand, Location, Prisma, Subscription } from '../database/client.js';
+import { toBrandSnapshot, toLocationSnapshot, toSubscriptionSnapshot } from './brand-snapshot.js';
 import { PlatformPrismaService, type ScopedClient } from '../database/platform-prisma.service.js';
-import { PLATFORM_EVENTS, type BrandEventPayload, type PlatformEventTopic } from './contracts.js';
+import {
+  PLATFORM_EVENTS,
+  type BrandEventPayload,
+  type LocationEventPayload,
+  type PlatformEventTopic,
+  type SubscriptionEventPayload,
+} from './contracts.js';
 
 interface OutboxRow {
   id: string;
@@ -57,6 +63,22 @@ export class PlatformOutbox implements OutboxSource {
     const payload: BrandEventPayload = { brand: toBrandSnapshot(brand) };
     const topic = kind === 'created' ? PLATFORM_EVENTS.brandCreated : PLATFORM_EVENTS.brandUpdated;
     return this.record(tx, topic, brand.id, payload);
+  }
+
+  /** Records subscription.changed with the complete subscription. */
+  recordSubscription(tx: ScopedClient, subscription: Subscription): Promise<void> {
+    const payload: SubscriptionEventPayload = {
+      subscription: toSubscriptionSnapshot(subscription),
+    };
+    return this.record(tx, PLATFORM_EVENTS.subscriptionChanged, subscription.id, payload);
+  }
+
+  /** Records location.created / location.updated with the complete location. */
+  recordLocation(tx: ScopedClient, kind: 'created' | 'updated', location: Location): Promise<void> {
+    const payload: LocationEventPayload = { location: toLocationSnapshot(location) };
+    const topic =
+      kind === 'created' ? PLATFORM_EVENTS.locationCreated : PLATFORM_EVENTS.locationUpdated;
+    return this.record(tx, topic, location.id, payload);
   }
 
   /**

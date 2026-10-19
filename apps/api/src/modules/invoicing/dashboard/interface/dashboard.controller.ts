@@ -2,7 +2,7 @@ import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { dashboardQuerySchema, type DashboardQuery } from '@platform/invoicing-contracts';
 import { idSchema, type Scope } from '@platform/kernel';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
-import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
+import { CurrentScope, RequirePermission, ProductScope } from '../../../platform/public-api.js';
 import {
   DashboardService,
   type BrandRollup,
@@ -32,6 +32,7 @@ function rangeFrom(query: DashboardQuery): DateRange | undefined {
  * omitted case falls through to row-level security scoping the result to
  * every brand the caller can read, same as BrandsController.list.
  */
+@ProductScope('INVOICING')
 @Controller('dashboard')
 export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}

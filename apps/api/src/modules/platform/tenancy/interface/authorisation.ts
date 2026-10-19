@@ -9,12 +9,29 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
-import { type RequestScope } from '@platform/kernel';
-import { type Action, type Resource, checkAccess } from '@platform/platform-contracts';
+import { type Product, type RequestScope } from '@platform/kernel';
+import {
+  type Action,
+  type Resource,
+  type Role,
+  ROLES,
+  checkAccess,
+} from '@platform/platform-contracts';
 import { SESSION_COOKIE, SessionService } from '../../auth/application/session.service.js';
 
 export const PERMISSION_KEY = 'sugrpay:permission';
 export const PUBLIC_KEY = 'sugrpay:public';
+export const PRODUCT_KEY = 'platform:product';
+
+/**
+ * Marks a controller as belonging to a product. Every request to it then
+ * needs (1) an active subscription to that product for the user's company and
+ * (2) a role for that product on the user. The product role — not the user's
+ * platform role — is what the permission check and the handler see.
+ * authorisation-coverage.test.ts fails the build if a product controller
+ * forgets it.
+ */
+export const ProductScope = (product: Product) => SetMetadata(PRODUCT_KEY, product);
 
 export interface PermissionRequirement {
   readonly resource: Resource;
@@ -77,8 +94,14 @@ export class AuthorisationGuard implements CanActivate {
     const token = extractToken(request);
     if (!token) throw new UnauthorizedException('authentication required');
 
-    const scope = await this.sessions.resolve(token, request.ip ?? null);
-    if (!scope) throw new UnauthorizedException('authentication required');
+    const resolved = await this.sessions.resolve(token, request.ip ?? null);
+    if (!resolved) throw new UnauthorizedException('authentication required');
+
+    const product = this.reflector.getAllAndOverride<Product | undefined>(PRODUCT_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    const scope = product ? productScope(resolved, product) : resolved;
 
     request.scope = Object.freeze(scope);
 
@@ -111,6 +134,32 @@ export class AuthorisationGuard implements CanActivate {
 
     return true;
   }
+}
+
+/**
+ * The scope a product endpoint works with. Throws 403 when the company has no
+ * active subscription to the product, or the user holds no role in it.
+ *
+ * Invoicing's roles are the six-role matrix, so the invoicing role replaces
+ * the platform role for the permission check. Other products bring their own
+ * role sets; until they have a matrix, their requests keep the platform role
+ * for the check and carry the product role in productRoles.
+ */
+export function productScope(scope: RequestScope, product: Product): RequestScope {
+  if (!scope.products?.includes(product)) {
+    throw new ForbiddenException('your company is not subscribed to this product');
+  }
+  const productRole = scope.productRoles?.[product];
+  if (!productRole) {
+    throw new ForbiddenException('you have no access to this product');
+  }
+  if (product === 'INVOICING') {
+    if (!(ROLES as readonly string[]).includes(productRole)) {
+      throw new ForbiddenException('you have no access to this product');
+    }
+    return { ...scope, role: productRole as Role, product };
+  }
+  return { ...scope, product };
 }
 
 function extractToken(request: Request): string | null {

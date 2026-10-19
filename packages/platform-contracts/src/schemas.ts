@@ -227,6 +227,15 @@ export const inviteUserSchema = z.object({
   /** Ignored for an all-brand role (Owner/Admin); required for any other
    * role — enforced in UsersService, where coversAllBrands() already lives. */
   brandIds: z.array(idSchema).max(200).default([]),
+  /** Roles in other products (e.g. `{ HQ: 'MANAGER' }`). The invoicing role
+   * defaults to `role`. Each value is checked against PRODUCT_ROLES. */
+  productRoles: z
+    .object({
+      INVOICING: z.string().trim().min(1).max(60).optional(),
+      HQ: z.string().trim().min(1).max(60).optional(),
+    })
+    .strict()
+    .optional(),
 });
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 

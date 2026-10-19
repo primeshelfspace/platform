@@ -34,6 +34,7 @@ import {
   SystemScopeResolver,
   verifyOAuthState,
   type ZohoConnectionStatus,
+  ProductScope,
 } from '../../../platform/public-api.js';
 import {
   ZohoActivityService,
@@ -63,6 +64,7 @@ export interface ZohoWebhookSetup {
  * (TDD-001 §12, same pattern as the public payment path: possession of a
  * signed token is the credential, not a session).
  */
+@ProductScope('INVOICING')
 @Controller()
 export class ZohoConnectController {
   private readonly logger = new Logger(ZohoConnectController.name);

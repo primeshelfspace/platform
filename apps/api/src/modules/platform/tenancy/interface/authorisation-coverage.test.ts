@@ -12,6 +12,9 @@
  *   3. A route nested under :brandId must check that brand. brandFrom 'none'
  *      (or 'query'/'body') there would ignore the brand in its own URL.
  *   4. The resource/action pair is one the matrix knows.
+ *   5. Every product controller is @ProductScope'd to its own product (so a
+ *      company without that subscription, or a user without a role in it,
+ *      is refused), and no platform controller is.
  */
 import 'reflect-metadata';
 import { readdirSync, statSync } from 'node:fs';
@@ -21,7 +24,12 @@ import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { RequestMethod } from '@nestjs/common';
 import { ACTIONS, RESOURCES } from '@platform/platform-contracts';
 import { describe, expect, it } from 'vitest';
-import { PERMISSION_KEY, PUBLIC_KEY, type PermissionRequirement } from './authorisation.js';
+import {
+  PERMISSION_KEY,
+  PRODUCT_KEY,
+  PUBLIC_KEY,
+  type PermissionRequirement,
+} from './authorisation.js';
 
 // apps/api/src — this file lives at src/modules/platform/tenancy/interface/.
 const SRC = join(__dirname, '..', '..', '..', '..');
@@ -31,6 +39,9 @@ interface RouteInfo {
   readonly path: string;
   readonly isPublic: boolean;
   readonly requirement: PermissionRequirement | undefined;
+  /** modules/<module>/... the controller lives in. */
+  readonly module: string;
+  readonly product: string | undefined;
 }
 
 function controllerFiles(dir: string): string[] {
@@ -61,6 +72,8 @@ async function collectRoutes(): Promise<RouteInfo[]> {
       if (basePath === undefined) continue;
 
       const classPublic = Reflect.getMetadata(PUBLIC_KEY, controller) === true;
+      const product = Reflect.getMetadata(PRODUCT_KEY, controller) as string | undefined;
+      const module = relative(SRC, file).split(/[\\/]/)[1] ?? '';
       const classRequirement = Reflect.getMetadata(PERMISSION_KEY, controller) as
         PermissionRequirement | undefined;
 
@@ -76,6 +89,8 @@ async function collectRoutes(): Promise<RouteInfo[]> {
         routes.push({
           id: `${RequestMethod[method]} ${path}  (${relative(SRC, file)} → ${name})`,
           path,
+          module,
+          product,
           isPublic: Reflect.getMetadata(PUBLIC_KEY, handler) === true || classPublic,
           requirement:
             (Reflect.getMetadata(PERMISSION_KEY, handler) as PermissionRequirement | undefined) ??
@@ -126,5 +141,23 @@ describe('authorisation coverage (every route × the guard’s rules)', async ()
       )
       .map((r) => r.id);
     expect(unknown).toEqual([]);
+  });
+});
+
+describe('product scoping (every product route × its subscription)', async () => {
+  const routes = await collectRoutes();
+  const PRODUCT_OF_MODULE: Record<string, string> = { invoicing: 'INVOICING', hq: 'HQ' };
+
+  it('scopes every product controller to its own product', () => {
+    const unscoped = routes
+      .filter((r) => r.module in PRODUCT_OF_MODULE)
+      .filter((r) => r.product !== PRODUCT_OF_MODULE[r.module])
+      .map((r) => r.id);
+    expect(unscoped).toEqual([]);
+  });
+
+  it('never product-scopes a platform controller', () => {
+    const scoped = routes.filter((r) => r.module === 'platform' && r.product).map((r) => r.id);
+    expect(scoped).toEqual([]);
   });
 });

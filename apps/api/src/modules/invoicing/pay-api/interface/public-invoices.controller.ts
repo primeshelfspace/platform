@@ -25,7 +25,7 @@ import {
 import { idSchema, publicTokenSchema } from '@platform/kernel';
 import { assertCheckImage, MAX_CHECK_IMAGE_BYTES } from '../../../../shared/common/check-upload.js';
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
-import { Public } from '../../../platform/public-api.js';
+import { Public, ProductScope } from '../../../platform/public-api.js';
 import {
   PaymentsService,
   type PaymentAttemptResult,
@@ -49,6 +49,7 @@ type ReconcileBody = z.infer<typeof paymentIntentReconcileSchema>;
  * deactivated token, wrong brand — collapses to the same 404 so the endpoint
  * cannot be used to probe which invoices exist.
  */
+@ProductScope('INVOICING')
 @Controller('public')
 export class PublicInvoicesController {
   constructor(

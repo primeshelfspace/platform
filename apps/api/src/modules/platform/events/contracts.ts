@@ -8,5 +8,9 @@ export {
   type AddressSnapshot,
   type BrandEventPayload,
   type BrandSnapshot,
+  type LocationEventPayload,
+  type LocationSnapshot,
   type PlatformEventTopic,
+  type SubscriptionEventPayload,
+  type SubscriptionSnapshot,
 } from '@platform/platform-contracts';

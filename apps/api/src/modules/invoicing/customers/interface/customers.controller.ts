@@ -8,7 +8,7 @@ import {
 import { idSchema, type Scope } from '@platform/kernel';
 
 import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
-import { CurrentScope, RequirePermission } from '../../../platform/public-api.js';
+import { CurrentScope, RequirePermission, ProductScope } from '../../../platform/public-api.js';
 import {
   CustomersService,
   type Customer,
@@ -21,6 +21,7 @@ import {
  * check (TDD-001 §7.2) applies with no extra decoration — a Sales User
  * without this brand in their assignment never reaches the handler.
  */
+@ProductScope('INVOICING')
 @Controller('brands/:brandId/customers')
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}

@@ -8,6 +8,7 @@
  * after resolution — nothing downstream may widen its own access.
  */
 
+import type { Product } from './domain/products.js';
 import type { Role } from './domain/roles.js';
 import { coversAllBrands } from './domain/roles.js';
 
@@ -19,6 +20,14 @@ export interface RequestScope {
   readonly assignedBrandIds: readonly string[];
   readonly sessionId: string;
   readonly sourceIp: string | null;
+  /** Products the company holds an active subscription to. */
+  readonly products?: readonly Product[];
+  /** The user's role in each product they may use. */
+  readonly productRoles?: Readonly<Partial<Record<Product, string>>>;
+  /** Locations (stores, warehouses) explicitly assigned to the user. */
+  readonly assignedLocationIds?: readonly string[];
+  /** The product serving the current request, once the guard has checked it. */
+  readonly product?: Product;
 }
 
 /**
@@ -64,6 +73,8 @@ export interface DatabaseScopeSettings {
   readonly 'app.brand_ids': string;
   readonly 'app.user_id': string;
   readonly 'app.all_brands': 'on' | 'off';
+  readonly 'app.location_ids': string;
+  readonly 'app.all_locations': 'on' | 'off';
 }
 
 export function databaseScopeSettings(scope: Scope): DatabaseScopeSettings {
@@ -73,6 +84,8 @@ export function databaseScopeSettings(scope: Scope): DatabaseScopeSettings {
       'app.brand_ids': scope.brandId,
       'app.user_id': '',
       'app.all_brands': 'off',
+      'app.location_ids': '',
+      'app.all_locations': 'off',
     };
   }
   const allBrands = coversAllBrands(scope.role);
@@ -81,5 +94,7 @@ export function databaseScopeSettings(scope: Scope): DatabaseScopeSettings {
     'app.brand_ids': allBrands ? '' : scope.assignedBrandIds.join(','),
     'app.user_id': scope.userId,
     'app.all_brands': allBrands ? 'on' : 'off',
+    'app.location_ids': allBrands ? '' : (scope.assignedLocationIds ?? []).join(','),
+    'app.all_locations': allBrands ? 'on' : 'off',
   };
 }

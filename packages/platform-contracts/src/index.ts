@@ -9,3 +9,4 @@ export * from './company-domain.js';
 export * from './brand-defaults.js';
 export * from './schemas.js';
 export * from './events.js';
+export * from './products.js';

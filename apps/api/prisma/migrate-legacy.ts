@@ -150,6 +150,18 @@ async function main(): Promise<void> {
           const copied = await copyTable(legacy, tx, table);
           results.push({ database: 'platform', table, legacy: await count(legacy, table), copied });
         }
+        // The legacy system was invoicing only: every company keeps invoicing,
+        // and every user's role becomes their invoicing role.
+        await tx.$executeRawUnsafe(
+          `INSERT INTO subscription (id, merchant_id, product, status, updated_at)
+           SELECT gen_random_uuid(), m.id, 'INVOICING', 'ACTIVE', now() FROM merchant m
+           ON CONFLICT (merchant_id, product) DO NOTHING`,
+        );
+        await tx.$executeRawUnsafe(
+          `INSERT INTO user_product_role (user_id, product, role, updated_at)
+           SELECT u.id, 'INVOICING', u.role::text, now() FROM "user" u
+           ON CONFLICT (user_id, product) DO NOTHING`,
+        );
       },
       { timeout: 30 * 60_000, maxWait: 60_000 },
     );
