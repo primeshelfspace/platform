@@ -69,6 +69,7 @@ Everything installs into one `node_modules` at the root; `pnpm dev`, `build`,
 | [docs/getting-started.md](docs/getting-started.md)                 | Running it locally, commands, troubleshooting |
 | [docs/architecture/](docs/architecture/README.md)                  | Modules, layers, databases, events, decisions |
 | [docs/guides/payment-flow.md](docs/guides/payment-flow.md)         | Testing invoice → payment                     |
+| [docs/guides/deploy-ec2.md](docs/guides/deploy-ec2.md)             | Deploying to AWS (EC2, RDS, Redis, S3, SES)   |
 | [docs/integrations/zoho-books.md](docs/integrations/zoho-books.md) | Connecting Zoho Books                         |
 | [docs/known-gaps.md](docs/known-gaps.md)                           | Open decisions and dependencies               |
 | [docs/README.md](docs/README.md)                                   | Everything else                               |
