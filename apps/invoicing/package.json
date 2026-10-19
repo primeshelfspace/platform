@@ -7,8 +7,7 @@
     "dev": "node ../../scripts/with-env.mjs next dev --port '${ADMIN_PORT:-3000}'",
     "build": "node ../../scripts/with-env.mjs next build",
     "start": "node ../../scripts/with-env.mjs next start --port '${ADMIN_PORT:-3000}'",
-    "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@platform/invoicing-contracts": "workspace:*",

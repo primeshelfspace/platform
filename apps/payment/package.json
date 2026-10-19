@@ -7,8 +7,7 @@
     "dev": "node ../../scripts/with-env.mjs next dev --port '${PAYMENT_PORT:-3001}'",
     "build": "node ../../scripts/with-env.mjs next build",
     "start": "node ../../scripts/with-env.mjs next start --port '${PAYMENT_PORT:-3001}'",
-    "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "typecheck": "tsc --noEmit"
   },
   "//": "EVERY dependency added here is a PCI scope question (TDD-001 §3.3). This list is reviewed as a security artefact, not a build detail. Do not add a package without saying why in the pull request.",
   "//stripe": "@stripe/stripe-js + @stripe/react-stripe-js: Stripe Elements collects card data directly into Stripe's own iframe, so it never touches this app's JS context or our server — this is what keeps PCI scope at SAQ A instead of SAQ D.",

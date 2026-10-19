@@ -43,7 +43,10 @@ apps/
   invoicing/              Sugrpay admin web app (Next.js)
   payment/                public payment pages (Next.js)
 packages/
-  shared/                 money, calculations, validation — used by the API and the web apps
+  kernel/                 money, calculations, tenancy, design tokens — used everywhere
+  platform-contracts/     what the platform publishes (schemas, events)
+  invoicing-contracts/    what Sugrpay publishes (schemas, statuses, email/PDF)
+  hq-contracts/           what HQ will publish (placeholder)
   ui/                     React components shared by the web apps
 docs/                     all documentation
 deploy/                   staging deploy scripts

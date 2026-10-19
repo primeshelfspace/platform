@@ -16,12 +16,12 @@
     "dev": "turbo run dev --env-mode=loose",
     "build": "turbo run build --env-mode=loose",
     "typecheck": "turbo run typecheck --env-mode=loose",
-    "lint": "turbo run lint --env-mode=loose",
+    "lint": "eslint .",
     "test": "turbo run test --env-mode=loose",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
     "check:deps": "node scripts/check-deps.mjs",
-    "check": "pnpm format:check && pnpm check:deps && pnpm typecheck && pnpm test",
+    "check": "pnpm format:check && pnpm lint && pnpm check:deps && pnpm typecheck && pnpm test",
     "boot-check": "pnpm --filter @platform/api build && node scripts/boot-check.mjs \"\" && node scripts/boot-check.mjs invoicing",
     "db:bootstrap": "pnpm --filter @platform/api db:bootstrap",
     "db:generate": "pnpm --filter @platform/api db:generate",
@@ -33,9 +33,15 @@
     "db:studio:invoicing": "pnpm --filter @platform/api db:studio:invoicing"
   },
   "devDependencies": {
+    "@next/eslint-plugin-next": "15.1.3",
     "@types/node": "^22.10.2",
+    "eslint": "9.17.0",
+    "eslint-import-resolver-typescript": "3.7.0",
+    "eslint-plugin-import": "2.31.0",
+    "eslint-plugin-react-hooks": "5.1.0",
     "prettier": "^3.4.2",
     "turbo": "2.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "8.18.1"
   }
 }

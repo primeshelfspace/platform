@@ -91,9 +91,14 @@ apps/
   payment/                  Next.js public payment pages
   hq/                       HQ web app (placeholder)
 packages/
-  shared/                   money, calculation, domain types, validation schemas
+  kernel/                   money, calculation, tenancy scope + roles, design tokens,
+                            port interfaces, generic validation and reference data
+  platform-contracts/       what the platform publishes: request schemas, events
+  invoicing-contracts/      what invoicing publishes: schemas, statuses, email/PDF renderers
+  hq-contracts/             what HQ will publish (placeholder)
   ui/                       shared React components
 deploy/                     staging deploy (pm2 + build-slot script)
 docs/                       this documentation, product specs, integration notes
-scripts/                    local setup, services, dev runner, boot check
+scripts/                    local setup, services, boot check, dependency check
+eslint.config.mjs           the import rules (module boundaries, layers)
 ```

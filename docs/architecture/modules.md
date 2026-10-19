@@ -20,14 +20,19 @@ events — lives inside it.
 
 ## Enforced by the build
 
-| Check                                                                    | Where                           |
-| ------------------------------------------------------------------------ | ------------------------------- |
-| Platform never imports a product                                         | `src/module-boundaries.test.ts` |
-| Products never import each other                                         | `src/module-boundaries.test.ts` |
-| Shared code never imports a product                                      | `src/module-boundaries.test.ts` |
-| Only `public-api.ts` / `modules.ts` are importable from outside a module | `src/module-boundaries.test.ts` |
-| A module's database role can't reach another module's database           | `modules/*/…/rls.test.ts`       |
-| The platform boots with no product enabled                               | `pnpm boot-check`               |
+Every rule is checked twice: by the linter as you type (`pnpm lint`,
+`eslint.config.mjs`) and by the test suite (`src/module-boundaries.test.ts`).
+
+| Check                                                                    | Where                                    |
+| ------------------------------------------------------------------------ | ---------------------------------------- |
+| Platform never imports a product (code or contracts package)             | `pnpm lint`, `module-boundaries.test.ts` |
+| Products never import each other                                         | `pnpm lint`, `module-boundaries.test.ts` |
+| Shared code never imports a product                                      | `pnpm lint`, `module-boundaries.test.ts` |
+| Only `public-api.ts` / `modules.ts` are importable from outside a module | `pnpm lint`, `module-boundaries.test.ts` |
+| Feature layers: pure domain, interface never touches data directly       | `pnpm lint`, `module-boundaries.test.ts` |
+| The kernel depends on nothing above it; web apps never import `apps/api` | `pnpm lint`                              |
+| A module's database role can't reach another module's database           | `modules/*/…/rls.test.ts`                |
+| The platform boots with no product enabled                               | `pnpm boot-check`                        |
 
 ## A module's entry points
 

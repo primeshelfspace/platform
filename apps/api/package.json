@@ -12,7 +12,6 @@
     "start:worker": "node dist/worker.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "lint": "eslint src --max-warnings 0",
     "db:generate": "node ../../scripts/with-env.mjs prisma generate --schema prisma/platform/schema.prisma && node ../../scripts/with-env.mjs prisma generate --schema prisma/invoicing/schema.prisma",
     "db:bootstrap": "node ../../scripts/with-env.mjs tsx prisma/bootstrap.ts",
     "db:migrate": "node ../../scripts/with-env.mjs prisma migrate deploy --schema prisma/platform/schema.prisma && node ../../scripts/with-env.mjs prisma migrate deploy --schema prisma/invoicing/schema.prisma && pnpm db:generate",
