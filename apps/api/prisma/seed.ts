@@ -64,6 +64,10 @@ async function main(): Promise<void> {
       contactEmail: 'ops@sugrpay.test',
       address: address('1 Harbour Street', 'Boston', 'MA', '02110'),
       plan: 'standard',
+      // Already onboarded, so the owner lands on the dashboard rather than
+      // being asked to pick a brand structure for brands that already exist.
+      brandStructure: 'MULTI',
+      onboardingComplete: true,
       subscriptions: { create: { product: 'INVOICING' } },
     },
   });
@@ -165,6 +169,8 @@ async function main(): Promise<void> {
       name: 'Northgate Provisioning Ltd.',
       contactEmail: 'accounts@northgate.test',
       address: address('88 Kingsway', 'Vancouver', 'BC', 'V5T 3J7'),
+      brandStructure: 'SINGLE',
+      onboardingComplete: true,
       subscriptions: { create: { product: 'INVOICING' } },
     },
   });
