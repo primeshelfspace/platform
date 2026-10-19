@@ -18,7 +18,7 @@ pnpm setup:local          # services, databases, migrations, demo data
 pnpm dev
 ```
 
-Then open http://localhost:3000 and sign in as `owner@sugrpay.test` /
+Then open http://localhost:3002 (Accounts) and sign in as `owner@sugrpay.test` /
 `sugrpay-dev-password`.
 
 **New machine, or something not working?** Follow the full guide:
@@ -36,10 +36,12 @@ enforce all of it.
 ```
 apps/
   api/                    the one backend
-    src/modules/platform/   sign-in, companies, brands, users, integrations, audit, events
+    src/modules/platform/   sign-in, companies, brands, users, subscriptions, locations,
+                            integrations, audit, events
     src/modules/invoicing/  Sugrpay: customers, invoices, payments, settings, Zoho sync
     src/modules/hq/         HQ (placeholder)
     src/shared/             adapters, infrastructure, config, health
+  accounts/               Accounts web app: sign-in, team, brands, locations, billing
   invoicing/              Sugrpay admin web app (Next.js)
   payment/                public payment pages (Next.js)
 packages/

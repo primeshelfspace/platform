@@ -9,7 +9,7 @@ import {
   type CurrentUser,
   type MerchantOnboardingState,
 } from '@/lib/api';
-import { LOGIN_PATH } from '@/lib/session';
+import { ACCOUNTS_URL, LOGIN_PATH } from '@/lib/session';
 import { resolveOnboardingStep, routeForStep, type OnboardingStep } from '@/lib/onboarding';
 
 /**
@@ -44,6 +44,13 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
     // for /login to clear, so a momentary API outage does not silently sign
     // everyone out of a session that is still perfectly valid.
     redirect(`${LOGIN_PATH}?expired=1`);
+  }
+
+  // Sugrpay is a product: the company must subscribe to it and the user must
+  // hold a Sugrpay role. Without either, every invoicing request is refused by
+  // the API, so send them back to the Accounts launcher instead of a broken page.
+  if (!user.mustResetPassword && !user.products.some((p) => p.product === 'INVOICING')) {
+    redirect(ACCOUNTS_URL);
   }
 
   // FR-AUTH-007/021 and FR-ONB: a first-login password reset and finishing

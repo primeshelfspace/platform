@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { LogoMark } from '@/components/logo-mark';
 import { getCurrentUser } from '@/lib/api';
-import { readSessionToken } from '@/lib/session';
+import { ACCOUNTS_URL, readSessionToken } from '@/lib/session';
 
 export const metadata: Metadata = {
   title: 'Sugrpay — Multi-Brand Invoicing & Payments',
@@ -42,7 +42,7 @@ export default async function WelcomePage() {
           <span className="text-[15px] font-semibold tracking-tight text-[#0F172A]">Sugrpay</span>
         </div>
         <Link
-          href="/login"
+          href={`${ACCOUNTS_URL}/login`}
           className="rounded-[10px] px-4 py-2 text-sm font-medium text-[#0F172A] hover:bg-[#F1F5F9]"
         >
           Sign in
@@ -64,7 +64,7 @@ export default async function WelcomePage() {
 
           <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
-              href="/signup"
+              href={`${ACCOUNTS_URL}/signup`}
               className="w-full rounded-[10px] bg-[#0F172A] px-6 py-3 text-sm font-semibold text-white hover:bg-[#1E293B] sm:w-auto"
             >
               Create your account
@@ -112,7 +112,7 @@ export default async function WelcomePage() {
             Create an account, add your brands, and send your first invoice in minutes.
           </p>
           <Link
-            href="/signup"
+            href={`${ACCOUNTS_URL}/signup`}
             className="mt-8 inline-block rounded-[10px] bg-white px-6 py-3 text-sm font-semibold text-[#0F172A] hover:bg-[#F1F5F9]"
           >
             Create your account
@@ -123,7 +123,7 @@ export default async function WelcomePage() {
       <footer className="border-t border-[#E2E8F0]">
         <div className="mx-auto flex max-w-[1100px] flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-[#64748B] sm:flex-row">
           <span>&copy; {new Date().getFullYear()} Sugrpay.com</span>
-          <Link href="/login" className="hover:text-[#0F172A]">
+          <Link href={`${ACCOUNTS_URL}/login`} className="hover:text-[#0F172A]">
             Sign in
           </Link>
         </div>

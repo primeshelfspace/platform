@@ -2,8 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { setPasswordSchema } from '@platform/platform-contracts';
-import { ApiError, getCurrentUser, setPassword, setPasswordWithToken } from '@/lib/api';
-import { resolveOnboardingStep, routeForStep, type OnboardingStep } from '@/lib/onboarding';
+import { ApiError, setPassword, setPasswordWithToken } from '@/lib/api';
 import { safeReturnPath, writeSessionToken } from '@/lib/session';
 
 export interface SetPasswordState {
@@ -58,26 +57,7 @@ export async function setPasswordAction(
 
   // Outside the try/catch on purpose: redirect() signals by throwing, and
   // catching it here would turn a successful change into an error message.
-  // mustResetPassword is now false, so resolveOnboardingStep either sends
-  // this user on to whatever onboarding they still owe, or (an already-
-  // onboarded user changing their password voluntarily) returns null and
-  // this falls through to wherever they actually meant to go.
-  //
-  // getCurrentUser/resolveOnboardingStep get their own try/catch, separate
-  // from the one above: the password change already succeeded by this
-  // point, so a momentary API hiccup resolving what comes next shouldn't
-  // turn that success into an error page. Falling through to returnTo
-  // instead lets the (app) layout's own guard — which fails the same way,
-  // safely — resolve this exact same state again on first render.
-  let step: OnboardingStep | undefined;
-  try {
-    const user = await getCurrentUser();
-    step = await resolveOnboardingStep(user);
-  } catch {
-    // Handled by falling through below.
-  }
-  if (step) {
-    redirect(routeForStep(step));
-  }
+  // A brand-new owner lands on the product launcher, and opening Sugrpay
+  // from there continues its own setup (company details, brands).
   redirect(returnTo);
 }

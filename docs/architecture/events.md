@@ -46,13 +46,16 @@ message broker instead; producers and handlers keep their shape.
 
 ### Platform (`modules/platform/events/contracts.ts`)
 
-| Topic                    | Payload                    | Consumers                                |
-| ------------------------ | -------------------------- | ---------------------------------------- |
-| `platform.brand.created` | `{ brand: BrandSnapshot }` | invoicing: brand copy + default settings |
-| `platform.brand.updated` | `{ brand: BrandSnapshot }` | invoicing: brand copy                    |
+| Topic                           | Payload                                  | Consumers                                |
+| ------------------------------- | ---------------------------------------- | ---------------------------------------- |
+| `platform.brand.created`        | `{ brand: BrandSnapshot }`               | invoicing: brand copy + default settings |
+| `platform.brand.updated`        | `{ brand: BrandSnapshot }`               | invoicing: brand copy                    |
+| `platform.subscription.changed` | `{ subscription: SubscriptionSnapshot }` | none yet (billing, HQ later)             |
+| `platform.location.created`     | `{ location: LocationSnapshot }`         | none yet (HQ later)                      |
+| `platform.location.updated`     | `{ location: LocationSnapshot }`         | none yet (HQ later)                      |
 
 Planned (from the architecture plan): `platform.user.deactivated`,
-`platform.subscription.changed`, `invoicing.invoice.issued / paid / cancelled`
+`invoicing.invoice.issued / paid / cancelled`
 (for HQ stock reservations).
 
 ## Changing a contract

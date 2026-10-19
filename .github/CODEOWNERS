@@ -14,6 +14,9 @@
 /packages/kernel/src/tenancy.ts         @sugrpay/engineering-leads @sugrpay/security
 /apps/api/src/modules/platform/tenancy/ @sugrpay/engineering-leads @sugrpay/security
 /apps/api/src/modules/platform/auth/    @sugrpay/engineering-leads @sugrpay/security
+/apps/accounts/src/lib/session.ts       @sugrpay/engineering-leads @sugrpay/security
+/apps/accounts/src/middleware.ts        @sugrpay/engineering-leads @sugrpay/security
+/packages/platform-contracts/src/session.ts @sugrpay/engineering-leads @sugrpay/security
 
 # Row-level security policies and grants.
 /apps/api/prisma/*/migrations/          @sugrpay/engineering-leads @sugrpay/security

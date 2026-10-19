@@ -16,9 +16,9 @@ export interface SignupState {
  *
  * There is no password field and no session: the API emails a set-password
  * link, and proving control of that address is what turns the account into a
- * usable one. Following the link lands on /set-password, and from there the
- * existing onboarding chain takes over — company details, brand structure,
- * dashboard.
+ * usable one. Following the link lands on /set-password, then the product
+ * launcher; opening Sugrpay continues its own setup (company details, brand
+ * structure, dashboard).
  */
 export async function signupAction(
   _prevState: SignupState,

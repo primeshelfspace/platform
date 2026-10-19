@@ -3,7 +3,6 @@
 import { redirect } from 'next/navigation';
 import { emailSchema } from '@platform/kernel';
 import { ApiError, login } from '@/lib/api';
-import { resolveOnboardingStep, routeForStep, type OnboardingStep } from '@/lib/onboarding';
 import { safeReturnPath, writeSessionToken } from '@/lib/session';
 
 export interface LoginState {
@@ -50,28 +49,10 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
 
   // Outside the try/catch on purpose: redirect() signals by throwing, and
   // catching it here would turn a successful sign-in into an error message.
-  // A signed-in user with unfinished onboarding (forced password reset
-  // included — resolveOnboardingStep checks that first) goes there instead
-  // of wherever they were originally headed; a fully onboarded user gets
-  // their original destination back.
-  //
-  // resolveOnboardingStep itself gets its own try/catch, separate from the
-  // one above: the credential check already succeeded by this point, so a
-  // momentary API hiccup resolving the *step* shouldn't turn a successful
-  // sign-in into an error page. Falling through to returnTo instead lets the
-  // (app) layout's own guard — which fails the same way, safely — resolve
-  // this exact same state again on first render.
-  let step: OnboardingStep | undefined;
-  try {
-    step = await resolveOnboardingStep(result.user);
-  } catch {
-    // Handled by falling through below.
-  }
-  if (step === 'set-password') {
+  // A user still on a temporary password sets a real one first; everyone
+  // else goes back where they came from — a page here or a product app.
+  if (result.user.mustResetPassword) {
     redirect(`/set-password?next=${encodeURIComponent(returnTo)}`);
-  }
-  if (step) {
-    redirect(routeForStep(step));
   }
   redirect(returnTo);
 }

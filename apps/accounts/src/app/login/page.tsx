@@ -5,7 +5,7 @@ import { getCurrentUser } from '@/lib/api';
 import { readSessionToken, safeReturnPath } from '@/lib/session';
 import { LoginForm } from './login-form';
 
-export const metadata: Metadata = { title: 'Sign in — Sugrpay' };
+export const metadata: Metadata = { title: 'Sign in — Accounts' };
 export const dynamic = 'force-dynamic';
 
 /**

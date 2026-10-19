@@ -6,7 +6,7 @@ import { getCurrentUser } from '@/lib/api';
 import { readSessionToken } from '@/lib/session';
 import { SignupForm } from './signup-form';
 
-export const metadata: Metadata = { title: 'Create your account — Sugrpay' };
+export const metadata: Metadata = { title: 'Create your account — Accounts' };
 export const dynamic = 'force-dynamic';
 
 /**

@@ -149,6 +149,8 @@ const envSchema = z
 
     API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
     ADMIN_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
+    /** Accounts (sign-in, team, billing). Set-password emails link here. */
+    ACCOUNTS_PUBLIC_URL: z.string().url().default('http://localhost:3002'),
     PAYMENT_PUBLIC_URL: z.string().url().default('http://localhost:3001'),
     // CORS_ALLOWED_ORIGINS (the old per-origin allowlist input) is gone —
     // main.ts now sets origin: true and accepts every origin, so there's

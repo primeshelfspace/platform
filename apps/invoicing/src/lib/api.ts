@@ -152,12 +152,6 @@ export function getHealth(): Promise<HealthResponse> {
 
 // --- Authentication (FR-AUTH) -------------------------------------------------
 
-export interface LoginResponse {
-  token: string;
-  expiresAt: string;
-  user: CurrentUser;
-}
-
 export interface CurrentUser {
   id: string;
   merchantId: string;
@@ -176,55 +170,8 @@ export interface CurrentUser {
   allBrands: boolean;
   /** Roles this user may invite as, or change another user to. */
   assignableRoles: Role[];
-}
-
-/** `token: null` because there is no session yet — this is the call that mints one. */
-export function login(email: string, password: string): Promise<LoginResponse> {
-  return apiFetch<LoginResponse>('/auth/login', {
-    method: 'POST',
-    body: JSON.stringify({ email, password }),
-    token: null,
-  });
-}
-
-/**
- * Self-serve signup. Returns only an acknowledgement — the account is not
- * usable until the emailed set-password link is followed, so there is no
- * session to hand back. `token: null` because none exists yet.
- */
-export function register(fullName: string, email: string): Promise<{ ok: true }> {
-  return apiFetch<{ ok: true }>('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify({ fullName, email }),
-    token: null,
-  });
-}
-
-/**
- * Sets the password from an emailed link. Returns a session, so the new owner
- * continues straight into onboarding rather than being sent back to /login to
- * type the password they just chose.
- */
-export function setPasswordWithToken(token: string, newPassword: string): Promise<LoginResponse> {
-  return apiFetch<LoginResponse>('/auth/set-password/token', {
-    method: 'POST',
-    body: JSON.stringify({ token, newPassword }),
-    token: null,
-  });
-}
-
-/**
- * FR-AUTH-005: "I forgot my password." Always resolves — the API acknowledges
- * identically whether or not the address matches an account, so there is
- * nothing here for the caller to branch on. `token: null` because there is no
- * session yet.
- */
-export function requestPasswordReset(email: string): Promise<{ ok: true }> {
-  return apiFetch<{ ok: true }>('/auth/forgot-password', {
-    method: 'POST',
-    body: JSON.stringify({ email }),
-    token: null,
-  });
+  /** Products this user can open (company subscribed + a role in it). */
+  products: { product: string; name: string; role: string }[];
 }
 
 export function logout(): Promise<void> {
@@ -233,16 +180,6 @@ export function logout(): Promise<void> {
 
 export function getCurrentUser(): Promise<CurrentUser> {
   return apiFetch<CurrentUser>('/auth/me');
-}
-
-/** FR-AUTH-007/021: forced first-login reset off a temporary password, or a
- * later voluntary change — same endpoint either way. Requires only the live
- * session already on this request, not the current password. */
-export function setPassword(newPassword: string): Promise<{ ok: true }> {
-  return apiFetch<{ ok: true }>('/auth/set-password', {
-    method: 'POST',
-    body: JSON.stringify({ newPassword }),
-  });
 }
 
 // --- Users & Roles (FR-USR) --------------------------------------------------

@@ -10,16 +10,17 @@
 
 ## Architecture
 
-| Document                                                             | Covers                                              |
-| -------------------------------------------------------------------- | --------------------------------------------------- |
-| [architecture/README.md](architecture/README.md)                     | Overview, diagram, repository map                   |
-| [architecture/principles.md](architecture/principles.md)             | The rules that must not break (money, isolation, …) |
-| [architecture/modules.md](architecture/modules.md)                   | Modules, public APIs, boundary checks               |
-| [architecture/layers.md](architecture/layers.md)                     | Clean-architecture layers inside a feature          |
-| [architecture/databases.md](architecture/databases.md)               | One database per module, roles, row-level security  |
-| [architecture/events.md](architecture/events.md)                     | Outbox, delivery, published events                  |
-| [architecture/adding-a-product.md](architecture/adding-a-product.md) | Bringing HQ (or any product) online                 |
-| [architecture/decisions/](architecture/decisions/)                   | Why it is built this way (decision records)         |
+| Document                                                                   | Covers                                                   |
+| -------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [architecture/README.md](architecture/README.md)                           | Overview, diagram, repository map                        |
+| [architecture/principles.md](architecture/principles.md)                   | The rules that must not break (money, isolation, …)      |
+| [architecture/modules.md](architecture/modules.md)                         | Modules, public APIs, boundary checks                    |
+| [architecture/layers.md](architecture/layers.md)                           | Clean-architecture layers inside a feature               |
+| [architecture/databases.md](architecture/databases.md)                     | One database per module, roles, row-level security       |
+| [architecture/events.md](architecture/events.md)                           | Outbox, delivery, published events                       |
+| [architecture/products-and-access.md](architecture/products-and-access.md) | Subscriptions, roles per product, locations, one sign-in |
+| [architecture/adding-a-product.md](architecture/adding-a-product.md)       | Bringing HQ (or any product) online                      |
+| [architecture/decisions/](architecture/decisions/)                         | Why it is built this way (decision records)              |
 
 ## Integrations
 

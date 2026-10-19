@@ -1,8 +1,8 @@
 # Architecture
 
 **One platform, several products, one backend.** The platform owns what every
-product needs — login, companies, brands, users, roles, integrations, audit and
-(soon) subscriptions. Each product (Sugrpay invoicing today, HQ next) is built
+product needs — login, companies, brands, users, roles, subscriptions,
+locations, integrations and audit. Each product (Sugrpay invoicing today, HQ next) is built
 on top of it and never on top of another product.
 
 The backend is a **modular monolith**: a single NestJS application made of
@@ -13,6 +13,7 @@ as its own service without a rewrite (see
 ```mermaid
 flowchart TB
   subgraph web["Web apps (Next.js)"]
+    ACC_APP["apps/accounts<br/>sign-in · team · billing"]
     INV_APP["apps/invoicing<br/>Sugrpay admin"]
     PAY_APP["apps/payment<br/>public pay pages"]
     HQ_APP["apps/hq<br/>(placeholder)"]
@@ -36,6 +37,7 @@ flowchart TB
   IDB[("invoicing DB")]
   HDB[("hq DB<br/>(later)")]
 
+  ACC_APP --> api
   INV_APP --> api
   PAY_APP --> api
   HQ_APP -.-> api
@@ -48,15 +50,16 @@ There is deliberately no arrow between the two products.
 
 ## Read next
 
-| Document                                   | Covers                                                   |
-| ------------------------------------------ | -------------------------------------------------------- |
-| [principles.md](principles.md)             | The rules that must not break: money, tenant isolation   |
-| [modules.md](modules.md)                   | The module rules, public APIs, and the folder layout     |
-| [layers.md](layers.md)                     | Clean architecture inside a feature (domain → interface) |
-| [databases.md](databases.md)               | One database per module, roles, row-level security       |
-| [events.md](events.md)                     | The outbox, delivery guarantees, published events        |
-| [adding-a-product.md](adding-a-product.md) | Step by step: bringing HQ (or any product) online        |
-| [decisions/](decisions/)                   | Architecture decision records                            |
+| Document                                         | Covers                                                   |
+| ------------------------------------------------ | -------------------------------------------------------- |
+| [principles.md](principles.md)                   | The rules that must not break: money, tenant isolation   |
+| [modules.md](modules.md)                         | The module rules, public APIs, and the folder layout     |
+| [layers.md](layers.md)                           | Clean architecture inside a feature (domain → interface) |
+| [databases.md](databases.md)                     | One database per module, roles, row-level security       |
+| [events.md](events.md)                           | The outbox, delivery guarantees, published events        |
+| [products-and-access.md](products-and-access.md) | Subscriptions, roles per product, locations, one sign-in |
+| [adding-a-product.md](adding-a-product.md)       | Step by step: bringing HQ (or any product) online        |
+| [decisions/](decisions/)                         | Architecture decision records                            |
 
 ## Repository map
 
@@ -66,7 +69,8 @@ apps/
     src/
       modules/
         platform/           shared core: auth, companies, brands, users,
-                            tenancy, integrations, audit, events
+                            subscriptions, locations, tenancy,
+                            integrations, audit, events
         invoicing/          Sugrpay: customers, invoices, payments, pay API,
                             settings, Zoho sync, dashboard
         hq/                 HQ (placeholder)
@@ -87,6 +91,7 @@ apps/
       bootstrap.ts          creates module databases and roles
       seed.ts               development data for every module
       migrate-legacy.ts     one-off import of a pre-split database
+  accounts/                 Next.js app: sign-in, team, brands, locations, billing
   invoicing/                Next.js admin app for Sugrpay
   payment/                  Next.js public payment pages
   hq/                       HQ web app (placeholder)

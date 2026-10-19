@@ -14,9 +14,7 @@ const ROOT = path.join(__dirname, '..');
 // to .next for a box that has never run deploy.sh.
 function nextDistDir(app) {
   try {
-    return (
-      fs.readFileSync(path.join(ROOT, 'apps', app, '.next-slot'), 'utf8').trim() || '.next'
-    );
+    return fs.readFileSync(path.join(ROOT, 'apps', app, '.next-slot'), 'utf8').trim() || '.next';
   } catch {
     return '.next';
   }
@@ -41,13 +39,20 @@ module.exports = {
       max_restarts: 20,
     },
     {
-      // invoicing/payment's own "start" scripts (with-env.mjs -> next start) are
+      // accounts/invoicing/payment's own "start" scripts (with-env.mjs -> next start) are
       // what actually load the repo-root .env; pm2 just invokes them as-is.
       name: 'invoicing',
       cwd: ROOT,
       script: '/usr/bin/pnpm',
       args: '--filter @platform/invoicing-web start',
       env: { NEXT_DIST_DIR: nextDistDir('invoicing') },
+    },
+    {
+      name: 'accounts',
+      cwd: ROOT,
+      script: '/usr/bin/pnpm',
+      args: '--filter @platform/accounts-web start',
+      env: { NEXT_DIST_DIR: nextDistDir('accounts') },
     },
     {
       name: 'payment',

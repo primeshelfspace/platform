@@ -32,7 +32,7 @@ export class AuthMailService {
      * different words, because the two arrive in very different contexts. */
     readonly isNewAccount: boolean;
   }): Promise<void> {
-    const url = `${this.env.ADMIN_PUBLIC_URL}/set-password?token=${encodeURIComponent(input.token)}`;
+    const url = `${this.env.ACCOUNTS_PUBLIC_URL}/set-password?token=${encodeURIComponent(input.token)}`;
     const subject = input.isNewAccount
       ? 'Set your password to finish creating your account'
       : 'Reset your password';
