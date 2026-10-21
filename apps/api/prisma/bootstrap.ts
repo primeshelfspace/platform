@@ -65,8 +65,10 @@ async function main(): Promise<void> {
           `SELECT 1 FROM pg_roles WHERE rolname = ${literal(role)}`,
         );
         const verb = exists.length ? 'ALTER' : 'CREATE';
+        // No NOSUPERUSER: it is the default, and on RDS the master login is
+        // not a superuser, so any mention of the SUPERUSER attribute is refused.
         await admin.$executeRawUnsafe(
-          `${verb} ROLE ${ident(role)} LOGIN PASSWORD ${literal(password)} NOSUPERUSER NOCREATEROLE`,
+          `${verb} ROLE ${ident(role)} LOGIN PASSWORD ${literal(password)} NOCREATEROLE`,
         );
       }
       // Prisma's migrate needs to create a temporary shadow database only for
@@ -78,6 +80,9 @@ async function main(): Promise<void> {
         `SELECT 1 FROM pg_database WHERE datname = ${literal(target.database)}`,
       );
       if (!db.length) {
+        // A non-superuser admin (the RDS master) must be a member of a role
+        // to make it a database's owner.
+        await admin.$executeRawUnsafe(`GRANT ${ident(target.owner.role)} TO CURRENT_USER`);
         await admin.$executeRawUnsafe(
           `CREATE DATABASE ${ident(target.database)} OWNER ${ident(target.owner.role)}`,
         );
