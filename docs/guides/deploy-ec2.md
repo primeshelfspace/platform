@@ -14,33 +14,27 @@ production access can take a day).
 ## 1. What you are building
 
 ```
-                    Route 53 (DNS)
-                          │
-             ┌────────────▼─────────────┐
-             │  EC2 (Ubuntu 24.04)      │
- Internet ──►│  nginx :443 (TLS)        │
-             │    api.      → :4000 api │──► RDS PostgreSQL 16
-             │    accounts. → :3002     │      databases: platform, invoicing
-             │    sugrpay.  → :3000     │──► ElastiCache Redis 7 (job queues)
-             │    pay.      → :3001     │──► S3 (logos, check images)
-             │  pm2: api, worker,       │──► SES (email, over SMTP)
-             │       accounts,          │──► Stripe, Zoho (over HTTPS)
-             │       invoicing, payment │
-             └──────────────────────────┘
+                 ┌──────────────────────────┐
+ Internet ──────►│  EC2 (this repository)   │──► RDS PostgreSQL (platform, invoicing)
+   https://api.… │  nginx :443 → :4000 api  │──► Redis (job queues)
+                 │  pm2: api, worker        │──► S3 (logos, check images)
+                 └──────────────────────────┘──► email (SMTP), Stripe, Zoho
+                              ▲
+                              │ HTTPS
+                 ┌────────────┴─────────────┐
+ Internet ──────►│  AWS Amplify             │   the Sugrpay web app (sugrpay-frontend):
+   https://<site>│  one Next.js app         │   /  ·  /accounts/…  ·  /pay/…
+                 └──────────────────────────┘
 ```
 
-The host names in this guide use `primeshelfspace.com`. Use your own domain
-everywhere you see it.
+The EC2 runs only the backend. The Sugrpay web app is one app on one address,
+hosted on Amplify — see sugrpay-frontend's
+[deploy/amplify.md](https://github.com/primeshelfspace/sugrpay-frontend/blob/main/deploy/amplify.md).
+After it is up, tell the backend its address:
+`bash deploy/set-public-urls.sh --site https://<site>`.
 
-| Host                            | Serves                         | Who uses it    |
-| ------------------------------- | ------------------------------ | -------------- |
-| `api.primeshelfspace.com`       | The API (this repository)      | the apps, Stripe/Zoho webhooks |
-| `accounts.primeshelfspace.com`  | Accounts — sign-in, team, billing | staff       |
-| `sugrpay.primeshelfspace.com`   | Sugrpay admin                  | staff          |
-| `pay.primeshelfspace.com`       | Public payment pages           | your customers |
-
-All four must be subdomains of **one parent domain**: the apps share one
-sign-in cookie, set on the parent (`COOKIE_DOMAIN=.primeshelfspace.com`).
+The API host in this guide is `api.primeshelfspace.com`; use your own (or a
+free `api.<ip-with-dashes>.sslip.io` name until you have a domain).
 
 ---
 
@@ -56,7 +50,7 @@ VPC**.
 | **ElastiCache**   | Redis OSS 7, `cache.t4g.micro`, one node, with the `noeviction` parameter group (below)      | $12             |
 | **S3**            | One private bucket, Block Public Access fully on                                             | cents           |
 | **SES**           | Your domain verified, production access requested                                            | cents           |
-| **Route 53**      | The four A records above → the Elastic IP                                                    | $1              |
+| **Route 53**      | An A record for the API host → the Elastic IP (none needed with sslip.io)                    | $1              |
 
 **About $115 a month per environment.** For a cheap staging box you can drop
 ElastiCache and run Redis on the EC2 itself (`sudo apt install redis-server`,
@@ -64,9 +58,10 @@ ElastiCache and run Redis on the EC2 itself (`sudo apt install redis-server`,
 
 ### Why these sizes
 
-- **EC2 `t3.large`.** The box runs five Node processes (API, worker, three
-  Next.js apps) and starts a headless Chrome to render invoice PDFs. Each
-  deploy also runs `next build` three times on the box, which needs 1.5–2 GB
+- **EC2 size.** The box runs the API and the worker and starts a headless
+  Chrome to render invoice PDFs; `t3.small` (2 GB, with 2 GB swap) is enough
+  for that. The web app builds on Amplify, not here. (Running the web app on
+  this box too needs `t3.large`: each `next build` takes 1.5–2 GB
   on its own. 4 GB (`t3.medium`) works only with swap and slow deploys.
 - **x86_64, not ARM (Graviton).** Puppeteer downloads its own Chrome at
   install time, and there is no Linux ARM build of it.
@@ -163,12 +158,11 @@ sudo apt-get install -y libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64
 pm2 startup systemd -u ubuntu --hp /home/ubuntu   # run the command it prints
 ```
 
-Get both repositories:
+Get the backend:
 
 ```bash
 cd ~
 git clone https://github.com/primeshelfspace/platform.git
-git clone https://github.com/primeshelfspace/sugrpay-frontend.git
 ```
 
 ---
@@ -214,34 +208,27 @@ is missing: `pm2 logs api --lines 50`.
 **Don't run `pnpm db:seed` on a server.** It replaces the data with demo data.
 It refuses when `APP_ENV=production`, but staging is not protected.
 
-Then deploy the web apps by following
-[sugrpay-frontend/deploy/README.md](https://github.com/primeshelfspace/sugrpay-frontend/blob/main/deploy/README.md).
+The Sugrpay web app deploys on Amplify, separately — see
+[sugrpay-frontend/deploy/amplify.md](https://github.com/primeshelfspace/sugrpay-frontend/blob/main/deploy/amplify.md).
 
 ---
 
 ## 6. nginx and HTTPS
 
-The API's server block is in this repository, the web apps' in
-sugrpay-frontend:
-
 ```bash
-sudo cp ~/platform/deploy/nginx/api.conf /etc/nginx/sites-available/sugrpay-api.conf
-sudo cp ~/sugrpay-frontend/deploy/nginx/web.conf /etc/nginx/sites-available/sugrpay-web.conf
-# Change the host names in both files if your domain is not primeshelfspace.com
-sudo ln -s /etc/nginx/sites-available/sugrpay-api.conf /etc/nginx/sites-enabled/
-sudo ln -s /etc/nginx/sites-available/sugrpay-web.conf /etc/nginx/sites-enabled/
+sudo cp ~/platform/deploy/nginx/api.conf /etc/nginx/sites-available/platform-api.conf
+# Set server_name in it to your API host
+sudo ln -s /etc/nginx/sites-available/platform-api.conf /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 
-# Certificates for all four hosts. Certbot adds the HTTPS server blocks and
-# the HTTP → HTTPS redirect, and renews on its own.
-sudo certbot --nginx \
-  -d api.primeshelfspace.com -d accounts.primeshelfspace.com \
-  -d sugrpay.primeshelfspace.com -d pay.primeshelfspace.com
+# Certificate for the API host. Certbot adds the HTTPS server block and the
+# HTTP → HTTPS redirect, and renews on its own.
+sudo certbot --nginx -d api.primeshelfspace.com
 ```
 
-The DNS records must already point at the Elastic IP, or certbot cannot prove
-you own the names.
+The DNS record must already point at the Elastic IP (an sslip.io name always
+does), or certbot cannot prove you own the name.
 
 ---
 
@@ -260,21 +247,21 @@ Use Stripe **test** keys on staging and **live** keys on production only.
 
 ## 8. Every release
 
-Backend first when a release changes the API, then the web apps:
+On the server:
 
 ```bash
 cd ~/platform && git pull && bash deploy/deploy.sh
-cd ~/sugrpay-frontend && git pull && bash deploy/deploy.sh
 ```
 
-Each script builds beside the running version and switches over only when the
-build succeeded, so a failed build leaves the old version serving.
+It builds beside the running version and switches over only when the build
+succeeded, so a failed build leaves the old version serving. The Sugrpay web
+app redeploys on Amplify by itself on every push to sugrpay-frontend's `main`.
 
-| Check                | Command                          |
-| -------------------- | -------------------------------- |
-| What is running      | `pm2 status`                     |
-| A process's log      | `pm2 logs api` (or `worker`, `accounts`, `invoicing`, `payment`) |
-| Backend health       | `curl -s localhost:4000/health`  |
+| Check               | Command                          |
+| ------------------- | -------------------------------- |
+| What is running     | `pm2 status`                     |
+| A process's log     | `pm2 logs api` (or `worker`)     |
+| Backend health      | `curl -s localhost:4000/health`  |
 
 ---
 

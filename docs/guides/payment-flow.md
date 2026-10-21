@@ -19,7 +19,7 @@ real payment link.
 
 ## 3. Pay it
 
-Open the payment link (it lives on http://localhost:3001). The fake gateway
+Open the payment link (it lives on http://localhost:3000/pay). The fake gateway
 decides the outcome from the **last two digits of the amount actually charged**
 — which includes the card fee when paying by card — so you can trigger each
 path on purpose by adjusting a line item's price:

@@ -162,14 +162,13 @@ pnpm --filter @platform/api dev:worker
 
 ## 7. Sign in
 
-The web apps are in the
+The Sugrpay web app is in the
 [sugrpay-frontend](https://github.com/primeshelfspace/sugrpay-frontend)
 repository. With the API running, follow its README (`pnpm install`, copy
-`.env.example` to `.env`, `pnpm dev`), then open **http://localhost:3002**
-(Accounts). Every demo user has the password
-**`sugrpay-dev-password`**. One sign-in opens every product: Accounts shows
-the products you can use, and **Open Sugrpay** takes you straight in, still
-signed in.
+`.env.example` to `.env`, `pnpm dev`), then open **http://localhost:3000**
+and sign in (the sign-in page is at `/accounts/login`). Every demo user has
+the password **`sugrpay-dev-password`**. Team, brands, locations and billing
+are under `/accounts`; customer payment pages under `/pay`.
 
 | Email                    | Role        | Sees brands                |
 | ------------------------ | ----------- | -------------------------- |
