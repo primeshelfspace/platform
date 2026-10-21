@@ -43,14 +43,14 @@ free `api.<ip-with-dashes>.sslip.io` name until you have a domain).
 Create everything in **one region** (the examples use `us-east-1`) and **one
 VPC**.
 
-| Resource          | Choose                                                                                       | Roughly / month |
-| ----------------- | -------------------------------------------------------------------------------------------- | --------------- |
-| **EC2**           | `t3.large` (2 vCPU, 8 GB), Ubuntu 24.04 **x86_64**, 30 GB gp3 disk, an Elastic IP            | $60             |
-| **RDS**           | **One** PostgreSQL 16 instance, `db.t4g.small`, 20 GB gp3, automated backups on (7 days)     | $30             |
-| **ElastiCache**   | Redis OSS 7, `cache.t4g.micro`, one node, with the `noeviction` parameter group (below)      | $12             |
-| **S3**            | One private bucket, Block Public Access fully on                                             | cents           |
-| **SES**           | Your domain verified, production access requested                                            | cents           |
-| **Route 53**      | An A record for the API host → the Elastic IP (none needed with sslip.io)                    | $1              |
+| Resource        | Choose                                                                                   | Roughly / month |
+| --------------- | ---------------------------------------------------------------------------------------- | --------------- |
+| **EC2**         | `t3.large` (2 vCPU, 8 GB), Ubuntu 24.04 **x86_64**, 30 GB gp3 disk, an Elastic IP        | $60             |
+| **RDS**         | **One** PostgreSQL 16 instance, `db.t4g.small`, 20 GB gp3, automated backups on (7 days) | $30             |
+| **ElastiCache** | Redis OSS 7, `cache.t4g.micro`, one node, with the `noeviction` parameter group (below)  | $12             |
+| **S3**          | One private bucket, Block Public Access fully on                                         | cents           |
+| **SES**         | Your domain verified, production access requested                                        | cents           |
+| **Route 53**    | An A record for the API host → the Elastic IP (none needed with sslip.io)                | $1              |
 
 **About $115 a month per environment.** For a cheap staging box you can drop
 ElastiCache and run Redis on the EC2 itself (`sudo apt install redis-server`,
@@ -65,7 +65,7 @@ ElastiCache and run Redis on the EC2 itself (`sudo apt install redis-server`,
   on its own. 4 GB (`t3.medium`) works only with swap and slow deploys.
 - **x86_64, not ARM (Graviton).** Puppeteer downloads its own Chrome at
   install time, and there is no Linux ARM build of it.
-- **One RDS instance, two databases.** Each module has its own *database*
+- **One RDS instance, two databases.** Each module has its own _database_
   (`platform`, `invoicing`), not its own server. `pnpm db:bootstrap` creates
   both, with separate logins, on one instance. Move a module to its own
   instance later only if it needs it; only its URLs change.
@@ -76,11 +76,11 @@ ElastiCache and run Redis on the EC2 itself (`sudo apt install redis-server`,
 
 ### Security groups
 
-| Group      | Inbound                                                        |
-| ---------- | -------------------------------------------------------------- |
-| `web`      | 80 and 443 from anywhere; 22 from **your IP only**             |
-| `db`       | 5432 from the `web` group only                                 |
-| `cache`    | 6379 from the `web` group only                                 |
+| Group   | Inbound                                            |
+| ------- | -------------------------------------------------- |
+| `web`   | 80 and 443 from anywhere; 22 from **your IP only** |
+| `db`    | 5432 from the `web` group only                     |
+| `cache` | 6379 from the `web` group only                     |
 
 Don't make RDS or ElastiCache publicly accessible.
 
@@ -132,8 +132,7 @@ bucket needs no bucket policy and no public access.
 2. Request **production access** — until then SES only delivers to addresses
    you have verified.
 3. Create **SMTP credentials** (SES → SMTP settings). These go in `SMTP_USER`
-   and `SMTP_PASSWORD`; the host is `email-smtp.<region>.amazonaws.com`, port
-   587.
+   and `SMTP_PASSWORD`; the host is `email-smtp.<region>.amazonaws.com`, port 587.
 
 ---
 
@@ -234,12 +233,12 @@ does), or certbot cannot prove you own the name.
 
 ## 7. Connect the outside services
 
-| Service | Set up                                                                                                                                                           |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Stripe  | Settings → Connect → OAuth: add the redirect URI `https://api.primeshelfspace.com/integrations/stripe/callback`.                                                 |
+| Service | Set up                                                                                                                                                                                                                                                                                                                               |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Stripe  | Settings → Connect → OAuth: add the redirect URI `https://api.primeshelfspace.com/integrations/stripe/callback`.                                                                                                                                                                                                                     |
 | Stripe  | Developers → Webhooks: one endpoint, **"Events on Connected accounts"**, URL `https://api.primeshelfspace.com/public/webhooks/stripe`, events `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`. Its signing secret is `STRIPE_WEBHOOK_SECRET`. |
-| Zoho    | In the Zoho API console app, add `https://api.primeshelfspace.com/integrations/zoho/callback` as a redirect URI.                                                 |
-| Square  | If used: add `https://api.primeshelfspace.com/integrations/square/callback` on the Square application.                                                           |
+| Zoho    | In the Zoho API console app, add `https://api.primeshelfspace.com/integrations/zoho/callback` as a redirect URI.                                                                                                                                                                                                                     |
+| Square  | If used: add `https://api.primeshelfspace.com/integrations/square/callback` on the Square application.                                                                                                                                                                                                                               |
 
 Use Stripe **test** keys on staging and **live** keys on production only.
 
@@ -257,11 +256,11 @@ It builds beside the running version and switches over only when the build
 succeeded, so a failed build leaves the old version serving. The Sugrpay web
 app redeploys on Amplify by itself on every push to sugrpay-frontend's `main`.
 
-| Check               | Command                          |
-| ------------------- | -------------------------------- |
-| What is running     | `pm2 status`                     |
-| A process's log     | `pm2 logs api` (or `worker`)     |
-| Backend health      | `curl -s localhost:4000/health`  |
+| Check           | Command                         |
+| --------------- | ------------------------------- |
+| What is running | `pm2 status`                    |
+| A process's log | `pm2 logs api` (or `worker`)    |
+| Backend health  | `curl -s localhost:4000/health` |
 
 ---
 

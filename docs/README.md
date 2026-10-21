@@ -2,12 +2,13 @@
 
 ## Start here
 
-| Document                                         | Read it to…                                           |
-| ------------------------------------------------ | ----------------------------------------------------- |
-| [getting-started.md](getting-started.md)         | Install, set up and run everything on your machine    |
-| [architecture/README.md](architecture/README.md) | Understand how the system is built                    |
-| [guides/payment-flow.md](guides/payment-flow.md) | Click through invoice → payment and test each outcome |
-| [guides/deploy-ec2.md](guides/deploy-ec2.md) | Deploy everything to AWS: EC2, RDS, Redis, S3, SES, nginx |
+| Document                                         | Read it to…                                                              |
+| ------------------------------------------------ | ------------------------------------------------------------------------ |
+| [getting-started.md](getting-started.md)         | Install, set up and run everything on your machine                       |
+| [architecture/README.md](architecture/README.md) | Understand how the system is built                                       |
+| [guides/payment-flow.md](guides/payment-flow.md) | Click through invoice → payment and test each outcome                    |
+| [guides/deploy-ec2.md](guides/deploy-ec2.md)     | Deploy everything to AWS: EC2, RDS, Redis, S3, SES, nginx                |
+| [api/README.md](api/README.md)                   | Call the API: sign-in, errors, money; every endpoint; latest test report |
 
 ## Architecture
 
