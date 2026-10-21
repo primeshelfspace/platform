@@ -86,14 +86,15 @@ List endpoints take `?page=1&pageSize=25` (`pageSize` 1–200) and return:
 
 ## Errors
 
-| Status | Means                                                               |
-| ------ | ------------------------------------------------------------------- |
-| `400`  | The request is invalid — see the body below                         |
-| `401`  | No session, or it expired or was ended                              |
-| `403`  | Signed in, but not allowed (role, product or brand)                 |
-| `404`  | Not found — or not yours, or a payment link that is no longer valid |
-| `409`  | Conflicts with the current state (e.g. paying a cancelled invoice)  |
-| `5xx`  | Our fault; the error is in the API log (`pm2 logs api`)             |
+| Status | Means                                                                 |
+| ------ | --------------------------------------------------------------------- |
+| `400`  | The request is invalid — see the body below                           |
+| `401`  | No session, or it expired or was ended                                |
+| `403`  | Signed in, but not allowed (role, product or brand)                   |
+| `404`  | Not found — or not yours, or a payment link that is no longer valid   |
+| `409`  | Conflicts with the current state (e.g. paying a cancelled invoice)    |
+| `503`  | Something it depends on is down (e.g. email could not be sent); retry |
+| `5xx`  | Other server errors; the error is in the API log (`pm2 logs api`)     |
 
 Error bodies:
 

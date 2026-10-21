@@ -1,5 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import { ConflictException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { RequestScope } from '@platform/kernel';
 import type { RegisterInput, Role } from '@platform/platform-contracts';
 import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
@@ -28,6 +34,11 @@ const LOCKOUT_MINUTES = 30;
 
 /** FR-AUTH-005: at most 3 forgot-password requests per address per hour. Keyed
  * by address rather than source IP — see requestPasswordReset. */
+/** Shown when the set-password email cannot be sent, so the person knows to
+ * retry rather than seeing a bare server error. */
+export const MAIL_UNAVAILABLE_MESSAGE =
+  'We could not send the email to set your password. Please try again in a few minutes.';
+
 const FORGOT_PASSWORD_LIMIT = 3;
 const FORGOT_PASSWORD_WINDOW_SECONDS = 3600;
 
@@ -194,11 +205,22 @@ export class AuthService {
    *
    * Unscoped for the same reason login is: there is no tenant yet to scope to
    * — this call is what creates one.
+   *
+   * The email is part of the outcome, not a side effect:
+   * - If it cannot be sent, the new company and owner are deleted again and the
+   *   caller gets 503 with a message to retry. Otherwise the account would be
+   *   left behind, unreachable (nobody holds its password), and every retry
+   *   would answer "already exists".
+   * - Signing up again with an address whose accounts are all still INVITED —
+   *   a link that never arrived, expired, or was lost — sends a fresh link to
+   *   that address instead of refusing. Only the address's owner receives it,
+   *   so this reveals nothing the 409 below does not.
+   * - An address that has finished signing up (or is suspended) still gets 409.
    */
   async register(input: RegisterInput, context: AttemptContext): Promise<void> {
     const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
 
-    const created = await this.prisma.withoutScope(
+    const outcome = await this.prisma.withoutScope(
       'creating a merchant and its first owner during signup (no tenant exists yet)',
       async (client) => {
         // Signup refuses an address already in use anywhere. The schema allows
@@ -207,13 +229,18 @@ export class AuthService {
         // administrator inviting them, not for self-serve, where it would
         // silently create a second tenant the user cannot tell apart from the
         // first at the sign-in prompt.
-        const existing = await client.user.findFirst({
+        const existing = await client.user.findMany({
           where: { email: input.email },
-          select: { id: true },
+          select: { id: true, email: true, name: true, merchantId: true, status: true },
+          orderBy: { createdAt: 'asc' },
         });
-        if (existing) return null;
+        if (existing.length > 0) {
+          return existing.every((u) => u.status === 'INVITED')
+            ? ({ kind: 'resend', users: existing } as const)
+            : ({ kind: 'taken' } as const);
+        }
 
-        return client.user.create({
+        const user = await client.user.create({
           data: {
             email: input.email,
             name: input.fullName,
@@ -235,21 +262,63 @@ export class AuthService {
             productRoles: { create: { product: 'INVOICING', role: 'MERCHANT_OWNER' } },
           },
         });
+        return { kind: 'created', user } as const;
       },
     );
 
-    if (!created) {
+    if (outcome.kind === 'taken') {
       throw new ConflictException('an account with this email address already exists');
     }
 
+    if (outcome.kind === 'resend') {
+      for (const user of outcome.users) {
+        const { token } = await this.passwordResets.issue(user.id);
+        try {
+          await this.mail.sendSetPasswordLink({
+            to: user.email,
+            name: user.name,
+            token,
+            isNewAccount: true,
+          });
+        } catch (error) {
+          this.logger.error(
+            `signup: could not re-send the set-password link to ${user.email}`,
+            error,
+          );
+          throw new ServiceUnavailableException(MAIL_UNAVAILABLE_MESSAGE);
+        }
+        await this.record(
+          user.merchantId,
+          user.id,
+          'SUCCESS',
+          'LINK_RESENT',
+          context,
+          AUDIT_REGISTER,
+        );
+      }
+      return;
+    }
+
+    const created = outcome.user;
     const { token } = await this.passwordResets.issue(created.id);
     // Awaited, not queued: this message is the flow. See AuthMailService.
-    await this.mail.sendSetPasswordLink({
-      to: created.email,
-      name: created.name,
-      token,
-      isNewAccount: true,
-    });
+    try {
+      await this.mail.sendSetPasswordLink({
+        to: created.email,
+        name: created.name,
+        token,
+        isNewAccount: true,
+      });
+    } catch (error) {
+      this.logger.error(`signup: could not send the set-password link to ${created.email}`, error);
+      // Undo the signup so a retry starts clean. Deleting the merchant
+      // cascades to its owner, subscription, product role and the link.
+      await this.prisma.withoutScope(
+        'removing a signup whose set-password email could not be sent',
+        (client) => client.merchant.delete({ where: { id: created.merchantId } }),
+      );
+      throw new ServiceUnavailableException(MAIL_UNAVAILABLE_MESSAGE);
+    }
 
     await this.record(created.merchantId, created.id, 'SUCCESS', null, context, AUDIT_REGISTER);
   }
@@ -292,12 +361,22 @@ export class AuthService {
 
     for (const candidate of candidates) {
       const { token } = await this.passwordResets.issue(candidate.id);
-      await this.mail.sendSetPasswordLink({
-        to: candidate.email,
-        name: candidate.name,
-        token,
-        isNewAccount: false,
-      });
+      try {
+        await this.mail.sendSetPasswordLink({
+          to: candidate.email,
+          name: candidate.name,
+          token,
+          isNewAccount: false,
+        });
+      } catch (error) {
+        // Same silent answer as every other outcome: an error only when the
+        // address has an account would tell anyone which addresses do.
+        this.logger.error(
+          `forgot-password: could not send the reset link to ${candidate.email}`,
+          error,
+        );
+        continue;
+      }
       await this.record(
         candidate.merchantId,
         candidate.id,

@@ -20,7 +20,7 @@ const OUT = path.join(ROOT, 'docs/api/endpoints.md');
 const DESCRIPTIONS = {
   // Sign-in
   'POST /auth/register':
-    'Self-serve sign-up: creates the company, its owner (invited) and the Sugrpay subscription, and emails a set-password link.',
+    'Self-serve sign-up: creates the company, its owner (invited) and the Sugrpay subscription, and emails a set-password link. Signing up again before the password is set re-sends the link; 409 once sign-up is finished; 503 (and nothing kept) if the email cannot be sent.',
   'POST /auth/login':
     'Signs in with email and password. Returns the session token (also set as a cookie) and its expiry. Locks the account after 5 failures in 15 minutes.',
   'POST /auth/logout': 'Ends the current session.',
