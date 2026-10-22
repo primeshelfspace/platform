@@ -193,6 +193,7 @@ export class UsersService {
 
     return this.prisma.withScope(scope, async (tx) => {
       const existing = await this.requireVisible(tx, scope, id);
+      await this.assertManagesAllBrandsOf(scope, existing.id);
 
       if (!mayAssignRole(scope.role, role) || !mayAssignRole(scope.role, existing.role)) {
         throw new ForbiddenException('you may not assign a role above your own');
@@ -358,6 +359,7 @@ export class UsersService {
 
     return this.prisma.withScope(scope, async (tx) => {
       const existing = await this.requireVisible(tx, scope, id);
+      await this.assertManagesAllBrandsOf(scope, existing.id);
       if (!mayAssignRole(scope.role, existing.role)) {
         throw new ForbiddenException('insufficient permissions for this user');
       }
@@ -395,6 +397,7 @@ export class UsersService {
 
     return this.prisma.withScope(scope, async (tx) => {
       const existing = await this.requireVisible(tx, scope, id);
+      await this.assertManagesAllBrandsOf(scope, existing.id);
       if (!mayAssignRole(scope.role, existing.role)) {
         throw new ForbiddenException('insufficient permissions for this user');
       }
@@ -445,6 +448,7 @@ export class UsersService {
 
     return this.prisma.withScope(scope, async (tx) => {
       const existing = await this.requireVisible(tx, scope, id);
+      await this.assertManagesAllBrandsOf(scope, existing.id);
 
       // Same rank rule as updateRole/updateBrands: suspending an account you
       // could not have assigned that role to in the first place is still a
@@ -466,6 +470,28 @@ export class UsersService {
       });
       return toManagedUser(updated);
     });
+  }
+
+  /**
+   * A Brand Admin may change a user's role, product role, locations or status
+   * only when every brand that user holds is one the Brand Admin administers.
+   * Sharing one brand makes the user visible, but a role applies across all of
+   * their brands: without this, the admin of brand A could promote a user on
+   * A and B into Brand Admin of B. Read with the owner connection because RLS
+   * hides the assignments this actor cannot see — which are exactly the ones
+   * that matter here.
+   */
+  private async assertManagesAllBrandsOf(scope: RequestScope, userId: string): Promise<void> {
+    if (coversAllBrands(scope.role)) return;
+    const held = await this.prisma.withoutScope(
+      'checking a Brand Admin administers every brand of the user they are changing',
+      (client) =>
+        client.userBrandAssignment.findMany({ where: { userId }, select: { brandId: true } }),
+    );
+    const mine = new Set(scope.assignedBrandIds);
+    if (held.some((a) => !mine.has(a.brandId))) {
+      throw new ForbiddenException('this user also works on brands you do not administer');
+    }
   }
 
   /** Brand Admin's slice of the matrix's USERS row (roles.ts footnote): every

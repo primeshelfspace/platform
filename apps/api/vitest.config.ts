@@ -1,6 +1,38 @@
-import { defineConfig } from 'vitest/config';
+import ts from 'typescript';
+import { defineConfig, type Plugin } from 'vitest/config';
+
+/**
+ * Vitest compiles with esbuild, which does not emit the decorator metadata
+ * (design:paramtypes) that Nest's dependency injection reads. Unit tests
+ * build their services by hand and never notice; the end-to-end suite boots
+ * the whole app, so source files go through TypeScript itself first — the
+ * same approach as ts-jest.
+ */
+function decoratorMetadata(): Plugin {
+  return {
+    name: 'typescript-decorator-metadata',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.endsWith('.ts') || id.endsWith('.d.ts') || id.includes('node_modules')) return null;
+      if (!code.includes('@')) return null;
+      const out = ts.transpileModule(code, {
+        fileName: id,
+        compilerOptions: {
+          module: ts.ModuleKind.ESNext,
+          target: ts.ScriptTarget.ES2022,
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true,
+          useDefineForClassFields: false,
+          sourceMap: true,
+        },
+      });
+      return { code: out.outputText, map: out.sourceMapText };
+    },
+  };
+}
 
 export default defineConfig({
+  plugins: [decoratorMetadata()],
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],

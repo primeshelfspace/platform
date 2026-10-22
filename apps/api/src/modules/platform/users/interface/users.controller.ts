@@ -24,6 +24,7 @@ import {
   type ManagedUser,
   type ManagedUserListResult,
 } from '../application/users.service.js';
+import { RateLimit } from '../../../../shared/common/rate-limit.js';
 
 /**
  * FR-USR. USERS is merchant-wide in the matrix (the `user` RLS policy scopes
@@ -55,6 +56,7 @@ export class UsersController {
   }
 
   @Post('invite')
+  @RateLimit({ name: 'user-invite', windowSeconds: 86400, perCompanyLimit: 100 })
   @RequirePermission('USERS', 'WRITE', { brandFrom: 'none' })
   invite(
     @CurrentScope() scope: RequestScope,

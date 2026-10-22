@@ -43,6 +43,12 @@ export class StorageController {
     const body = await this.local.get(key);
     response.setHeader('content-type', meta.contentType);
     response.setHeader('cache-control', 'private, no-store');
+    // Served from the API's own origin: a stored file must never run as a
+    // page there, whatever is inside it (an SVG is a document, too).
+    response.setHeader(
+      'content-security-policy',
+      "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    );
     if (filename) {
       response.setHeader(
         'content-disposition',

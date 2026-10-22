@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { contentMatchesType } from './image-content.js';
 import type { MailAttachment, StoragePort } from '@platform/kernel';
 
 /**
@@ -36,6 +37,11 @@ export function logoExtensionFor(file: LogoUpload): string {
   }
   if (file.size > MAX_LOGO_BYTES) {
     throw new BadRequestException('logo must be 5MB or smaller');
+  }
+  if (!contentMatchesType(file.buffer, file.mimetype)) {
+    throw new BadRequestException(
+      'logo file is not a valid JPG, PNG, or SVG image (SVGs may not contain scripts or links)',
+    );
   }
   return extension;
 }

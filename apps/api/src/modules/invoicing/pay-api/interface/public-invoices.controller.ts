@@ -35,11 +35,16 @@ import {
   PublicInvoicesService,
   type PublicInvoiceView,
 } from '../application/public-invoices.service.js';
+import { RateLimit } from '../../../../shared/common/rate-limit.js';
 
-const createIntentBodySchema = paymentIntentRequestSchema.pick({
-  method: true,
-  attemptNonce: true,
-});
+const createIntentBodySchema = paymentIntentRequestSchema
+  .pick({ method: true, attemptNonce: true })
+  // MANUAL is how staff record cash or a wire — never a method a customer
+  // can start from the payment page.
+  .refine((body) => body.method !== 'MANUAL', {
+    message: 'unsupported payment method',
+    path: ['method'],
+  });
 type CreateIntentBody = z.infer<typeof createIntentBodySchema>;
 type ReconcileBody = z.infer<typeof paymentIntentReconcileSchema>;
 
@@ -59,6 +64,7 @@ export class PublicInvoicesController {
   ) {}
 
   @Get('invoices/:token')
+  @RateLimit({ name: 'public-invoice', limit: 120, windowSeconds: 60, perTokenLimit: 300 })
   @Public()
   async view(
     @Param('token', zodPipe(publicTokenSchema)) token: string,
@@ -80,6 +86,7 @@ export class PublicInvoicesController {
    * of the same data.
    */
   @Get('invoices/:token/pdf')
+  @RateLimit({ name: 'public-pdf', limit: 20, windowSeconds: 60, perTokenLimit: 30 })
   @Public()
   async pdf(
     @Param('token', zodPipe(publicTokenSchema)) token: string,
@@ -101,6 +108,7 @@ export class PublicInvoicesController {
   }
 
   @Post('invoices/:token/payment-intents')
+  @RateLimit({ name: 'payment-intent', limit: 10, windowSeconds: 600, perTokenLimit: 20 })
   @Public()
   async createIntent(
     @Param('token', zodPipe(publicTokenSchema)) token: string,
@@ -121,6 +129,7 @@ export class PublicInvoicesController {
    * Verifications) reads from.
    */
   @Post('invoices/:token/checks')
+  @RateLimit({ name: 'check-upload', limit: 5, windowSeconds: 3600, perTokenLimit: 10 })
   @Public()
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -158,6 +167,7 @@ export class PublicInvoicesController {
    * attempt's status from the gateway before touching anything.
    */
   @Post('invoices/:token/payment-intents/reconcile')
+  @RateLimit({ name: 'payment-reconcile', limit: 60, windowSeconds: 600 })
   @Public()
   async reconcileIntent(
     @Param('token', zodPipe(publicTokenSchema)) token: string,

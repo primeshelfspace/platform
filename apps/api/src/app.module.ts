@@ -13,6 +13,7 @@ import { RedisModule } from './shared/infra/redis/redis.module.js';
 import { InvoicingModule } from './modules/invoicing/modules.js';
 import { PlatformModule } from './modules/platform/modules.js';
 import { AuthorisationGuard } from './modules/platform/public-api.js';
+import { RateLimitGuard } from './shared/common/rate-limit.js';
 
 /** Every product this API can run, by the name ENABLED_PRODUCTS uses. HQ
  * joins here when it exists. */
@@ -59,7 +60,12 @@ export class AppModule {
         PlatformModule,
         ...env.ENABLED_PRODUCTS.map((name) => PRODUCTS[name]),
       ],
-      providers: [{ provide: APP_GUARD, useClass: AuthorisationGuard }],
+      // Guards run in this order. Authorisation first, so a per-company
+      // quota knows the company; public routes pass it without a lookup.
+      providers: [
+        { provide: APP_GUARD, useClass: AuthorisationGuard },
+        { provide: APP_GUARD, useClass: RateLimitGuard },
+      ],
     };
   }
 }

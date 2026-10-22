@@ -200,6 +200,21 @@ describeWithDb('ChecksService', () => {
       expect(reviewed.reviewedBy).toBe(ownerScope.userId);
     });
 
+    it('records the amount the reviewer read on the check, not the customer claim', async () => {
+      const invoice = await issuedInvoice();
+      const submission = await submitCheck(invoice.id); // claims the full 500.00
+
+      await checks.approve(ownerScope, solsticeId, submission.id, { amount: '50.00' });
+
+      const payment = await owner.payment.findFirstOrThrow({
+        where: { invoiceId: invoice.id, method: 'CHECK' },
+      });
+      expect(payment.amountMinor).toBe(5000n);
+      const row = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      expect(row.balanceMinor).toBe(45000n);
+      expect(row.status).toBe('PARTIALLY_PAID');
+    });
+
     it('refuses to approve a submission that was already reviewed', async () => {
       const invoice = await issuedInvoice();
       const submission = await submitCheck(invoice.id);

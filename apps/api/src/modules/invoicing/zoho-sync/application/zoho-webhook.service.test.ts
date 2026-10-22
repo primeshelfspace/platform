@@ -316,4 +316,26 @@ describeWithDb('ZohoWebhookService', () => {
     await expect(service.assignPendingRecord(scope, pending!.id, outsiderBrand)).rejects.toThrow();
     expect(pull.pullOneCustomerNow).not.toHaveBeenCalled();
   });
+
+  it("refuses to assign a pending record to another company's brand on the same organization", async () => {
+    const organizationId = `org-${randomUUID()}`;
+    await connectZoho(brandA, organizationId);
+    await connectZoho(brandB, organizationId);
+    // A second company that has connected the very same Zoho organization.
+    const otherMerchant = await platform.createMerchant(`Other company ${randomUUID()}`);
+    const otherBrand = (await platform.createBrand(otherMerchant, `Other ${randomUUID()}`)).id;
+    try {
+      await connectZoho(otherBrand, organizationId);
+      const pull = fakePull();
+      const service = new ZohoWebhookService(prisma, redis, pull, connections);
+      await service.handleContactEvent('created', organizationId, `contact-${randomUUID()}`);
+      const [pending] = await service.listPendingAssignments(scope);
+
+      await expect(service.assignPendingRecord(scope, pending!.id, otherBrand)).rejects.toThrow();
+      expect(pull.pullOneCustomerNow).not.toHaveBeenCalled();
+    } finally {
+      await owner.pendingBrandAssignment.deleteMany({ where: { merchantId: otherMerchant } });
+      await platform.deleteMerchant(otherMerchant, [otherBrand]);
+    }
+  });
 });

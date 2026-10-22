@@ -60,6 +60,8 @@ export const passwordSchema = z
  * set by choice. */
 export const setPasswordSchema = z.object({
   newPassword: passwordSchema,
+  /** Required for a voluntary change; the forced first-login reset has none. */
+  currentPassword: z.string().max(200).optional(),
 });
 export type SetPasswordInput = z.infer<typeof setPasswordSchema>;
 
@@ -202,8 +204,8 @@ export const paymentGatewayProviderSchema = z.enum(PAYMENT_GATEWAY_PROVIDERS);
  * authorising through a redirect, the same shape Stripe's pre-Connect flow
  * used before it moved to OAuth. See AuthorizeNetAccountService. */
 export const authorizeNetConnectSchema = z.object({
-  apiLoginId: z.string().trim().min(1, 'API Login ID is required'),
-  transactionKey: z.string().trim().min(1, 'Transaction Key is required'),
+  apiLoginId: z.string().trim().min(1, 'API Login ID is required').max(100),
+  transactionKey: z.string().trim().min(1, 'Transaction Key is required').max(100),
   environment: z.enum(['sandbox', 'production']),
 });
 export type AuthorizeNetConnectInput = z.infer<typeof authorizeNetConnectSchema>;

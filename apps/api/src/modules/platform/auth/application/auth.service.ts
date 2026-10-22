@@ -213,8 +213,10 @@ export class AuthService {
    *   would answer "already exists".
    * - Signing up again with an address whose accounts are all still INVITED —
    *   a link that never arrived, expired, or was lost — sends a fresh link to
-   *   that address instead of refusing. Only the address's owner receives it,
-   *   so this reveals nothing the 409 below does not.
+   *   that address's own earlier signup instead of refusing (rate-limited).
+   *   Only the address's owner receives it, so this reveals nothing the 409
+   *   below does not. Pending invitations from other companies do not count:
+   *   the signup then creates the person's own company as usual.
    * - An address that has finished signing up (or is suspended) still gets 409.
    */
   async register(input: RegisterInput, context: AttemptContext): Promise<void> {
@@ -231,13 +233,29 @@ export class AuthService {
         // first at the sign-in prompt.
         const existing = await client.user.findMany({
           where: { email: input.email },
-          select: { id: true, email: true, name: true, merchantId: true, status: true },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            merchantId: true,
+            status: true,
+            role: true,
+            merchant: { select: { _count: { select: { users: true } } } },
+          },
           orderBy: { createdAt: 'asc' },
         });
-        if (existing.length > 0) {
-          return existing.every((u) => u.status === 'INVITED')
-            ? ({ kind: 'resend', users: existing } as const)
-            : ({ kind: 'taken' } as const);
+        if (existing.some((u) => u.status !== 'INVITED')) {
+          return { kind: 'taken' } as const;
+        }
+        // Resend only to an earlier self-signup: an owner alone in a company of
+        // their own. An invitation another company sent to this address is
+        // theirs to manage — resending it would let anyone who invites an
+        // address first capture that person's signup into their company.
+        const ownSignups = existing.filter(
+          (u) => u.role === 'MERCHANT_OWNER' && u.merchant._count.users === 1,
+        );
+        if (ownSignups.length > 0) {
+          return { kind: 'resend', users: ownSignups } as const;
         }
 
         const user = await client.user.create({
@@ -271,6 +289,15 @@ export class AuthService {
     }
 
     if (outcome.kind === 'resend') {
+      // Same budget as forgot-password, so repeated signups cannot be used to
+      // flood someone's inbox. Over the limit, nothing is sent and nothing is
+      // said — the caller sees the same outcome either way.
+      const allowed = await this.redis.acquireGenericRateToken(
+        `ratelimit:signup-resend:${input.email}`,
+        FORGOT_PASSWORD_LIMIT,
+        FORGOT_PASSWORD_WINDOW_SECONDS,
+      );
+      if (!allowed) return;
       for (const user of outcome.users) {
         const { token } = await this.passwordResets.issue(user.id);
         try {
@@ -414,12 +441,20 @@ export class AuthService {
     const passwordHash = await hashPassword(newPassword);
     const user = await this.prisma.withoutScope(
       'setting a password from an emailed token (no session exists until it succeeds)',
-      (client) =>
-        client.user.update({
-          where: { id: claim.userId },
+      async (client) => {
+        // A suspended account stays suspended: an invite or reset link sent
+        // before the suspension must not be a way back in.
+        const updated = await client.user.updateMany({
+          where: { id: claim.userId, status: { not: 'SUSPENDED' } },
           data: { passwordHash, status: 'ACTIVE', failedLogins: 0, lockedUntil: null },
-        }),
+        });
+        if (updated.count === 0) return null;
+        return client.user.findUniqueOrThrow({ where: { id: claim.userId } });
+      },
     );
+    if (!user) {
+      throw new UnauthorizedException('this link is no longer valid');
+    }
 
     await this.sessions.revokeAllForUser(user.id);
     const { token: sessionToken, expiresAt } = await this.sessions.issue(user.id, context);
@@ -466,11 +501,30 @@ export class AuthService {
    * FR-AUTH-007/021: the one path that ever changes passwordHash, whether
    * this is a first-login forced reset off a temporary one (row.status is
    * still INVITED, and this is what clears it — see login above) or a
-   * voluntary change later (already ACTIVE, and stays that way). Does not
-   * ask for the current password: the caller already holds a live session,
-   * which is its own proof of who they are for this one action.
+   * voluntary change later (already ACTIVE, and stays that way), which must
+   * also prove the current password.
    */
-  async setPassword(scope: RequestScope, newPassword: string): Promise<void> {
+  async setPassword(
+    scope: RequestScope,
+    newPassword: string,
+    currentPassword?: string,
+  ): Promise<void> {
+    const current = await this.prisma.withScope(scope, (tx) =>
+      tx.user.findUniqueOrThrow({
+        where: { id: scope.userId },
+        select: { status: true, passwordHash: true },
+      }),
+    );
+    // A voluntary change needs the current password: a session token alone
+    // (stolen, or a browser left signed in) must not be enough to lock the
+    // owner out. The forced first-login reset (INVITED) has no password the
+    // user knows, so it is exempt.
+    if (current.status !== 'INVITED') {
+      if (!currentPassword || !(await verifyPassword(currentPassword, current.passwordHash))) {
+        throw new UnauthorizedException('your current password is not correct');
+      }
+    }
+
     const passwordHash = await hashPassword(newPassword);
     await this.prisma.withScope(scope, (tx) =>
       tx.user.update({
@@ -478,6 +532,8 @@ export class AuthService {
         data: { passwordHash, status: 'ACTIVE' },
       }),
     );
+    // Every other session predates the new password; only this one stays.
+    await this.sessions.revokeAllForUser(scope.userId, scope.sessionId);
     await this.record(
       scope.merchantId,
       scope.userId,

@@ -235,7 +235,10 @@ export class ZohoConnectController {
     const settingsUrl = `${adminUrl}/brand-settings?tab=integrations&integration=zoho`;
 
     if (error) {
-      response.redirect(`${settingsUrl}&error=${encodeURIComponent(error)}`);
+      // Zoho's own code (e.g. access_denied) is logged, not forwarded: the
+      // callback URL is public, so its query is whatever anyone typed.
+      this.logger.warn(`zoho consent returned an error: ${error.slice(0, 200)}`);
+      response.redirect(`${settingsUrl}&error=consent_declined`);
       return;
     }
     if (!code || !state) {
@@ -307,8 +310,11 @@ export class ZohoConnectController {
 
       response.redirect(`${settingsUrl}&brandId=${brandId}&connected=1`);
     } catch (cause) {
+      // The detail goes to the log; the browser gets a code. Zoho's or our
+      // own error text has no place in a URL the user can be sent to.
       const message = cause instanceof Error ? cause.message : String(cause);
-      response.redirect(`${settingsUrl}&brandId=${brandId}&error=${encodeURIComponent(message)}`);
+      this.logger.warn(`zoho connect failed for brand ${brandId}: ${message}`);
+      response.redirect(`${settingsUrl}&brandId=${brandId}&error=connect_failed`);
     }
   }
 }

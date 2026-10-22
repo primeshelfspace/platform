@@ -385,7 +385,9 @@ export class ZohoWebhookService {
     }
 
     const candidates = await this.candidateBrands(pending.organizationId);
-    if (!candidates.some((c) => c.brandId === brandId)) {
+    // Only this company's own brands: two companies may both have connected
+    // the same Zoho organization, and neither may route records to the other.
+    if (!candidates.some((c) => c.brandId === brandId && c.merchantId === scope.merchantId)) {
       throw new BadRequestException('that brand is not connected to this Zoho organization');
     }
 

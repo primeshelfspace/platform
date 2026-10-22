@@ -152,9 +152,20 @@ const envSchema = z
     /** Accounts (sign-in, team, billing). Set-password emails link here. */
     ACCOUNTS_PUBLIC_URL: z.string().url().default('http://localhost:3000/accounts'),
     PAYMENT_PUBLIC_URL: z.string().url().default('http://localhost:3000/pay'),
-    // CORS_ALLOWED_ORIGINS (the old per-origin allowlist input) is gone —
-    // main.ts now sets origin: true and accepts every origin, so there's
-    // nothing left for this to feed into.
+    /** Extra browser origins allowed to call the API (comma separated, e.g.
+     * `https://main.xxxx.amplifyapp.com`). The origins of ADMIN_PUBLIC_URL,
+     * ACCOUNTS_PUBLIC_URL and PAYMENT_PUBLIC_URL are always allowed; every
+     * other website is refused by CORS (see corsOrigins in main.ts). */
+    CORS_EXTRA_ORIGINS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.string().url())),
 
     /** How often each process polls the event outboxes for due events
      * (retries and anything a crashed process left behind). Producers also

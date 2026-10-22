@@ -527,7 +527,9 @@ describeWithDb('InvoicesService', () => {
       await invoices.issue(ownerScope, solsticeId, created.id);
       await owner.invoice.update({
         where: { id: created.id },
-        data: { zohoInvoiceId: 'remote-cancel-1' },
+        // Unique per run: zoho_invoice_id is unique, and a fixed id collides with
+        // the previous run's row unless the database is reseeded.
+        data: { zohoInvoiceId: `remote-cancel-${Date.now()}` },
       });
 
       const enqueueSpy = vi.spyOn(queue, 'enqueue');

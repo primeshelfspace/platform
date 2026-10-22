@@ -22,6 +22,7 @@ import { zodPipe } from '../../../../shared/common/zod-validation.pipe.js';
 import { CurrentScope, Public, RequirePermission } from '../../tenancy/interface/authorisation.js';
 import { AuthService, type AuthenticatedUser } from '../application/auth.service.js';
 import { SESSION_COOKIE } from '../application/session.service.js';
+import { RateLimit } from '../../../../shared/common/rate-limit.js';
 
 /**
  * FR-AUTH-001, 003, 004, 010.
@@ -39,6 +40,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('login')
+  @RateLimit({ name: 'login', limit: 1000, windowSeconds: 300, perEmailLimit: 10 })
   @Public()
   @HttpCode(200)
   async login(
@@ -83,6 +85,7 @@ export class AuthController {
    * and nothing about the new account worth returning.
    */
   @Post('register')
+  @RateLimit({ name: 'register', limit: 300, windowSeconds: 3600, perEmailLimit: 5 })
   @Public()
   @HttpCode(202)
   async register(
@@ -105,6 +108,7 @@ export class AuthController {
    * observable from the response.
    */
   @Post('forgot-password')
+  @RateLimit({ name: 'forgot-password', limit: 300, windowSeconds: 3600, perEmailLimit: 5 })
   @Public()
   @HttpCode(202)
   async forgotPassword(
@@ -125,6 +129,7 @@ export class AuthController {
    * continues into onboarding without a second trip through /login.
    */
   @Post('set-password/token')
+  @RateLimit({ name: 'set-password-token', limit: 300, windowSeconds: 900 })
   @Public()
   @HttpCode(200)
   async setPasswordWithToken(
@@ -200,9 +205,9 @@ export class AuthController {
   }
 
   /**
-   * FR-AUTH-007/021. Requires only a live session, not the current password —
-   * see AuthService.setPassword for why. Used both by the forced first-login
-   * reset (INVITED, temporary password) and any later voluntary change.
+   * FR-AUTH-007/021. Used both by the forced first-login reset (INVITED, no
+   * current password needed) and any later voluntary change, which must send
+   * currentPassword — see AuthService.setPassword.
    */
   @Post('set-password')
   @RequirePermission('ORGANISATION_PROFILE', 'READ', { brandFrom: 'none' })
@@ -211,7 +216,7 @@ export class AuthController {
     @CurrentScope() scope: RequestScope,
     @Body(zodPipe(setPasswordSchema)) body: SetPasswordInput,
   ): Promise<{ ok: true }> {
-    await this.auth.setPassword(scope, body.newPassword);
+    await this.auth.setPassword(scope, body.newPassword, body.currentPassword);
     return { ok: true };
   }
 }

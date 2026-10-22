@@ -2,15 +2,17 @@
 
 ## Start here
 
-| Document                                             | Read it to…                                                                  |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| [getting-started.md](getting-started.md)             | Install, set up and run everything on your machine                           |
-| [developer-guide.md](developer-guide.md)             | How a request travels through the code, where things are, how to change them |
-| [operations/production.md](operations/production.md) | The live system: what runs where, access, deploys, everyday operations       |
-| [architecture/README.md](architecture/README.md)     | Understand how the system is built                                           |
-| [guides/payment-flow.md](guides/payment-flow.md)     | Click through invoice → payment and test each outcome                        |
-| [guides/deploy-ec2.md](guides/deploy-ec2.md)         | Deploy everything to AWS: EC2, RDS, Redis, S3, SES, nginx                    |
-| [api/README.md](api/README.md)                       | Call the API: sign-in, errors, money; every endpoint; latest test report     |
+| Document                                               | Read it to…                                                                  |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| [getting-started.md](getting-started.md)               | Install, set up and run everything on your machine                           |
+| [developer-guide.md](developer-guide.md)               | How a request travels through the code, where things are, how to change them |
+| [operations/production.md](operations/production.md)   | The live system: what runs where, access, deploys, everyday operations       |
+| [architecture/README.md](architecture/README.md)       | Understand how the system is built                                           |
+| [guides/payment-flow.md](guides/payment-flow.md)       | Click through invoice → payment and test each outcome                        |
+| [guides/deploy-ec2.md](guides/deploy-ec2.md)           | Deploy everything to AWS: EC2, RDS, Redis, S3, SES, nginx                    |
+| [api/README.md](api/README.md)                         | Call the API: sign-in, errors, money; every endpoint; latest test report     |
+| [security.md](security.md)                             | Every security rule, the October 2026 audit and its fixes, what is open      |
+| [testing/user-scenarios.md](testing/user-scenarios.md) | Everything a user can do, and the test that proves each one                  |
 
 ## Architecture
 

@@ -11,6 +11,7 @@
  * self-protection rules mutate account status/role, and a shared fixture
  * would make one test's assertions depend on another's having run first.
  */
+import { ForbiddenException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '../../database/client.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -260,6 +261,21 @@ describeWithDb('UsersService', () => {
 
     // Restore for isolation from any test order change.
     await users.updateStatus(ownerAScope, ownerBId, 'ACTIVE');
+  });
+
+  it('refuses a Brand Admin changing the role or status of a user who also works on other brands', async () => {
+    // multiBrandUser is on brandA (which this Brand Admin runs) and brandB
+    // (which they do not). A role applies across every brand the user holds,
+    // so promoting them would hand out Brand Admin over brandB.
+    await expect(
+      users.updateRole(brandAdminScope, multiBrandUserId, 'BRAND_ADMIN'),
+    ).rejects.toThrow(ForbiddenException);
+    await expect(
+      users.updateStatus(brandAdminScope, multiBrandUserId, 'SUSPENDED'),
+    ).rejects.toThrow(ForbiddenException);
+
+    const row = await owner.user.findUniqueOrThrow({ where: { id: multiBrandUserId } });
+    expect(row).toMatchObject({ role: 'SALES_USER', status: 'ACTIVE' });
   });
 
   it('a Brand Admin only ever touches brand assignments within their own administered brands', async () => {

@@ -76,6 +76,11 @@ function fakePrisma(users: UserRow[], audit: AuditRow[]) {
         if (row) Object.assign(row, data);
         return row;
       },
+      findUniqueOrThrow: async ({ where }: { where: { id: string } }) => {
+        const row = users.find((u) => u.id === where.id);
+        if (!row) throw new Error('no such user');
+        return row;
+      },
     },
     auditLog: {
       create: async ({ data }: { data: Omit<AuditRow, 'occurredAt'> }) => {
@@ -99,6 +104,8 @@ function fakePrisma(users: UserRow[], audit: AuditRow[]) {
   } as unknown as PlatformPrismaService;
 }
 
+const revokedAll: Array<{ userId: string; exceptSessionId?: string }> = [];
+
 function fakeSessions(issued: string[]) {
   return {
     issue: async (userId: string) => {
@@ -106,6 +113,10 @@ function fakeSessions(issued: string[]) {
       return { token: `token-for-${userId}`, expiresAt: new Date(Date.now() + 3_600_000) };
     },
     revoke: async () => undefined,
+    revokeAllForUser: async (userId: string, exceptSessionId?: string) => {
+      revokedAll.push({ userId, exceptSessionId });
+      return 0;
+    },
   } as unknown as SessionService;
 }
 
@@ -455,9 +466,45 @@ describe('AuthService.setPassword', () => {
       fakeRedis(),
     );
 
-    await auth.setPassword(scope, 'a-brand-new-password');
+    await auth.setPassword(scope, 'a-brand-new-password', PASSWORD);
 
     expect(users[0]!.status).toBe('ACTIVE');
+  });
+
+  it('refuses a voluntary change without the right current password', async () => {
+    const users = [makeUser({ passwordHash: await hashPassword(PASSWORD), status: 'ACTIVE' })];
+    const auth = new AuthService(
+      fakePrisma(users, []),
+      fakeSessions([]),
+      fakeResets(),
+      fakeMail(),
+      fakeRedis(),
+    );
+    const before = users[0]!.passwordHash;
+
+    await expect(auth.setPassword(scope, 'a-brand-new-password')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    await expect(auth.setPassword(scope, 'a-brand-new-password', 'wrong-guess')).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(users[0]!.passwordHash).toBe(before);
+  });
+
+  it('signs out every other session, keeping only the one that changed it', async () => {
+    const users = [makeUser({ passwordHash: await hashPassword(PASSWORD), status: 'ACTIVE' })];
+    const auth = new AuthService(
+      fakePrisma(users, []),
+      fakeSessions([]),
+      fakeResets(),
+      fakeMail(),
+      fakeRedis(),
+    );
+    revokedAll.length = 0;
+
+    await auth.setPassword(scope, 'a-brand-new-password', PASSWORD);
+
+    expect(revokedAll).toEqual([{ userId: 'user-1', exceptSessionId: 'session-1' }]);
   });
 });
 

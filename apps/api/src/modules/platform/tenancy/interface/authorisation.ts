@@ -16,6 +16,7 @@ import {
   type Role,
   ROLES,
   checkAccess,
+  coversAllBrands,
 } from '@platform/platform-contracts';
 import { SESSION_COOKIE, SessionService } from '../../auth/application/session.service.js';
 
@@ -118,16 +119,27 @@ export class AuthorisationGuard implements CanActivate {
       );
     }
 
+    const brandId = resolveBrandId(request, requirement);
     const decision = checkAccess({
       role: scope.role,
       resource: requirement.resource,
       action: requirement.action,
       assignedBrandIds: scope.assignedBrandIds,
-      brandId: resolveBrandId(request, requirement),
+      brandId,
     });
 
-    if (!decision.allowed) {
-      // The same message for both reasons: distinguishing them would confirm a
+    // checkAccess lets an all-brand role (Owner, Admin) through for any brand
+    // id — "all brands" means all of *their company's* brands, which only the
+    // database knows. Settle that here rather than leaving it to row-level
+    // security alone.
+    const foreignBrand =
+      decision.allowed &&
+      brandId !== null &&
+      coversAllBrands(scope.role) &&
+      !(await this.sessions.brandInCompany(scope, brandId));
+
+    if (!decision.allowed || foreignBrand) {
+      // The same message for every reason: distinguishing them would confirm a
       // brand id exists to someone who cannot reach it.
       throw new ForbiddenException('insufficient permissions');
     }

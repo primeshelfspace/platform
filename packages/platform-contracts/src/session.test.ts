@@ -21,6 +21,23 @@ describe('safeReturnTo', () => {
     expect(safeReturnTo('http://localhost:3999/', apps, '/home')).toBe('/home');
   });
 
+  it('refuses paths a browser would read as another site (backslash, tab, newline)', () => {
+    for (const value of [
+      '/\\evil.example',
+      '/\\/evil.example',
+      '/\t/evil.example',
+      '/\n/evil.example',
+      '/%09/evil.example'.replace('%09', '\t'),
+    ]) {
+      expect(safeReturnTo(value, apps)).toBe('/');
+    }
+  });
+
+  it('keeps an ordinary path with its query and hash intact', () => {
+    expect(safeReturnTo('/invoices?status=PAID#top', apps)).toBe('/invoices?status=PAID#top');
+    expect(safeReturnTo('/a/../b', apps)).toBe('/b');
+  });
+
   it('falls back when nothing is given', () => {
     expect(safeReturnTo(undefined, apps)).toBe('/');
     expect(safeReturnTo('', apps, '/x')).toBe('/x');

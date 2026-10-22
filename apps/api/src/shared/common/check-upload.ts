@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { contentMatchesType } from './image-content.js';
 
 /**
  * What a check image may be — the one place that decides, same shape as
@@ -27,5 +28,8 @@ export function assertCheckImage(
   }
   if (file.size > MAX_CHECK_IMAGE_BYTES) {
     throw new BadRequestException(`the ${side} photo must be 10MB or smaller`);
+  }
+  if (!contentMatchesType(file.buffer, file.mimetype)) {
+    throw new BadRequestException(`the ${side} photo is not a valid JPG, PNG, or WEBP image`);
   }
 }

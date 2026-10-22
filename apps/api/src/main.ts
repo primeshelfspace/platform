@@ -4,18 +4,8 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module.js';
 import { getEnv } from './shared/config/env.js';
+import { configureApp } from './app-setup.js';
 import { QueueService } from './shared/infra/queue/queue.service.js';
-
-// Prisma's BigInt columns (every *Minor money field) come back from the
-// client as native bigint, which JSON.stringify cannot serialise at all.
-// The domain's own Minor type is `number` throughout (TDD-001 §9.1) — bigint
-// is a Postgres storage detail, not the application's representation of
-// money — so this is safe exactly because assertMinor already guarantees
-// every value fits in Number.MAX_SAFE_INTEGER before it reaches a bigint
-// column. One global fix here beats converting by hand at every call site.
-(BigInt.prototype as unknown as { toJSON(): number }).toJSON = function (this: bigint): number {
-  return Number(this);
-};
 
 /**
  * API entry point. Workers run in a separate process (worker.ts) so a slow PDF
@@ -36,34 +26,7 @@ async function bootstrap(): Promise<void> {
         : ['error', 'warn', 'log'],
   });
 
-  // Zoho Books can be configured to send a webhook's raw JSON as text/plain,
-  // which neither of Nest's default parsers (json, urlencoded) reads — the
-  // body would arrive empty. ZohoWebhookController parses the text itself.
-  app.useBodyParser('text', { type: 'text/plain' });
-
-  // Validation is per-handler with ZodValidationPipe rather than a global
-  // ValidationPipe: Zod is the stack's validation layer and the schemas are
-  // shared with the browser, so there is no class-decorator definition to
-  // validate against here.
-
-  // origin: true reflects back whatever Origin header the caller sends,
-  // rather than checking it against ADMIN_PUBLIC_URL/PAYMENT_PUBLIC_URL/an
-  // allowlist. It's deliberately not a literal '*' — browsers reject a
-  // wildcard origin once credentials are involved, and this app sends
-  // session cookies, so reflection is what's required to accept every
-  // origin AND keep credentials working. Net effect: any website can now
-  // make a credentialed request to this API carrying a signed-in merchant's
-  // own session cookie — there is no longer a per-origin allowlist guarding
-  // that. Requested explicitly; see chat history for the tradeoff.
-  app.enableCors({
-    origin: true,
-    credentials: true,
-  });
-  logger.log('cors: reflecting all origins, credentials enabled (no allowlist)');
-
-  // Trust the proxy so request.ip is the client address in the audit log
-  // rather than the load balancer's.
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  configureApp(app, env, logger);
 
   app.enableShutdownHooks();
 

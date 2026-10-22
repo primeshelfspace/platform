@@ -8,7 +8,11 @@
  * and when someone signs up again before ever setting a password.
  */
 import { randomUUID } from 'node:crypto';
-import { ConflictException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  ConflictException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SendMailInput } from '@platform/kernel';
 import { createFakeMailPort } from '../../../../shared/adapters/mail/fake-mail.port.js';
@@ -38,8 +42,15 @@ describeWithDb('signup', () => {
       return fake.send(input);
     },
   };
-  // Signup does not rate-limit; forgot-password does, and always allows here.
-  const redis = { acquireGenericRateToken: async () => true } as unknown as RedisService;
+  // A real fixed-window counter, so the re-send limit can be exercised.
+  const buckets = new Map<string, number>();
+  const redis = {
+    acquireGenericRateToken: async (key: string, limit: number) => {
+      const count = (buckets.get(key) ?? 0) + 1;
+      buckets.set(key, count);
+      return count <= limit;
+    },
+  } as unknown as RedisService;
   const auth = new AuthService(
     prisma,
     new SessionService(prisma),
@@ -64,6 +75,7 @@ describeWithDb('signup', () => {
     });
 
   beforeEach(() => {
+    buckets.clear();
     mailFails = false;
     fake.outbox.length = 0;
   });
@@ -149,6 +161,65 @@ describeWithDb('signup', () => {
       ConflictException,
     );
     expect(await accounts(email)).toHaveLength(1);
+  });
+
+  it('does not let another company capture a signup by inviting the address first', async () => {
+    const email = newEmail();
+    // Another company invites the address before its owner ever signs up.
+    const squatter = await owner.merchant.create({
+      data: {
+        name: 'Squatter',
+        contactEmail: newEmail(),
+        users: {
+          create: [
+            {
+              email: newEmail(),
+              name: 'Boss',
+              passwordHash: 'x',
+              role: 'MERCHANT_OWNER',
+              status: 'ACTIVE',
+            },
+            { email, name: 'Invitee', passwordHash: 'x', role: 'FINANCE_USER', status: 'INVITED' },
+          ],
+        },
+      },
+    });
+
+    await auth.register({ fullName: 'Real Owner', email }, context);
+
+    const users = await accounts(email);
+    expect(users).toHaveLength(2);
+    const own = users.find((u) => u.merchantId !== squatter.id)!;
+    expect(own).toMatchObject({ role: 'MERCHANT_OWNER', status: 'INVITED' });
+    // The one email sent is a link into the person's own new company.
+    expect(fake.outbox).toHaveLength(1);
+    const token = /token=([0-9a-f]{64})/.exec(fake.outbox[0]!.text ?? '')![1]!;
+    const tokenRow = await owner.passwordResetToken.findFirstOrThrow({
+      where: { tokenHash: SessionService.hash(token) },
+    });
+    expect(tokenRow.userId).toBe(own.id);
+  });
+
+  it('limits how often a waiting signup can be re-sent', async () => {
+    const email = newEmail();
+    for (let i = 0; i < 6; i++) {
+      await auth.register({ fullName: 'Flood', email }, context);
+    }
+    // The first signup plus three re-sends; the rest are dropped silently.
+    expect(fake.outbox).toHaveLength(4);
+  });
+
+  it('does not let a suspended account back in through an emailed link', async () => {
+    const email = newEmail();
+    await auth.register({ fullName: 'Suspended', email }, context);
+    const token = /token=([0-9a-f]{64})/.exec(fake.outbox[0]!.text ?? '')![1]!;
+    await owner.user.updateMany({ where: { email }, data: { status: 'SUSPENDED' } });
+
+    await expect(
+      auth.setPasswordWithToken(token, 'a-long-enough-password-1', context),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    const [user] = await accounts(email);
+    expect(user!.status).toBe('SUSPENDED');
   });
 
   it('forgot-password answers the same way when the email cannot be sent', async () => {

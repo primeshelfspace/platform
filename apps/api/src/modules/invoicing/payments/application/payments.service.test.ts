@@ -181,6 +181,71 @@ describeWithDb('PaymentsService', () => {
     expect(settled.balanceMinor).toBe(0n);
   });
 
+  it('charges only the remaining balance after a partial payment', async () => {
+    const { id, publicScope } = await issuedInvoice('40');
+    await invoices.recordManualPayment(ownerScope, brandId, id, {
+      amount: '40.00',
+      method: 'MANUAL',
+      paidAt: new Date(),
+    });
+
+    const result = await payments.createIntent(publicScope, 'ACH', randomUUID());
+
+    expect(result.gatewayStatus).toBe('SUCCEEDED');
+    const charged = await owner.payment.findFirstOrThrow({
+      where: { invoiceId: id, method: 'ACH' },
+    });
+    expect(charged.amountMinor).toBe(6040n); // 100.40 owed - 40.00 already paid
+    const row = await owner.invoice.findUniqueOrThrow({ where: { id } });
+    expect(row.status).toBe('PAID');
+    expect(row.balanceMinor).toBe(0n);
+  });
+
+  it('refuses a new attempt on an invoice with nothing left to pay', async () => {
+    const { publicScope } = await issuedInvoice('40');
+    await payments.createIntent(publicScope, 'ACH', randomUUID());
+
+    await expect(payments.createIntent(publicScope, 'ACH', randomUUID())).rejects.toThrow();
+  });
+
+  it('does not settle on a webhook whose amount differs from the payment', async () => {
+    const { id, publicScope } = await issuedInvoice('22');
+    await payments.createIntent(publicScope, 'ACH', randomUUID());
+    const payment = await owner.payment.findFirstOrThrow({ where: { invoiceId: id } });
+
+    const { body, headers } = gateway.simulateWebhook(
+      payment.gatewayReference!,
+      'PAYMENT_SUCCEEDED',
+      { amountMinor: 1 },
+    );
+    await payments.handleWebhook(Buffer.from(body), headers);
+
+    const row = await owner.invoice.findUniqueOrThrow({ where: { id } });
+    expect(row.status).toBe('PENDING_PAYMENT');
+    expect(row.balanceMinor).toBe(10022n);
+  });
+
+  it('flags money that arrives for an invoice already paid, for staff to refund', async () => {
+    const { id, publicScope } = await issuedInvoice('22');
+    await payments.createIntent(publicScope, 'ACH', randomUUID());
+    const pending = await owner.payment.findFirstOrThrow({ where: { invoiceId: id } });
+    // Staff record the full amount by hand while the ACH is still clearing…
+    await invoices.recordManualPayment(ownerScope, brandId, id, {
+      amount: '100.22',
+      method: 'MANUAL',
+      paidAt: new Date(),
+    });
+    // …and then the ACH clears too.
+    const { body, headers } = gateway.simulateWebhook(
+      pending.gatewayReference!,
+      'PAYMENT_SUCCEEDED',
+    );
+    await payments.handleWebhook(Buffer.from(body), headers);
+
+    const events = await owner.invoiceEvent.findMany({ where: { invoiceId: id } });
+    expect(events.map((e) => e.eventType)).toContain('PAYMENT_NEEDS_REFUND');
+  });
+
   it('is idempotent on (invoice, amount, attemptNonce): a repeated call never charges twice', async () => {
     const { id, publicScope } = await issuedInvoice('50');
     const nonce = randomUUID();

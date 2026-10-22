@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { evaluateTransition, type CreateCheckSubmissionInput } from '@platform/invoicing-contracts';
+import {
+  evaluateTransition,
+  isPayable,
+  type CreateCheckSubmissionInput,
+} from '@platform/invoicing-contracts';
 import {
   formatQuantity,
   storageKeys,
@@ -77,6 +81,9 @@ export interface PublicInvoiceView {
    * if cardEnabled is on. */
   stripeAccountId: string | null;
 }
+
+/** Check submissions an invoice may have waiting for review at once. */
+const MAX_WAITING_CHECKS = 3;
 
 /**
  * Token → data, for the anonymous payment path (TDD-001 §12.1). The token
@@ -292,6 +299,20 @@ export class PublicInvoicesService {
       }
       if (invoice.balanceMinor <= 0n) {
         throw new ConflictException('this invoice has already been paid in full');
+      }
+      // A cancelled or draft invoice takes no payment of any kind.
+      if (!isPayable(invoice.status)) {
+        throw new ConflictException('this invoice cannot be paid');
+      }
+      // The upload is public: cap what is waiting for review so one link
+      // cannot fill the review queue (and storage) with submissions.
+      const waiting = await tx.checkSubmission.count({
+        where: { invoiceId: invoice.id, status: { in: ['SUBMITTED', 'UNDER_REVIEW'] } },
+      });
+      if (waiting >= MAX_WAITING_CHECKS) {
+        throw new ConflictException(
+          'checks for this invoice are already waiting for review — please wait for a decision',
+        );
       }
 
       const id = randomUUID();

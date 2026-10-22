@@ -307,5 +307,33 @@ describeWithDb('PublicInvoicesService', () => {
         ),
       ).rejects.toThrow(/already been paid/);
     });
+
+    it('refuses a check for a cancelled invoice', async () => {
+      const { id, publicToken } = await issuedInvoice();
+      const scope = (await publicInvoices.resolveScope(publicToken))!;
+      await invoices.cancel(ownerScope, solsticeId, id);
+
+      await expect(
+        publicInvoices.submitCheck(
+          scope,
+          { checkNumber: 'CHK-1004' },
+          { front: image('f'), back: image('b') },
+        ),
+      ).rejects.toThrow(/cannot be paid/);
+    });
+
+    it('caps how many checks may wait for review on one invoice', async () => {
+      const { publicToken } = await issuedInvoice();
+      const scope = (await publicInvoices.resolveScope(publicToken))!;
+      const submit = (n: number) =>
+        publicInvoices.submitCheck(
+          scope,
+          { checkNumber: `CHK-CAP-${n}` },
+          { front: image('f'), back: image('b') },
+        );
+
+      for (let n = 1; n <= 3; n++) await submit(n);
+      await expect(submit(4)).rejects.toThrow(/waiting for review/);
+    });
   });
 });

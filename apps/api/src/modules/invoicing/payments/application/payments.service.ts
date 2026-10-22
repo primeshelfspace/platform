@@ -9,6 +9,7 @@ import {
 import {
   IntegrationError,
   PAYMENT_GATEWAY_PORT,
+  applyBasisPoints,
   calculate,
   type CurrencyCode,
   type PaymentGatewayPort,
@@ -120,6 +121,10 @@ export class PaymentsService {
     attemptNonce: string,
   ): Promise<PaymentAttemptResult> {
     const outcome = await this.prisma.withScope(scope, async (tx) => {
+      // One attempt at a time per invoice: two tabs (or a double-click with
+      // fresh nonces) would otherwise both read an unpaid balance and both
+      // start a charge. The row lock holds until this transaction ends.
+      await tx.$queryRaw`SELECT id FROM invoice WHERE id = ${scope.invoiceId}::uuid FOR UPDATE`;
       const invoice = await tx.invoice.findFirst({
         where: { id: scope.invoiceId },
         include: {
@@ -148,10 +153,10 @@ export class PaymentsService {
         cardFeeRateBp: invoice.cardFeeRateBpApplied,
         paymentMethod: method,
       });
-      const chargeMinor = quote.totalMinor;
-
+      // Keyed on the quote, not on the remaining balance: a replay after the
+      // first attempt settled must still find that attempt.
       const idempotencyKey = createHash('sha256')
-        .update(`${invoice.id}:${chargeMinor}:${attemptNonce}`)
+        .update(`${invoice.id}:${quote.totalMinor}:${attemptNonce}`)
         .digest('hex');
 
       const existing = await tx.payment.findUnique({ where: { idempotencyKey } });
@@ -171,6 +176,15 @@ export class PaymentsService {
           sync: null,
         };
       }
+
+      // The charge is what is still owed, not the invoice's full total: after a
+      // partial payment (a deposit recorded by staff, an approved check) only
+      // the balance is due, and the card fee applies to that balance alone.
+      const owedMinor = Math.min(Number(invoice.balanceMinor), quote.preFeeTotalMinor);
+      if (owedMinor <= 0) throw new ConflictException('This invoice has nothing left to pay.');
+      const chargeMinor =
+        owedMinor +
+        (quote.cardFeeApplied ? applyBasisPoints(owedMinor, invoice.cardFeeRateBpApplied) : 0);
 
       const originalStatus = invoice.status;
       const initDecision = evaluateTransition('INITIATE_PAYMENT', {
@@ -359,6 +373,20 @@ export class PaymentsService {
       return;
     }
 
+    // A success must be for the money this payment asked for. A gateway that
+    // reports the figures and disagrees is not settled on — staff look at it.
+    if (
+      event.type === 'PAYMENT_SUCCEEDED' &&
+      ((event.amountMinor != null && event.amountMinor !== Number(payment.amountMinor)) ||
+        (event.currency != null && event.currency !== payment.currency))
+    ) {
+      this.logger.error(
+        `webhook amount mismatch for payment ${payment.id}: event ${event.amountMinor} ${event.currency}, ` +
+          `expected ${payment.amountMinor} ${payment.currency} — not settling`,
+      );
+      return;
+    }
+
     const { invoice } = payment;
     const scope: PublicScope = {
       kind: 'PUBLIC',
@@ -510,7 +538,19 @@ export class PaymentsService {
         customerHasDeliverableEmail: true,
       });
       if (!decision.ok) {
+        // Money arrived for an invoice that is already paid or cancelled — a
+        // second attempt that completed anyway. Never silent: the event shows
+        // on the invoice's timeline so staff can refund it.
         this.logger.error(`SETTLE_FULL refused for invoice ${invoiceId}: ${decision.message}`);
+        await tx.invoiceEvent.create({
+          data: {
+            invoiceId,
+            eventType: 'PAYMENT_NEEDS_REFUND',
+            fromStatus: input.currentInvoiceStatus,
+            toStatus: input.currentInvoiceStatus,
+            actor: 'system',
+          },
+        });
         return;
       }
 

@@ -23,6 +23,7 @@ import {
   type PaymentMethodSettings,
   type PaymentPageDisplaySettings,
 } from '../application/brand-settings.service.js';
+import { RateLimit } from '../../../../shared/common/rate-limit.js';
 
 const invoiceNumberingSchema = z.object({
   invoicePrefix: brandSettingsSchema.shape.invoicePrefix,
@@ -107,6 +108,7 @@ export class BrandSettingsController {
   }
 
   @Post('email-receipt/test-send')
+  @RateLimit({ name: 'receipt-test-send', windowSeconds: 86400, perCompanyLimit: 30 })
   @HttpCode(200)
   @RequirePermission('BRAND_CONFIGURATION', 'WRITE')
   async sendEmailReceiptTest(

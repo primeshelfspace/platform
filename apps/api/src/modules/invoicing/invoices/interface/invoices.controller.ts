@@ -27,6 +27,7 @@ import {
   type InvoiceTabCounts,
   type InvoiceWithLines,
 } from '../application/invoices.service.js';
+import { RateLimit } from '../../../../shared/common/rate-limit.js';
 
 /** FR-INV. Nested under the brand, matching CustomersController's convention. */
 @ProductScope('INVOICING')
@@ -103,6 +104,7 @@ export class InvoicesController {
    * selected invoice with its own default Email Receipt content; a draft
    * among them is issued first, same as a first send from the drawer. */
   @Post('bulk-send')
+  @RateLimit({ name: 'invoice-bulk-send', windowSeconds: 86400, perCompanyLimit: 20 })
   @HttpCode(200)
   @RequirePermission('INVOICE_SEND', 'WRITE')
   bulkSend(
@@ -146,6 +148,7 @@ export class InvoicesController {
    * InvoicesService.sendEmail). Not a status change; the drawer calls
    * :id/issue separately first when sending a draft for the first time. */
   @Post(':id/send-email')
+  @RateLimit({ name: 'invoice-email', windowSeconds: 86400, perCompanyLimit: 300 })
   @HttpCode(200)
   @RequirePermission('INVOICE_SEND', 'WRITE')
   async sendEmail(

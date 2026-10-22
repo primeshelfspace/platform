@@ -153,10 +153,11 @@ export class ChecksService {
   ): Promise<void> {
     const submission = await this.requirePending(scope, brandId, id);
     await this.invoices.recordManualPayment(scope, brandId, submission.invoiceId, {
-      amount: formatMinor(
-        Number(submission.amountMinor),
-        toCurrencyCode(submission.invoice.currency),
-      ),
+      // The reviewer's reading of the check wins: a $50 check must not clear
+      // a $5,000 balance just because that is what the customer claimed.
+      amount:
+        input.amount ??
+        formatMinor(Number(submission.amountMinor), toCurrencyCode(submission.invoice.currency)),
       method: 'CHECK',
       paidAt: new Date(),
       reference: submission.checkNumber,

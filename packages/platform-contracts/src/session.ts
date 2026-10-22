@@ -27,7 +27,21 @@ export function safeReturnTo(
   fallback = '/',
 ): string {
   if (!value) return fallback;
-  if (value.startsWith('/') && !value.startsWith('//')) return value;
+  if (value.startsWith('/')) {
+    // A path on this app. Browsers read a backslash as a slash and ignore
+    // tabs and newlines, so `/\evil.example` and `/<tab>/evil.example` would
+    // leave the site just like `//evil.example` — resolve it against a
+    // placeholder origin and keep it only if it stays there.
+    // eslint-disable-next-line no-control-regex
+    if (/[\\\u0000-\u001f\u007f]/.test(value)) return fallback;
+    try {
+      const base = 'https://return-to.invalid';
+      const url = new URL(value, base);
+      return url.origin === base ? `${url.pathname}${url.search}${url.hash}` : fallback;
+    } catch {
+      return fallback;
+    }
+  }
   try {
     const url = new URL(value);
     return allowedOrigins.some((origin) => sameOrigin(origin, url)) ? url.toString() : fallback;

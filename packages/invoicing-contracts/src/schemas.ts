@@ -285,7 +285,10 @@ export const invoiceDraftSchema = z
     invoiceDate: z.coerce.date(),
     dueDate: z.coerce.date(),
     currency: currencySchema,
-    lines: z.array(lineItemSchema).min(1, 'an invoice needs at least one line item'),
+    lines: z
+      .array(lineItemSchema)
+      .min(1, 'an invoice needs at least one line item')
+      .max(500, 'an invoice may have at most 500 line items'),
     taxRateBp: basisPointsSchema,
     cardFeeRateBp: basisPointsSchema,
     notes: z.string().trim().max(4000).nullable(),
@@ -413,6 +416,9 @@ export type CheckSubmissionListQuery = z.infer<typeof checkSubmissionListQuerySc
  * near-identical schemas). */
 export const reviewCheckSubmissionSchema = z.object({
   note: z.string().trim().max(2000).optional(),
+  /** Approve only: the amount written on the check, as the reviewer read it.
+   * Defaults to what the customer claimed (the balance when they uploaded). */
+  amount: decimalAmountStringSchema.optional(),
 });
 export type ReviewCheckSubmissionInput = z.infer<typeof reviewCheckSubmissionSchema>;
 

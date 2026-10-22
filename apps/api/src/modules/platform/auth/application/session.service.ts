@@ -18,6 +18,7 @@ import { PlatformPrismaService } from '../../database/platform-prisma.service.js
  */
 export const SESSION_COOKIE = 'sugrpay_session';
 const SESSION_TTL_HOURS = 12;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface ResolvedSessionRow {
   session_id: string;
@@ -97,6 +98,25 @@ export class SessionService {
     };
   }
 
+  /**
+   * Whether a brand id belongs to the scope's company. Asked by the request
+   * guard for roles that cover every brand (Owner, Admin): their scope lists no
+   * brands, so without this a request naming another company's brand id would
+   * pass the guard and be stopped only by row-level security. Looked up inside
+   * the scope, so RLS answers it: a brand of another company is simply not
+   * visible. A malformed id is not a brand.
+   */
+  async brandInCompany(scope: RequestScope, brandId: string): Promise<boolean> {
+    if (!UUID.test(brandId)) return false;
+    const brand = await this.prisma.withScope(scope, (tx) =>
+      tx.brand.findFirst({
+        where: { id: brandId, merchantId: scope.merchantId },
+        select: { id: true },
+      }),
+    );
+    return brand !== null;
+  }
+
   async touch(sessionId: string): Promise<void> {
     await this.prisma.session.update({
       where: { id: sessionId },
@@ -111,9 +131,13 @@ export class SessionService {
     });
   }
 
-  async revokeAllForUser(userId: string): Promise<number> {
+  async revokeAllForUser(userId: string, exceptSessionId?: string): Promise<number> {
     const result = await this.prisma.session.updateMany({
-      where: { userId, revokedAt: null },
+      where: {
+        userId,
+        revokedAt: null,
+        ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}),
+      },
       data: { revokedAt: new Date() },
     });
     return result.count;
