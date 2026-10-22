@@ -1,0 +1,127 @@
+name: Deploy
+
+# Every push to main is checked, then deployed to the EC2 server. A failed
+# check stops the deploy; the server keeps running the previous version.
+# Run it by hand from the Actions tab with "Run workflow".
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits rather than cancelling one midway.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+# GITHUB_TOKEN is only used to let the server fetch this commit.
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: pnpm
+        run: corepack enable && corepack prepare pnpm@11.10.0 --activate
+
+      - name: Install
+        run: CI=true pnpm install --frozen-lockfile
+
+      # The database clients are generated from the Prisma schemas; no
+      # database is needed for that, only for the API's own tests, which run
+      # locally (`pnpm db:seed && pnpm test`) rather than here.
+      - name: Generate database clients
+        run: pnpm db:generate
+
+      - name: Build shared packages
+        run: pnpm --filter "./packages/*" build
+
+      - name: Formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Dependencies declared
+        run: pnpm check:deps
+
+      - name: API reference up to date
+        run: pnpm check:docs
+
+      - name: Types
+        run: pnpm typecheck
+
+      - name: Package tests
+        run: pnpm --filter "./packages/*" test
+
+  deploy:
+    name: Deploy to EC2
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Until the EC2_SSH_KEY secret is added (Settings → Secrets and
+      # variables → Actions), the checks still run and the deploy is skipped
+      # with a note instead of failing.
+      - name: Deploy key present?
+        id: key
+        env:
+          KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::EC2_SSH_KEY is not set — skipping the deploy. Add it to deploy automatically."
+          fi
+
+      - name: Deploy over SSH
+        if: steps.key.outputs.present == 'true'
+        uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEPLOY_SHA: ${{ github.sha }}
+        with:
+          # The server's Elastic IP. Override with a repository variable
+          # EC2_HOST (Settings → Secrets and variables → Actions → Variables).
+          host: ${{ vars.EC2_HOST || '13.56.132.111' }}
+          username: ubuntu
+          # A key used only for deploys; its public half is in the server's
+          # ~/.ssh/authorized_keys ("github-actions-deploy@platform").
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: 15m
+          envs: DEPLOY_TOKEN,DEPLOY_SHA
+          script: |
+            set -e
+            cd ~/platform
+
+            # The server holds no GitHub credentials. This one fetch is
+            # authenticated with the run's own short-lived GITHUB_TOKEN, sent
+            # as a header (never in the URL or argv). -w0 keeps base64 on one
+            # line, or curl rejects the header.
+            git -c http.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$DEPLOY_TOKEN" | base64 -w0)" \
+              fetch https://github.com/primeshelfspace/platform.git "$DEPLOY_SHA"
+
+            # Only tracked files change: .env, backups and uploads stay.
+            git reset --hard FETCH_HEAD
+
+            # Builds beside the live version, migrates, then reloads pm2.
+            CI=true bash deploy/deploy.sh
+
+            # Fail the run if the API did not come back healthy.
+            for i in $(seq 1 20); do
+              if curl -fsS -m 5 http://localhost:4000/health/ready >/dev/null; then
+                echo "healthy at $(git log -1 --format='%h %s')"
+                exit 0
+              fi
+              sleep 3
+            done
+            echo "API not healthy after deploy" >&2
+            pm2 logs api --nostream --lines 40 >&2 || true
+            exit 1

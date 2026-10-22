@@ -11,20 +11,21 @@ as its own service without a rewrite (see
 [decisions/0001](decisions/0001-modular-monolith.md)).
 
 **Two repositories.** This one (`platform`) is the backend only: the API,
-its databases and the packages it is built from. Every web app lives in
+its databases and the packages it is built from. The Sugrpay web app — one
+Next.js app serving the admin at `/`, sign-in and team at `/accounts` and the
+public payment pages at `/pay` — lives in
 [primeshelfspace/sugrpay-frontend](https://github.com/primeshelfspace/sugrpay-frontend)
-and reaches the backend only over HTTP. The front end keeps copies of
+and reaches the backend only over HTTP. A future product (HQ) gets its own web
+app repository the same way. The front end keeps copies of
 `kernel`, `platform-contracts` and `invoicing-contracts` (see its
 `packages/README.md`); the copies here are the source of truth.
 
 ```mermaid
 flowchart TB
-  subgraph web["sugrpay-frontend repository — web apps (Next.js)"]
-    ACC_APP["accounts<br/>sign-in · team · billing"]
-    INV_APP["invoicing<br/>Sugrpay admin"]
-    PAY_APP["payment<br/>public pay pages"]
-    HQ_APP["hq<br/>(placeholder)"]
+  subgraph web["sugrpay-frontend repository — one Next.js app"]
+    SUG_APP["Sugrpay web app<br/>/ admin · /accounts sign-in, team, billing · /pay public pages"]
   end
+  HQ_APP["HQ web app<br/>(own repository, later)"]
 
   subgraph api["platform repository — apps/api, one NestJS backend"]
     direction TB
@@ -44,9 +45,7 @@ flowchart TB
   IDB[("invoicing DB")]
   HDB[("hq DB<br/>(later)")]
 
-  ACC_APP --> api
-  INV_APP --> api
-  PAY_APP --> api
+  SUG_APP --> api
   HQ_APP -.-> api
   PLAT --> PDB
   INV --> IDB
@@ -104,7 +103,9 @@ packages/
   platform-contracts/       what the platform publishes: request schemas, events
   invoicing-contracts/      what invoicing publishes: schemas, statuses, email/PDF renderers
   hq-contracts/             what HQ will publish (placeholder)
-deploy/                     staging deploy (pm2 + build-slot script)
+deploy/                     server deploy (pm2 + build-slot script), nginx configs,
+                            production/ helpers (secrets, certificates, RDS setup)
+.github/workflows/          deploy.yml: checks, then deploy to the EC2 on push to main
 docs/                       this documentation, product specs, integration notes
 scripts/                    local setup, services, boot check, dependency check
 eslint.config.mjs           the import rules (module boundaries, layers)

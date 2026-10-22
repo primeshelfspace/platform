@@ -10,10 +10,13 @@ on top of it:
 | **Sugrpay** | Send invoices and get paid            | Live               |
 | **HQ**      | Products, stock, suppliers and stores | Next (placeholder) |
 
-**The web apps are in a separate repository:**
+**The web app is in a separate repository:**
 [primeshelfspace/sugrpay-frontend](https://github.com/primeshelfspace/sugrpay-frontend)
-(Accounts, the Sugrpay admin app and the payment pages). They call this API
-over HTTP.
+— one Next.js app: the Sugrpay admin at `/`, sign-in and team at `/accounts`,
+payment pages at `/pay`. It calls this API over HTTP.
+
+**Live:** site https://www.sugrpay.com, API https://api.sugrpay.com — see
+[docs/operations/production.md](docs/operations/production.md).
 
 ## Run it
 
@@ -24,8 +27,8 @@ pnpm setup:local          # services, databases, migrations, demo data
 pnpm dev
 ```
 
-The API answers at http://localhost:4000/health. Then start the web apps from
-the sugrpay-frontend repository and sign in there as `owner@sugrpay.test` /
+The API answers at http://localhost:4000/health. Then start the web app from
+the sugrpay-frontend repository (http://localhost:3000) and sign in as `owner@sugrpay.test` /
 `sugrpay-dev-password`.
 
 **New machine, or something not working?** Follow the full guide:
@@ -54,7 +57,8 @@ packages/
   invoicing-contracts/    what Sugrpay publishes (schemas, statuses, email/PDF)
   hq-contracts/           what HQ will publish (placeholder)
 docs/                     all documentation
-deploy/                   staging deploy scripts
+deploy/                   server deploy, nginx configs, production helpers
+.github/workflows/        deploy.yml: checks, then deploy on push to main
 scripts/                  local setup and checks
 ```
 
@@ -64,16 +68,18 @@ Everything installs into one `node_modules` at the root; `pnpm dev`, `build`,
 
 ## Documentation
 
-| Read                                                               | For                                                  |
-| ------------------------------------------------------------------ | ---------------------------------------------------- |
-| [docs/getting-started.md](docs/getting-started.md)                 | Running it locally, commands, troubleshooting        |
-| [docs/architecture/](docs/architecture/README.md)                  | Modules, layers, databases, events, decisions        |
-| [docs/guides/payment-flow.md](docs/guides/payment-flow.md)         | Testing invoice → payment                            |
-| [docs/guides/deploy-ec2.md](docs/guides/deploy-ec2.md)             | Deploying to AWS (EC2, RDS, Redis, S3, SES)          |
-| [docs/api/README.md](docs/api/README.md)                           | The API: every endpoint, how to call it, test report |
-| [docs/integrations/zoho-books.md](docs/integrations/zoho-books.md) | Connecting Zoho Books                                |
-| [docs/known-gaps.md](docs/known-gaps.md)                           | Open decisions and dependencies                      |
-| [docs/README.md](docs/README.md)                                   | Everything else                                      |
+| Read                                                               | For                                                    |
+| ------------------------------------------------------------------ | ------------------------------------------------------ |
+| [docs/getting-started.md](docs/getting-started.md)                 | Running it locally, commands, troubleshooting          |
+| [docs/developer-guide.md](docs/developer-guide.md)                 | How the code works, where things are, how to change it |
+| [docs/operations/production.md](docs/operations/production.md)     | The live system and how to operate it                  |
+| [docs/architecture/](docs/architecture/README.md)                  | Modules, layers, databases, events, decisions          |
+| [docs/guides/payment-flow.md](docs/guides/payment-flow.md)         | Testing invoice → payment                              |
+| [docs/guides/deploy-ec2.md](docs/guides/deploy-ec2.md)             | Deploying to AWS (EC2, RDS, Redis, S3, SES)            |
+| [docs/api/README.md](docs/api/README.md)                           | The API: every endpoint, how to call it, test report   |
+| [docs/integrations/zoho-books.md](docs/integrations/zoho-books.md) | Connecting Zoho Books                                  |
+| [docs/known-gaps.md](docs/known-gaps.md)                           | Open decisions and dependencies                        |
+| [docs/README.md](docs/README.md)                                   | Everything else                                        |
 
 ## Before you push
 
