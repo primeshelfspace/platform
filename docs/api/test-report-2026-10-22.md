@@ -1,5 +1,7 @@
 # API test report — 22 October 2026
 
+> Historical: this tested the single API of the time (`apps/api`, port 4000). The API was later split into three — see [decision 0005](../architecture/decisions/0005-separate-apis.md).
+
 A full check of every endpoint ([endpoints.md](endpoints.md)): 122 routes in 22
 controllers. Backend commit `5e3e8af`.
 

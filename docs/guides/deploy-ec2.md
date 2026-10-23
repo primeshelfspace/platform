@@ -14,11 +14,15 @@ production access can take a day).
 ## 1. What you are building
 
 ```
-                 ┌──────────────────────────┐
- Internet ──────►│  EC2 (this repository)   │──► RDS PostgreSQL (platform, invoicing)
-   https://api.… │  nginx :443 → :4000 api  │──► Redis (job queues)
-                 │  pm2: api, worker        │──► S3 (logos, check images)
-                 └──────────────────────────┘──► email (SMTP), Stripe, Zoho
+                 ┌──────────────────────────────┐
+ Internet ──────►│  EC2 (this repository)       │──► RDS PostgreSQL (platform, invoicing)
+   https://api.… │  nginx :443 → :4001 platform │──► Redis (job queues)
+                 │              :4002 sugrpay   │──► S3 (logos, check images)
+                 │              :4003 hq        │──► email (SMTP), Stripe, Zoho
+                 │  pm2: platform-api,          │
+                 │  sugrpay-api, sugrpay-worker,│
+                 │  hq-api                      │
+                 └──────────────────────────────┘
                               ▲
                               │ HTTPS
                  ┌────────────┴─────────────┐
@@ -33,8 +37,21 @@ hosted on Amplify — see sugrpay-frontend's
 After it is up, tell the backend its address:
 `bash deploy/set-public-urls.sh --site https://<site>`.
 
-The API host in this guide is `api.primeshelfspace.com`; use your own (or a
-free `api.<ip-with-dashes>.sslip.io` name until you have a domain).
+The backend is three APIs, each its own program and port
+([decision 0005](../architecture/decisions/0005-separate-apis.md)). nginx
+gives each its own name and keeps one **front door** name that accepts every
+path and passes it to the API that owns it:
+
+| Name (production)          | Goes to                        |
+| -------------------------- | ------------------------------ |
+| `platform-api.sugrpay.com` | platform API, `127.0.0.1:4001` |
+| `sugrpay-api.sugrpay.com`  | Sugrpay API, `127.0.0.1:4002`  |
+| `hq-api.sugrpay.com`       | HQ API, `127.0.0.1:4003`       |
+| `api.sugrpay.com`          | by path (`apiServiceFor`)      |
+
+The front-door host in this guide is `api.primeshelfspace.com`; use your own
+names (or free `<name>.<ip-with-dashes>.sslip.io` names until you have a
+domain).
 
 ---
 
@@ -58,16 +75,16 @@ ElastiCache and run Redis on the EC2 itself (`sudo apt install redis-server`,
 
 ### Why these sizes
 
-- **EC2 size.** The box runs the API and the worker and starts a headless
+- **EC2 size.** The box runs the three APIs and the worker and starts a headless
   Chrome to render invoice PDFs; `t3.small` (2 GB, with 2 GB swap) is enough
   for that. The web app builds on Amplify, not here. (Running the web app on
   this box too needs `t3.large`: each `next build` takes 1.5–2 GB
   on its own. 4 GB (`t3.medium`) works only with swap and slow deploys.
 - **x86_64, not ARM (Graviton).** Puppeteer downloads its own Chrome at
   install time, and there is no Linux ARM build of it.
-- **One RDS instance, two databases.** Each module has its own _database_
+- **One RDS instance, two databases.** Each API has its own _database_
   (`platform`, `invoicing`), not its own server. `pnpm db:bootstrap` creates
-  both, with separate logins, on one instance. Move a module to its own
+  both, with separate logins, on one instance. Move one to its own
   instance later only if it needs it; only its URLs change.
 - **A separate RDS instance per environment.** Never point staging and
   production at the same instance. `pnpm db:seed` empties every table it
@@ -179,8 +196,15 @@ database passwords and the two secrets, generate fresh values:
 
 ```bash
 openssl rand -hex 24          # one per database password
-openssl rand -base64 32       # SESSION_SECRET, then again for CREDENTIAL_ENCRYPTION_KEY
+openssl rand -base64 32       # SESSION_SECRET, CREDENTIAL_ENCRYPTION_KEY, INTERNAL_API_KEY (one each)
 ```
+
+`INTERNAL_API_KEY` is the secret the APIs send each other on their
+`/internal/...` routes; production refuses to start without it (at least 32
+characters). The ports (`PLATFORM_API_PORT`, `SUGRPAY_API_PORT`,
+`HQ_API_PORT`) and the addresses the APIs call each other on
+(`PLATFORM_INTERNAL_URL`, `SUGRPAY_INTERNAL_URL`) default to 4001/4002/4003 on
+`127.0.0.1`. `API_PUBLIC_URL` is the front door (`https://api.primeshelfspace.com`).
 
 **Save `CREDENTIAL_ENCRYPTION_KEY` in your password manager.** It encrypts the
 stored Stripe, Square, Authorize.net and Zoho credentials. Lose it and every
@@ -196,13 +220,17 @@ Keep the file private: `chmod 600 .env`.
 cd ~/platform
 pnpm install --frozen-lockfile
 pnpm db:bootstrap             # once: creates the databases and their logins
-bash deploy/deploy.sh         # builds, migrates, starts api + worker under pm2
-curl -s localhost:4000/health
+bash deploy/deploy.sh         # builds, migrates, starts the APIs + worker under pm2
+curl -s localhost:4001/health # platform API
+curl -s localhost:4002/health # Sugrpay API
+curl -s localhost:4003/health/live # HQ API
 ```
 
-`/health` should report `postgres:platform`, `postgres:invoicing`, `redis`,
-`queues` and `storage` as `up`. If the API refuses to start, its log lists what
-is missing: `pm2 logs api --lines 50`.
+The platform's `/health` should report `postgres:platform`, `redis` and
+`storage` as `up`; Sugrpay's `postgres:invoicing`, `queues`, `redis` and
+`storage`. If an API refuses to start, its log lists what is missing:
+`pm2 logs platform-api --lines 50` (or `sugrpay-api`, `sugrpay-worker`,
+`hq-api`).
 
 **Don't run `pnpm db:seed` on a server.** It replaces the data with demo data.
 It refuses when `APP_ENV=production`, but staging is not protected.
@@ -215,19 +243,22 @@ The Sugrpay web app deploys on Amplify, separately — see
 ## 6. nginx and HTTPS
 
 ```bash
-sudo cp ~/platform/deploy/nginx/api.conf /etc/nginx/sites-available/platform-api.conf
-# Set server_name in it to your API host
-sudo ln -s /etc/nginx/sites-available/platform-api.conf /etc/nginx/sites-enabled/
+sudo cp ~/platform/deploy/nginx/api.conf /etc/nginx/sites-available/api.conf
+# Set the four server_name lines in it to your names
+sudo ln -s /etc/nginx/sites-available/api.conf /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t && sudo systemctl reload nginx
 
-# Certificate for the API host. Certbot adds the HTTPS server block and the
-# HTTP → HTTPS redirect, and renews on its own.
-sudo certbot --nginx -d api.primeshelfspace.com
+# Certificates for every name. Certbot adds the HTTPS server blocks and the
+# HTTP → HTTPS redirects, and renews on its own.
+sudo certbot --nginx -d api.primeshelfspace.com -d platform-api.primeshelfspace.com \
+  -d sugrpay-api.primeshelfspace.com -d hq-api.primeshelfspace.com
 ```
 
-The DNS record must already point at the Elastic IP (an sslip.io name always
-does), or certbot cannot prove you own the name.
+Each DNS record must already point at the Elastic IP (an sslip.io name always
+does), or certbot cannot prove you own the name. The config refuses
+`/internal/` on every name: those routes are only for the APIs calling each
+other on the machine itself.
 
 ---
 
@@ -239,6 +270,9 @@ does), or certbot cannot prove you own the name.
 | Stripe  | Developers → Webhooks: one endpoint, **"Events on Connected accounts"**, URL `https://api.primeshelfspace.com/public/webhooks/stripe`, events `payment_intent.succeeded`, `payment_intent.processing`, `payment_intent.payment_failed`, `payment_intent.canceled`, `charge.refunded`. Its signing secret is `STRIPE_WEBHOOK_SECRET`. |
 | Zoho    | In the Zoho API console app, add `https://api.primeshelfspace.com/integrations/zoho/callback` as a redirect URI.                                                                                                                                                                                                                     |
 | Square  | If used: add `https://api.primeshelfspace.com/integrations/square/callback` on the Square application.                                                                                                                                                                                                                               |
+
+These all use the front door: it passes the Stripe and Square callbacks to the
+platform API and the Stripe webhook and Zoho callback to the Sugrpay API.
 
 Use Stripe **test** keys on staging and **live** keys on production only.
 
@@ -252,15 +286,16 @@ On the server:
 cd ~/platform && git pull && bash deploy/deploy.sh
 ```
 
-It builds beside the running version and switches over only when the build
-succeeded, so a failed build leaves the old version serving. The Sugrpay web
+It migrates both databases, builds all three APIs beside the running versions
+and switches over only when every build succeeded, so a failed build leaves
+the old versions serving. The Sugrpay web
 app redeploys on Amplify by itself on every push to sugrpay-frontend's `main`.
 
-| Check           | Command                         |
-| --------------- | ------------------------------- |
-| What is running | `pm2 status`                    |
-| A process's log | `pm2 logs api` (or `worker`)    |
-| Backend health  | `curl -s localhost:4000/health` |
+| Check           | Command                                                                |
+| --------------- | ---------------------------------------------------------------------- |
+| What is running | `pm2 status`                                                           |
+| A process's log | `pm2 logs platform-api` (or `sugrpay-api`, `sugrpay-worker`, `hq-api`) |
+| Backend health  | `curl -s localhost:4001/health` · `curl -s localhost:4002/health`      |
 
 ---
 
@@ -268,8 +303,6 @@ app redeploys on Amplify by itself on every push to sugrpay-frontend's `main`.
 
 These are open in the code today (see also [known-gaps.md](../known-gaps.md)):
 
-- **CORS accepts every origin** (`apps/api/src/main.ts`). Restrict it to the
-  four hosts above before production.
 - **Card fee on post-tax totals** is regulated in some US states (Q-01). Get an
   answer before switching card fees on.
 - **No CI.** Run `pnpm check` in both repositories before each release.

@@ -143,7 +143,7 @@ const envSchema = z
      */
     ZOHO_SCHEDULED_PULL_ENABLED: booleanish.default(false),
 
-    API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
+    API_PUBLIC_URL: z.string().url().default('http://localhost:4001'),
     ADMIN_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
     /** Accounts (sign-in, team, billing). Set-password emails link here. */
     ACCOUNTS_PUBLIC_URL: z.string().url().default('http://localhost:3000/accounts'),

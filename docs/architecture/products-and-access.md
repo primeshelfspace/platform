@@ -6,8 +6,9 @@ of the architecture plan.
 
 ## The four checks
 
-Every request to a product endpoint (anything under `modules/invoicing`, later
-`modules/hq`) passes these, in order, inside `AuthorisationGuard`:
+Every request to a product endpoint (anything served by the Sugrpay API,
+`apps/sugrpay`, and later the HQ API, `apps/hq`) passes these, in order,
+inside `AuthorisationGuard` (`@platform/server`):
 
 | #   | Check                                       | Where it comes from                                 | Fails with |
 | --- | ------------------------------------------- | --------------------------------------------------- | ---------- |
@@ -16,9 +17,10 @@ Every request to a product endpoint (anything under `modules/invoicing`, later
 | 3   | The user holds a role in the product        | `user_product_role`                                 | 403        |
 | 4   | That role may do this action, on this brand | the permission matrix (`@platform/kernel` roles.ts) | 403        |
 
-Checks 2 and 3 come from one database lookup (`app_resolve_session`) that runs
-on every request, so turning a product off or taking someone's role away takes
-effect on their **next** request.
+Checks 2 and 3 come from one lookup in the platform database
+(`app_resolve_session`) that runs on every request — a product API asks for it
+over the platform's `POST /internal/sessions/resolve` — so turning a product
+off or taking someone's role away takes effect on their **next** request.
 
 A product controller declares its product once, on the class:
 
@@ -28,8 +30,8 @@ A product controller declares its product once, on the class:
 export class InvoicesController { … }
 ```
 
-`authorisation-coverage.test.ts` fails the build if any controller in a product
-module forgets it, or if a platform controller has one.
+Each API's `authorisation-coverage.test.ts` fails the build if any product
+controller forgets it, or if a platform controller has one.
 
 ## Subscriptions
 

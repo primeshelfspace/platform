@@ -40,10 +40,14 @@ for app in "${APPS[@]}"; do
   mv "apps/$app/dist-build" "apps/$app/dist"
 done
 
-# The single API of before the split ran as 'api' and 'worker'; replace them
-# once with the new processes. Every later deploy just reloads.
-if pm2 jlist | grep -q '"name":"api"'; then pm2 delete api worker || true; fi
 pm2 startOrReload deploy/ecosystem.config.cjs --update-env
+
+# The single API of before the split ran as 'api' and 'worker' (port 4000).
+# Removed only once the new processes are running, and only when nginx no
+# longer sends anything to port 4000 (see docs/operations/production.md).
+if pm2 jlist | grep -q '"name":"api"' && ! sudo grep -rqs '127.0.0.1:4000' /etc/nginx/sites-enabled/; then
+  pm2 delete api worker || true
+fi
 pm2 save
 
 pm2 status

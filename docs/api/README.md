@@ -1,29 +1,48 @@
 # API
 
-The backend's HTTP API: one NestJS service used by the Sugrpay web app, the
-public payment pages, and the payment and accounting providers' webhooks.
+The backend's HTTP APIs, used by the Sugrpay web app, the public payment
+pages, and the payment and accounting providers' webhooks. There are three,
+each its own program
+([decision 0005](../architecture/decisions/0005-separate-apis.md)): the
+**platform** API (sign-in, companies, brands, users, subscriptions,
+locations, Stripe/Square/Authorize.Net connections), the **Sugrpay** API
+(customers, invoices, payments, checks, the payment page, brand settings,
+dashboard, Zoho Books) and the **HQ** API (a skeleton: `/health` only).
 
 | Read                                                   | For                                                           |
 | ------------------------------------------------------ | ------------------------------------------------------------- |
 | This page                                              | How to call it: addresses, sign-in, errors, pagination, money |
-| [endpoints.md](endpoints.md)                           | Every endpoint: access rule, request, response, what it does  |
-| [test-report-2026-10-22.md](test-report-2026-10-22.md) | The last full check of every endpoint, with findings          |
+| [endpoints.md](endpoints.md)                           | Every endpoint: which API, access rule, request, response     |
+| [test-report-2026-10-22.md](test-report-2026-10-22.md) | The last full check of every endpoint (before the split)      |
 
 `endpoints.md` is generated from the controllers (`pnpm docs:api`), and
 `pnpm check` fails when it is out of date — so it always matches the code.
 
 ## Addresses
 
-| Environment | API                                  |
-| ----------- | ------------------------------------ |
-| Local       | `http://localhost:4000`              |
-| Production  | `https://api.13-56-132-111.sslip.io` |
+| Environment | Platform API                       | Sugrpay API                       | HQ API                       |
+| ----------- | ---------------------------------- | --------------------------------- | ---------------------------- |
+| Local       | `http://localhost:4001`            | `http://localhost:4002`           | `http://localhost:4003`      |
+| Production  | `https://platform-api.sugrpay.com` | `https://sugrpay-api.sugrpay.com` | `https://hq-api.sugrpay.com` |
 
-There is no version prefix; the web app and the API deploy together.
+**Which API serves a path** is decided by `apiServiceFor` in
+`packages/platform-contracts/src/api-routing.ts`. Sugrpay owns `/dashboard`,
+`/public`, `/webhooks/zoho`, `/integrations/zoho`, `/health/queues` and
+`/brands/:brandId/(checks|customers|invoices|payments|settings|integrations/zoho)`;
+everything else is the platform's. [endpoints.md](endpoints.md) names the API
+for every route.
+
+In production, `https://api.sugrpay.com` is a **front door** that accepts every
+path and passes it to the API that owns it, by the same rule. Locally there is
+no front door: call each API on its own port.
+
+There is no version prefix; the web app and the APIs deploy together.
 
 ## Signing in
 
-1. `POST /auth/login` with `{ "email", "password" }` returns
+Sessions belong to the platform API; the same token works on every API.
+
+1. `POST /auth/login` (platform API) with `{ "email", "password" }` returns
    `{ "token", "expiresAt", "user" }`.
 2. Send the token on every other call:
    `Authorization: Bearer <token>`. (The API also accepts it in the
@@ -35,14 +54,16 @@ There is no version prefix; the web app and the API deploy together.
 - Only a SHA-256 hash of the token is stored; a database leak does not leak
   sessions.
 - Locally, `pnpm db:seed` creates a fixed session for the demo owner, so
-  `curl -H "Authorization: Bearer dev0000…0dev" http://localhost:4000/auth/me`
+  `curl -H "Authorization: Bearer dev0000…0dev" http://localhost:4001/auth/me`
   works without signing in (the full token is printed by the seed).
 
 ## Who may call what
 
 Every request passes, in order:
 
-1. **Session** — a valid token (`401` otherwise).
+1. **Session** — a valid token (`401` otherwise). The Sugrpay and HQ APIs ask
+   the platform API who the token belongs to; if it cannot be reached they
+   answer `503`.
 2. **Product** — for Sugrpay routes, the company subscribes to Sugrpay and the
    user holds a Sugrpay role (`403`).
 3. **Permission** — the user's role grants the route's `RESOURCE:ACTION`
@@ -53,8 +74,9 @@ Every request passes, in order:
 5. **Row-level security** in PostgreSQL — the database itself only returns rows
    of the user's company and brands, whatever the code above did.
 
-A route that declares no permission is refused: access is opt-in, and a test
-(`authorisation-coverage.test.ts`) fails the build if a route forgets.
+A route that declares no permission is refused: access is opt-in, and each
+API's `authorisation-coverage.test.ts` fails the build if a route forgets (or
+if a route is served by an API `apiServiceFor` does not send it to).
 
 ## Requests
 
@@ -86,15 +108,15 @@ List endpoints take `?page=1&pageSize=25` (`pageSize` 1–200) and return:
 
 ## Errors
 
-| Status | Means                                                                 |
-| ------ | --------------------------------------------------------------------- |
-| `400`  | The request is invalid — see the body below                           |
-| `401`  | No session, or it expired or was ended                                |
-| `403`  | Signed in, but not allowed (role, product or brand)                   |
-| `404`  | Not found — or not yours, or a payment link that is no longer valid   |
-| `409`  | Conflicts with the current state (e.g. paying a cancelled invoice)    |
-| `503`  | Something it depends on is down (e.g. email could not be sent); retry |
-| `5xx`  | Other server errors; the error is in the API log (`pm2 logs api`)     |
+| Status | Means                                                                                                            |
+| ------ | ---------------------------------------------------------------------------------------------------------------- |
+| `400`  | The request is invalid — see the body below                                                                      |
+| `401`  | No session, or it expired or was ended                                                                           |
+| `403`  | Signed in, but not allowed (role, product or brand)                                                              |
+| `404`  | Not found — or not yours, or a payment link that is no longer valid                                              |
+| `409`  | Conflicts with the current state (e.g. paying a cancelled invoice)                                               |
+| `503`  | Something it depends on is down (e.g. email could not be sent, or the platform API for a Sugrpay request); retry |
+| `5xx`  | Other server errors; the error is in that API's log (`pm2 logs platform-api` or `pm2 logs sugrpay-api`)          |
 
 Error bodies:
 
@@ -125,14 +147,20 @@ No sign-in, but each is protected another way:
 | `/storage/local`                | A signed, expiring link (only used with local-disk storage) |
 | `/health*`                      | Nothing to protect: status only, no data                    |
 
+`/internal/...` routes are for the APIs only: they need the shared
+`INTERNAL_API_KEY`, and nginx refuses them from the internet.
+
 ## Trying it
 
 ```bash
-# sign in (local demo data)
-TOKEN=$(curl -s -X POST localhost:4000/auth/login -H 'Content-Type: application/json' \
+# sign in (local demo data) — platform API
+TOKEN=$(curl -s -X POST localhost:4001/auth/login -H 'Content-Type: application/json' \
   -d '{"email":"owner@sugrpay.test","password":"sugrpay-dev-password"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).token')
 
-# who am I, and my brands
-curl -s localhost:4000/auth/me -H "Authorization: Bearer $TOKEN"
-curl -s localhost:4000/brands  -H "Authorization: Bearer $TOKEN"
+# who am I, and my brands — platform API
+curl -s localhost:4001/auth/me -H "Authorization: Bearer $TOKEN"
+curl -s localhost:4001/brands  -H "Authorization: Bearer $TOKEN"
+
+# the dashboard — Sugrpay API
+curl -s localhost:4002/dashboard/by-brand -H "Authorization: Bearer $TOKEN"
 ```

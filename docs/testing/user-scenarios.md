@@ -2,8 +2,10 @@
 
 Every action a normal person can take in Sugrpay, who can take it, and where
 it is tested. **E2E n** is test _n_ in
-[`apps/api/src/e2e/user-journeys.test.ts`](../../apps/api/src/e2e/user-journeys.test.ts),
-which drives the real API over HTTP exactly as the web app does. Other entries
+[`e2e/user-journeys.test.ts`](../../e2e/user-journeys.test.ts), which starts
+the platform and Sugrpay APIs and drives them over real HTTP exactly as the web
+app does, sending each call to the API that owns it (`apiServiceFor`). Run it
+with `pnpm test` (or `pnpm --filter @platform/e2e test`). Other entries
 name the unit or database test file. "UI only" means the behaviour lives in the
 web app and is checked by hand (the web app has no browser tests yet).
 

@@ -49,7 +49,7 @@ export interface PaymentGatewaySummary {
  * check ("has no visible effect today").
  *
  * All four share one IntegrationConnection row per brand (unique on
- * brandId+provider) — the same table Zoho and Stripe already use — so a
+ * brandId+provider) — the same table Stripe already uses — so a
  * brand can hold at most one CONNECTED row per provider, and reconnecting
  * after a disconnect is just flipping status back.
  */

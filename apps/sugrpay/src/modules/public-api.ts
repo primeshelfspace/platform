@@ -1,10 +1,6 @@
 /**
- * The invoicing product's public API — together with ./modules.ts, the ONLY
- * files anything outside `invoicing/` may import. The platform never imports
- * them (products depend on the platform, never the reverse) and other
- * products reach invoicing only through these files or through events.
- *
- * Enforced by src/module-boundaries.test.ts.
+ * The services the background worker (src/worker.ts) runs jobs with. The API
+ * and the worker are two processes of the same Sugrpay program.
  */
 
 // Used by the worker process to run Zoho sync jobs

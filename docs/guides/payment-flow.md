@@ -48,12 +48,12 @@ psql "$INVOICING_DIRECT_DATABASE_URL" -tA -c \
 BODY='{"id":"evt_1","type":"PAYMENT_SUCCEEDED","gatewayReference":"<ref>","amountMinor":<amount>,"currency":"USD","occurredAt":"2026-01-01T00:00:00.000Z"}'
 SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "fake-gateway-local-secret" -hex | sed 's/^.* //')
 curl -X POST -H "Content-Type: application/json" -H "x-fake-signature: $SIG" \
-  -d "$BODY" http://localhost:4000/public/webhooks/fake-gateway
+  -d "$BODY" http://localhost:4002/public/webhooks/fake-gateway
 ```
 
-`<amount>` is in minor units (cents). The signing secret
-`fake-gateway-local-secret` comes from
-`apps/api/src/shared/adapters/gateway/fake-gateway.adapter.ts`; it is a test
+The webhook goes to the Sugrpay API (port 4002). `<amount>` is in minor units
+(cents). The signing secret `fake-gateway-local-secret` comes from
+`apps/sugrpay/src/adapters/gateway/fake-gateway.adapter.ts`; it is a test
 value and never a real secret.
 
 ## 5. Check the emails

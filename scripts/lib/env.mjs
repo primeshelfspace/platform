@@ -20,7 +20,7 @@ export function parseValue(raw) {
 
 /**
  * Loads the root .env into process.env. An ambient value always wins, so
- * `API_PORT=4002 pnpm dev` overrides the file rather than the reverse.
+ * `PLATFORM_API_PORT=4011 pnpm dev` overrides the file rather than the reverse.
  *
  * NODE_ENV is deliberately never loaded from the file: every command this
  * wraps (next dev, next build, next start, prisma, ...) already picks the

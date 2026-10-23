@@ -1,20 +1,26 @@
 # Zoho Books
 
 Sugrpay keeps each brand's customers, invoices and payments in step with that
-brand's Zoho Books organisation, in both directions.
+brand's Zoho Books organisation, in both directions. All of it lives in the
+Sugrpay API (`apps/sugrpay`).
 
-| Where                                              | What                                                                  |
-| -------------------------------------------------- | --------------------------------------------------------------------- |
-| `modules/platform/integrations/`                   | The connection itself: OAuth tokens (encrypted), organisation, health |
-| `modules/invoicing/zoho-sync/`                     | What syncs over it: push, pull, webhooks, sandbox, scheduled tick     |
-| `shared/adapters/accounting/zoho-books.adapter.ts` | The HTTP client for the Zoho Books API                                |
+| Where                                                                       | What                                                                                            |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `apps/sugrpay/src/modules/zoho-sync/application/zoho-connection.service.ts` | The connection itself (`ZohoConnectionService`): OAuth tokens (encrypted), organisation, health |
+| `apps/sugrpay/src/modules/zoho-sync/`                                       | What syncs over it: push, pull, webhooks, sandbox, scheduled tick                               |
+| `apps/sugrpay/src/adapters/accounting/zoho-books.adapter.ts`                | The HTTP client for the Zoho Books API                                                          |
+
+Connections are stored in Sugrpay's own `zoho_connection` table. Before the
+APIs were split they were rows in the platform's `integration_connection`
+table; `pnpm db:move-zoho-connections` copies them across (safe to repeat).
 
 ## Connecting a brand
 
 In the Sugrpay admin: **Brand settings → Integrations → Zoho Books → Connect**.
 That calls `GET /brands/:brandId/integrations/zoho/connect`, which sends the
 user to Zoho to authorise, and Zoho returns to
-`GET /integrations/zoho/callback`.
+`GET /integrations/zoho/callback`. Both are Sugrpay API routes (locally port
+4002; in production through `api.sugrpay.com`, which passes them on).
 
 Set in `.env`:
 
@@ -32,12 +38,13 @@ connects.
 
 ## How sync runs
 
-- **Push** (Sugrpay → Zoho): queued on every relevant change, run by the worker.
+- **Push** (Sugrpay → Zoho): queued on every relevant change, run by Sugrpay's
+  worker.
 - **Pull** (Zoho → Sugrpay): driven by Zoho webhooks, plus the **Sync now**
   button; a timed pull every N minutes is off unless
   `ZOHO_SCHEDULED_PULL_ENABLED=true`.
 - The worker must be running for push and pull jobs:
-  `pnpm --filter @platform/api dev:worker`.
+  `pnpm --filter @platform/sugrpay-api dev:worker`.
 
 Sync activity (every attempt, with Zoho's own error message) is shown on the
 brand's integration panel.

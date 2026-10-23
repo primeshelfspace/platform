@@ -119,7 +119,7 @@ Settings → Sandbox in that same org.
 
 ## Testing
 
-`apps/api/src/modules/invoicing/zoho-sync/application/zoho-sandbox.service.test.ts` covers the request
+`apps/sugrpay/src/modules/zoho-sync/application/zoho-sandbox.service.test.ts` covers the request
 shapes (paths, methods, bodies) for every operation, the not-connected error
 path, and that a Zoho `IntegrationError` (e.g. a scope/permission failure)
 propagates untouched rather than being swallowed. These are unit tests

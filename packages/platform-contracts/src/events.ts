@@ -4,7 +4,7 @@
  * fields are fine; renaming or removing one needs every subscriber updated
  * first.
  *
- * Exported to other modules through ../public-api.ts.
+ * Published by the platform API; delivered to Sugrpay over HTTP (POST /internal/events).
  */
 
 export const PLATFORM_EVENTS = {
