@@ -1,0 +1,51 @@
+{
+  "name": "@platform/sugrpay-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Sugrpay API and its background worker: customers, invoices, payments, checks, the public payment page, brand settings, Zoho Books sync. Its own program and its own database (invoicing); reaches the platform only over HTTP.",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "node ../../scripts/with-env.mjs nest start --watch",
+    "dev:worker": "node ../../scripts/with-env.mjs nest start --watch --entryFile worker",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node ../../scripts/with-env.mjs node dist/main.js",
+    "start:worker": "node ../../scripts/with-env.mjs node dist/worker.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "node ../../scripts/with-env.mjs prisma generate --schema prisma/schema.prisma",
+    "db:migrate": "node ../../scripts/with-env.mjs prisma migrate deploy --schema prisma/schema.prisma && pnpm db:generate",
+    "db:reset": "node ../../scripts/guard-destructive-db.mjs && node ../../scripts/with-env.mjs prisma migrate reset --force --skip-seed --schema prisma/schema.prisma",
+    "db:studio": "node ../../scripts/with-env.mjs prisma studio --schema prisma/schema.prisma --port 5556"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.717.0",
+    "@aws-sdk/s3-request-presigner": "^3.717.0",
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/platform-express": "^10.4.15",
+    "@platform/invoicing-contracts": "workspace:*",
+    "@platform/kernel": "workspace:*",
+    "@platform/platform-contracts": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "bullmq": "^5.34.5",
+    "ioredis": "^5.4.2",
+    "nodemailer": "^6.9.16",
+    "puppeteer": "^25.9.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "stripe": "^17.5.0",
+    "zod": "^3.24.1",
+    "@platform/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.9",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^6.4.17",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,443 @@
+// Platform database — login, companies, brands, users, integration connections, audit.
+//
+// Conventions that are load-bearing, not stylistic:
+//   *_minor   BigInt   money as signed 64-bit integer minor units (§5.3, NFR-INT-001).
+//                      No Decimal and no Float appears anywhere in this file.
+//   *_bp      Int      rates as integer basis points. 6% is 600.
+//   quantity  Int      fixed point scaled by 10,000, so 1.5 is 15000.
+//   Nothing is hard-deleted; financial records carry a status instead (NFR-INT-023).
+//
+// This database belongs to ONE module. No other module may read or write it;
+// they ask this module's public API or listen to its events instead.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("PLATFORM_DATABASE_URL")
+  directUrl = env("PLATFORM_DIRECT_DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum MerchantStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+/// FRS-001 §3.2. Six roles reconciling the signed MVP with the prototype.
+enum Role {
+  MERCHANT_OWNER
+  MERCHANT_ADMIN
+  BRAND_ADMIN
+  FINANCE_USER
+  SALES_USER
+  READ_ONLY
+}
+
+enum BrandStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+/// FR-BRD onboarding: legal structure of the business behind a brand.
+enum BusinessType {
+  SOLE_PROPRIETORSHIP
+  LLC
+  CORPORATION
+  PARTNERSHIP
+  NONPROFIT
+}
+
+/// FR-ONB: whether a merchant operates one brand or several. Chosen once,
+/// right after company details — SINGLE auto-creates the one brand from
+/// those details; MULTI hands off to brand-by-brand setup instead.
+enum BrandStructure {
+  SINGLE
+  MULTI
+}
+
+enum IntegrationProvider {
+  ZOHO_BOOKS
+  NUMBERS_GATEWAY
+  SHOPIFY
+  STRIPE
+  PAYPAL
+  SQUARE
+  AUTHORIZE_NET
+}
+
+enum ConnectionStatus {
+  DISCONNECTED
+  CONNECTED
+  UNHEALTHY
+  REVOKED
+}
+
+/// The products a company can subscribe to (kernel PRODUCTS). The platform
+/// itself is not a product: it is always on.
+enum Product {
+  INVOICING
+  HQ
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum LocationKind {
+  STORE
+  WAREHOUSE
+}
+
+enum LocationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+/// Tenant root. Never referenced directly by operational queries; reached via brand.
+model Merchant {
+  id           String         @id @default(uuid()) @db.Uuid
+  name         String
+  contactEmail String         @map("contact_email")
+  address      Json?
+  plan         String         @default("standard")
+  status       MerchantStatus @default(ACTIVE)
+
+  /// Onboarding, FR-ONB. Staged company details, collected once before any
+  /// Brand exists and copied from here into the first Brand — see
+  /// MerchantService.setCompanyDetails / chooseBrandStructure. Everything
+  /// up to and including brandStructure is derived, never stored as its own
+  /// step, so it can never drift out of sync with what actually happened.
+  /// onboardingComplete is the one fact that genuinely cannot be derived —
+  /// SINGLE sets it the instant its one brand is created, but a MULTI
+  /// merchant decides for itself when it is done adding brands, which
+  /// nothing in the data implies on its own.
+  companyLegalName      String?         @map("company_legal_name")
+  /// "Doing business as" — the trading name, where it differs from the legal
+  /// one. Optional because most businesses trade under their legal name.
+  companyDba            String?         @map("company_dba")
+  companyBusinessType   BusinessType?   @map("company_business_type")
+  companyPhone          String?         @map("company_phone")
+  companyEmail          String?         @map("company_email")
+  /// Normalized bare domain (e.g. "acme.com") — used to verify companyEmail
+  /// belongs to the business rather than a personal provider.
+  companyWebsite        String?         @map("company_website")
+  companyMailingAddress Json?           @map("company_mailing_address")
+  companyBillingAddress Json?           @map("company_billing_address")
+  companyTaxId          String?         @map("company_tax_id")
+  companyLogoKey        String?         @map("company_logo_key")
+  brandStructure        BrandStructure? @map("brand_structure")
+  onboardingComplete    Boolean         @default(false) @map("onboarding_complete")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users         User[]
+  brands        Brand[]
+  auditLogs     AuditLog[]
+  subscriptions Subscription[]
+  locations     Location[]
+
+  @@map("merchant")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  merchantId   String     @map("merchant_id") @db.Uuid
+  email        String
+  passwordHash String     @map("password_hash")
+  name         String
+  role         Role
+  status       UserStatus @default(INVITED)
+  totpSecret   String?    @map("totp_secret")
+  lastLoginAt  DateTime?  @map("last_login_at")
+  failedLogins Int        @default(0) @map("failed_logins")
+  lockedUntil  DateTime?  @map("locked_until")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  merchant       Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  assignments    UserBrandAssignment[]
+  sessions       Session[]
+  passwordTokens PasswordResetToken[]
+  productRoles   UserProductRole[]
+  locations      UserLocationAssignment[]
+
+  /// Email is unique within a merchant, not globally: the same person may hold
+  /// accounts at two client organisations.
+  @@unique([merchantId, email])
+  @@index([merchantId])
+  @@map("user")
+}
+
+/// Absent row means no access. Drives every scoped query (TDD-001 §5.2).
+model UserBrandAssignment {
+  userId    String   @map("user_id") @db.Uuid
+  brandId   String   @map("brand_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@id([userId, brandId])
+  @@index([brandId])
+  @@map("user_brand_assignment")
+}
+
+model Session {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  issuedAt   DateTime  @default(now()) @map("issued_at")
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  lastSeenAt DateTime? @map("last_seen_at")
+  sourceIp   String?   @map("source_ip")
+  userAgent  String?   @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
+}
+
+/// FR-AUTH-005/006 and FR-ONB: the emailed link that lets a brand-new owner —
+/// or anyone who has forgotten their password — set one without already
+/// holding a session.
+///
+/// Only the SHA-256 digest is stored, exactly like `session.token_hash`: the
+/// raw token exists in the recipient's inbox and nowhere else, so a database
+/// disclosure yields no usable links. Single use (`used_at`) and short-lived
+/// (`expires_at`), because a set-password link is a bearer credential for the
+/// whole account.
+///
+/// Outside row-level security for the same reason `session` is: it is consulted
+/// to establish who someone is, so it cannot itself be scoped by that answer.
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_token")
+}
+
+model Brand {
+  id             String        @id @default(uuid()) @db.Uuid
+  merchantId     String        @map("merchant_id") @db.Uuid
+  legalName      String        @map("legal_name")
+  displayName    String        @map("display_name")
+  salesPerson    String?       @map("sales_person")
+  businessType   BusinessType? @map("business_type")
+  phone          String?
+  email          String?
+  mailingAddress Json?         @map("mailing_address")
+  billingAddress Json?         @map("billing_address")
+  taxId          String?       @map("tax_id")
+  currency       String        @default("USD")
+  timezone       String        @default("America/New_York")
+  themeColor     String        @default("#2D6A6A") @map("theme_color")
+  logoKey        String?       @map("logo_key")
+  status         BrandStatus   @default(ACTIVE)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  merchant    Merchant                @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  assignments UserBrandAssignment[]
+  connections IntegrationConnection[]
+  locations   Location[]
+
+  @@index([merchantId])
+  @@map("brand")
+}
+
+// ---------------------------------------------------------------------------
+// Subscriptions, product roles, locations (architecture plan, phase 2)
+// ---------------------------------------------------------------------------
+
+/// Which products a company has switched on. A product's endpoints answer
+/// 403 for a company without an ACTIVE row here. One row per company and
+/// product; cancelling keeps the row (status CANCELLED) for history.
+model Subscription {
+  id         String             @id @default(uuid()) @db.Uuid
+  merchantId String             @map("merchant_id") @db.Uuid
+  product    Product
+  status     SubscriptionStatus @default(ACTIVE)
+  plan       String             @default("standard")
+  startedAt  DateTime           @default(now()) @map("started_at")
+  endedAt    DateTime?          @map("ended_at")
+  createdAt  DateTime           @default(now()) @map("created_at")
+  updatedAt  DateTime           @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId, product])
+  @@map("subscription")
+}
+
+/// A user's role inside one product. Absent row means the user cannot use
+/// that product. The role is text because each product has its own role set
+/// (kernel PRODUCT_ROLES); the application validates it.
+model UserProductRole {
+  userId    String   @map("user_id") @db.Uuid
+  product   Product
+  role      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, product])
+  @@map("user_product_role")
+}
+
+/// A physical place the company operates — a store or a warehouse. Optionally
+/// belongs to a brand. Users reach locations the same way they reach brands:
+/// all-brand roles see every location, others only the ones assigned to them.
+model Location {
+  id         String         @id @default(uuid()) @db.Uuid
+  merchantId String         @map("merchant_id") @db.Uuid
+  brandId    String?        @map("brand_id") @db.Uuid
+  name       String
+  kind       LocationKind
+  address    Json?
+  status     LocationStatus @default(ACTIVE)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  merchant    Merchant                 @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  brand       Brand?                   @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  assignments UserLocationAssignment[]
+
+  @@index([merchantId])
+  @@index([brandId])
+  @@map("location")
+}
+
+/// Absent row means no access to that location (for roles that do not cover
+/// every brand).
+model UserLocationAssignment {
+  userId     String   @map("user_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, locationId])
+  @@index([locationId])
+  @@map("user_location_assignment")
+}
+
+model IntegrationConnection {
+  id                   String              @id @default(uuid()) @db.Uuid
+  brandId              String              @map("brand_id") @db.Uuid
+  provider             IntegrationProvider
+  status               ConnectionStatus    @default(DISCONNECTED)
+  /// Envelope-encrypted with a KMS-held key. Never logged, never returned by
+  /// any API, never included in an export (TDD-001 §15.2).
+  encryptedCredentials String?             @map("encrypted_credentials")
+  config               Json?
+  lastSyncAt           DateTime?           @map("last_sync_at")
+  /// Cursor for incremental pulls (FR-ZHO-030): the wall-clock time the last
+  /// successful pull *started*, not the newest record seen — using pull-start
+  /// avoids missing a record that gets modified while that pull is running.
+  lastPulledAt         DateTime?           @map("last_pulled_at")
+  health               String?
+  /// Minutes between scheduled pulls for this brand (FR-ZHO-030). The
+  /// 'scheduled-sync' cron itself ticks every minute — this is what it checks
+  /// each connected brand against, not a separate per-brand cron registration.
+  /// 1 is the honest floor for "Realtime": pull is inherently polling, since
+  /// Zoho sends no webhooks this adapter listens for.
+  pullFrequencyMinutes Int                 @default(15) @map("pull_frequency_minutes")
+  /// Independent per-object-type push gates (FR-ZHO-011/012). Neither one
+  /// blocks the hard technical prerequisite a disabled type still has to
+  /// satisfy for another — see ZohoSyncService.pushCustomer's `viaCascade`.
+  customerSyncEnabled  Boolean             @default(true) @map("customer_sync_enabled")
+  invoiceSyncEnabled   Boolean             @default(true) @map("invoice_sync_enabled")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, provider])
+  @@map("integration_connection")
+}
+
+/// Append-only. The application role holds no UPDATE or DELETE grant on this
+/// table — enforced in the RLS migration, not by convention (TDD-001 §5.2).
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  merchantId String   @map("merchant_id") @db.Uuid
+  brandId    String?  @map("brand_id") @db.Uuid
+  actorType  String   @map("actor_type")
+  actorId    String?  @map("actor_id")
+  action     String
+  objectType String   @map("object_type")
+  objectId   String?  @map("object_id")
+  sourceIp   String?  @map("source_ip")
+  outcome    String
+  metadata   Json?
+  occurredAt DateTime @default(now()) @map("occurred_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, occurredAt])
+  @@index([brandId, occurredAt])
+  @@map("audit_log")
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+/// Transactional outbox. A platform change and the event announcing it are
+/// written in the same transaction, so an event exists if and only if the
+/// change committed. OutboxDispatcher delivers rows to subscribers (in
+/// process today, a message broker if a module is ever split out), retrying
+/// with backoff; subscribers must ignore duplicates.
+///
+/// The application role may only INSERT here — delivery runs on the owner
+/// connection, and nothing else reads it.
+model OutboxEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  /// e.g. "platform.brand.updated" — see platform/events/contracts.ts.
+  topic       String
+  /// The entity the event is about (brand id, user id, ...).
+  aggregateId String    @map("aggregate_id") @db.Uuid
+  payload     Json
+  occurredAt  DateTime  @default(now()) @map("occurred_at")
+  /// Not delivered before this time — pushed forward on each failed attempt.
+  availableAt DateTime  @default(now()) @map("available_at")
+  attempts    Int       @default(0)
+  deliveredAt DateTime? @map("delivered_at")
+  lastError   String?   @map("last_error")
+
+  @@index([deliveredAt, availableAt])
+  @@map("outbox_event")
+}

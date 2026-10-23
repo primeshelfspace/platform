@@ -1,6 +1,6 @@
 # 0001 — Modular monolith, one backend for every product
 
-**Status:** accepted · Oct 2026
+**Status:** accepted · Oct 2026 · the "one process" part is superseded by [0005](0005-separate-apis.md): each product is now its own API
 
 ## Decision
 

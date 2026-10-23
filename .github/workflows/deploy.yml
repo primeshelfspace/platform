@@ -114,14 +114,14 @@ jobs:
             # Builds beside the live version, migrates, then reloads pm2.
             CI=true bash deploy/deploy.sh
 
-            # Fail the run if the API did not come back healthy.
+            # Fail the run unless all three APIs came back healthy.
             for i in $(seq 1 20); do
-              if curl -fsS -m 5 http://localhost:4000/health/ready >/dev/null; then
+              if curl -fsS -m 5 http://localhost:4001/health/ready >/dev/null                 && curl -fsS -m 5 http://localhost:4002/health/ready >/dev/null                 && curl -fsS -m 5 http://localhost:4003/health/live >/dev/null; then
                 echo "healthy at $(git log -1 --format='%h %s')"
                 exit 0
               fi
               sleep 3
             done
-            echo "API not healthy after deploy" >&2
-            pm2 logs api --nostream --lines 40 >&2 || true
+            echo "APIs not healthy after deploy" >&2
+            pm2 logs --nostream --lines 40 >&2 || true
             exit 1

@@ -1,6 +1,7 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  - 'e2e'
 
 # One node_modules, at the repository root: every app and package resolves
 # its libraries from there (no per-workspace node_modules folders).

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Generates docs/api/endpoints.md from the API's controllers, so the endpoint
+ * Generates docs/api/endpoints.md from the controllers of every API (platform,
+ * Sugrpay, HQ, plus the shared ones in packages/server), so the endpoint
  * list cannot drift from the code: every route's method, path, access rule,
  * request schema and response type is read from the source. Descriptions are
  * the one place a human writes, in DESCRIPTIONS below; a route without one
@@ -13,11 +14,29 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './lib/env.mjs';
 
-const SRC = path.join(ROOT, 'apps/api/src');
+/** Where controllers live, and which API serves them. */
+const SOURCES = [
+  { dir: path.join(ROOT, 'apps/platform/src'), api: 'platform' },
+  { dir: path.join(ROOT, 'apps/sugrpay/src'), api: 'sugrpay' },
+  { dir: path.join(ROOT, 'apps/hq/src'), api: 'hq' },
+  // Health and local file serving exist on every API.
+  { dir: path.join(ROOT, 'packages/server/src'), api: 'every API' },
+];
 const OUT = path.join(ROOT, 'docs/api/endpoints.md');
 
 /** One line per route, keyed "METHOD /path". */
 const DESCRIPTIONS = {
+  'POST /internal/sessions/resolve':
+    "Platform: who a session token belongs to (the caller's scope, or null). What a product API's request guard asks on every signed-in request.",
+  'GET /internal/brands/:brandId/stripe-account':
+    "Platform: the brand's connected Stripe account id, for taking a card payment.",
+  'GET /internal/stripe-accounts/:accountId/brand':
+    'Platform: which brand a Stripe connected account belongs to, for routing a Stripe webhook.',
+  'POST /internal/brands/:brandId/theme-color':
+    "Platform: sets a brand's colour (Sugrpay's branding screens edit it; the brand is the platform's).",
+  'POST /internal/audit': "Platform: writes an entry to the platform's append-only audit log.",
+  'POST /internal/events':
+    'Sugrpay: receives a platform event (brand created/updated, …) from the platform outbox; a failure makes the platform retry.',
   // Sign-in
   'POST /auth/register':
     'Self-serve sign-up: creates the company, its owner (invited) and the Sugrpay subscription, and emails a set-password link. Signing up again before the password is set re-sends the link; 409 once sign-up is finished; 503 (and nothing kept) if the email cannot be sent.',
@@ -216,6 +235,7 @@ const DESCRIPTIONS = {
 };
 
 const AREAS = [
+  ['Internal (API to API)', (p) => p.startsWith('/internal')],
   ['Sign-in', (p) => p.startsWith('/auth')],
   ['Company and onboarding', (p) => p.startsWith('/merchant') || p.startsWith('/company')],
   ['Brands', (p) => /^\/brands(\/:brandId)?(\/logo)?$/.test(p)],
@@ -237,22 +257,30 @@ const AREAS = [
 
 function controllers() {
   const files = [];
-  (function walk(d) {
-    for (const f of fs.readdirSync(d)) {
-      const p = path.join(d, f);
-      if (fs.statSync(p).isDirectory()) walk(p);
-      else if (f.endsWith('.controller.ts')) files.push(p);
-    }
-  })(SRC);
+  for (const { dir, api } of SOURCES) {
+    if (!fs.existsSync(dir)) continue;
+    (function walk(d) {
+      for (const f of fs.readdirSync(d)) {
+        const p = path.join(d, f);
+        if (fs.statSync(p).isDirectory()) walk(p);
+        else if (f.endsWith('.controller.ts') || f.endsWith('.module.ts'))
+          files.push({ file: p, api });
+      }
+    })(dir);
+  }
   return files;
 }
 
 function routes() {
   const out = [];
-  for (const f of controllers()) {
+  for (const { file: f, api } of controllers()) {
     const s = fs.readFileSync(f, 'utf8');
+    if (!/@Controller\(/.test(s)) continue;
     const base = (s.match(/@Controller\(\s*['"`]([^'"`]*)['"`]/) || [, ''])[1];
-    const head = s.slice(0, s.indexOf('export class'));
+    const head = s.slice(
+      s.lastIndexOf('\n', s.indexOf('@Controller(')),
+      s.indexOf('export class', s.indexOf('@Controller(')),
+    );
     const classPublic = /@Public\(\)/.test(head);
     const product = (head.match(/@ProductScope\(\s*['"`](\w+)['"`]/) || [])[1] || null;
     const lines = s.split('\n');
@@ -299,7 +327,8 @@ function routes() {
       }
       const decos = above.concat(below).join('\n');
       const perm = (decos.match(/@RequirePermission\(([^)]*)\)/) || [])[1];
-      const isPublic = classPublic || /@Public\(\)/.test(decos);
+      const internal = /@InternalOnly\(\)/.test(decos);
+      const isPublic = !internal && (classPublic || /@Public\(\)/.test(decos));
       const body = (sig.match(/@Body\(\s*zodPipe\((\w+)\)/) || [])[1];
       const query = (sig.match(/@Query\(\s*zodPipe\((\w+)\)/) || [])[1];
       const upload = /FileInterceptor|FileFieldsInterceptor|@UploadedFile/.test(decos + sig);
@@ -317,7 +346,9 @@ function routes() {
         upload,
         ret: ret.replace(/\s+/g, ' '),
         code,
-        file: path.relative(path.join(ROOT, 'apps/api'), f).split(path.sep).join('/'),
+        file: path.relative(ROOT, f).split(path.sep).join('/'),
+        api,
+        internal,
       });
     }
   }
@@ -325,6 +356,7 @@ function routes() {
 }
 
 function access(r) {
+  if (r.internal) return 'internal key only';
   if (r.isPublic) return 'public';
   const [resource, action] = (r.perm || '').split(',').map((x) => x.trim().replace(/['"]/g, ''));
   const brand = /brandFrom: 'query'/.test(r.perm || '') ? ' (brand from `?brandId`)' : '';
@@ -345,6 +377,12 @@ function render(all) {
   for (const r of all) by[r.method] = (by[r.method] || 0) + 1;
   const lines = [
     '# API endpoints',
+    '',
+    'Three APIs, each its own program: **platform** (platform-api.sugrpay.com), **sugrpay**',
+    '(sugrpay-api.sugrpay.com) and **hq** (hq-api.sugrpay.com, not built yet). The API column says which one',
+    'serves each route; api.sugrpay.com also accepts every route and passes it on to the right one. The rule',
+    'is `apiServiceFor` in `packages/platform-contracts/src/api-routing.ts`. **Internal** routes answer only the',
+    'other APIs (shared INTERNAL_API_KEY; refused from the internet).',
     '',
     '<!-- Generated by scripts/api-reference.mjs from the controllers. Do not edit by hand:',
     '     change the code (or the description in that script) and run `pnpm docs:api`. -->',
@@ -369,8 +407,8 @@ function render(all) {
     lines.push(
       `## ${area}`,
       '',
-      '| Method | Path | Access | Request | Response | What it does |',
-      '| --- | --- | --- | --- | --- | --- |',
+      '| API | Method | Path | Access | Request | Response | What it does |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
     );
     for (const r of rs) {
       const reqParts = [
@@ -389,7 +427,7 @@ function render(all) {
         .filter(Boolean)
         .join(' ');
       lines.push(
-        `| ${r.method} | \`${r.path}\` | ${access(r)} | ${reqParts.join(', ') || '—'} | ${resp || '—'} | ${DESCRIPTIONS[`${r.method} ${r.path}`].replace(/\|/g, '\\|')} |`,
+        `| ${r.api} | ${r.method} | \`${r.path}\` | ${access(r)} | ${reqParts.join(', ') || '—'} | ${resp || '—'} | ${DESCRIPTIONS[`${r.method} ${r.path}`].replace(/\|/g, '\\|')} |`,
       );
     }
     lines.push('');

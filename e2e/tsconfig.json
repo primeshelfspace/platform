@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2023",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "isolatedModules": false,
+    "strictPropertyInitialization": false,
+    "noEmit": true,
+    "types": ["node", "multer"]
+  },
+  "include": ["*.ts", "../apps/platform/src/**/*", "../apps/sugrpay/src/**/*"],
+  "exclude": ["node_modules", "../apps/*/src/**/*.test.ts", "../apps/*/src/**/*.test-support.ts"]
+}

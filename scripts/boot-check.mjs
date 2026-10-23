@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /**
- * Boots the built API with a given set of products and checks it comes up
- * healthy — the runtime half of the module rules: the platform must start
- * with no product at all, and each product must start with only the
- * platform beside it.
+ * Starts one built API on its own and checks it comes up healthy — the runtime
+ * half of the API boundaries: each API must start with no other API running.
  *
- *   node scripts/boot-check.mjs ""            # platform alone
- *   node scripts/boot-check.mjs invoicing     # platform + invoicing
+ *   node scripts/boot-check.mjs platform
+ *   node scripts/boot-check.mjs sugrpay
  *
- * Needs a build (pnpm --filter @platform/api build) and the services running.
+ * Needs a build (pnpm build) and the databases and Redis running. (Sugrpay
+ * answering a signed-in route needs the platform; booting does not.)
  */
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -17,17 +16,22 @@ import { fail, log, ok } from './lib/proc.mjs';
 
 loadRootEnv();
 
-const products = process.argv[2] ?? '';
+const app = process.argv[2] ?? '';
+if (!['platform', 'sugrpay', 'hq'].includes(app)) {
+  fail('usage: node scripts/boot-check.mjs platform|sugrpay|hq');
+  process.exit(1);
+}
 const port = Number(process.env.BOOT_CHECK_PORT ?? 4099);
-const label = products ? `platform + ${products}` : 'platform alone';
+const label = `${app} API alone`;
 const timeoutMs = 60_000;
 
-const child = spawn(process.execPath, [path.join(ROOT, 'apps', 'api', 'dist', 'main.js')], {
-  cwd: path.join(ROOT, 'apps', 'api'),
+const child = spawn(process.execPath, [path.join(ROOT, 'apps', app, 'dist', 'main.js')], {
+  cwd: path.join(ROOT, 'apps', app),
   env: {
     ...process.env,
-    ENABLED_PRODUCTS: products,
-    API_PORT: String(port),
+    PLATFORM_API_PORT: String(port),
+    SUGRPAY_API_PORT: String(port),
+    HQ_API_PORT: String(port),
     // No scheduled jobs or outbox polling from a throwaway process.
     ENABLE_SCHEDULER: 'false',
     OUTBOX_POLL_INTERVAL_MS: '0',
@@ -63,15 +67,14 @@ while (Date.now() < deadline) {
     break;
   }
 }
-// Prove the product set is what was asked for: an invoicing route must not
-// exist at all without invoicing (404), and must exist — guarded, so 401
-// without a session — with it.
+// Prove it is the API that was asked for: a Sugrpay route exists (guarded,
+// so 401 without a session) only on the Sugrpay API, and 404 elsewhere.
 let productsMatch = false;
 if (up) {
   const status = await fetch(`http://localhost:${port}/dashboard/summary`)
     .then((r) => r.status)
     .catch(() => 0);
-  const expected = products.split(',').includes('invoicing') ? 401 : 404;
+  const expected = app === 'sugrpay' ? 401 : 404;
   productsMatch = status === expected;
   if (!productsMatch)
     fail(`${label}: GET /dashboard/summary returned ${status}, expected ${expected}`);

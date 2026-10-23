@@ -11,3 +11,4 @@ export * from './schemas.js';
 export * from './events.js';
 export * from './products.js';
 export * from './session.js';
+export * from './api-routing.js';

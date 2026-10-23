@@ -1,0 +1,40 @@
+{
+  "name": "@platform/platform-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The platform API: sign-in, companies, brands, locations, users and roles, subscriptions, payment-gateway connections. Its own program and its own database (platform); products reach it only over HTTP.",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "node ../../scripts/with-env.mjs nest start --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node ../../scripts/with-env.mjs node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "node ../../scripts/with-env.mjs prisma generate --schema prisma/schema.prisma",
+    "db:migrate": "node ../../scripts/with-env.mjs prisma migrate deploy --schema prisma/schema.prisma && pnpm db:generate",
+    "db:reset": "node ../../scripts/guard-destructive-db.mjs && node ../../scripts/with-env.mjs prisma migrate reset --force --skip-seed --schema prisma/schema.prisma",
+    "db:studio": "node ../../scripts/with-env.mjs prisma studio --schema prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/platform-express": "^10.4.15",
+    "@platform/kernel": "workspace:*",
+    "@platform/platform-contracts": "workspace:*",
+    "@prisma/client": "^5.22.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "stripe": "^17.5.0",
+    "zod": "^3.24.1",
+    "@platform/server": "workspace:*"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.9",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.10.2",
+    "prisma": "^5.22.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

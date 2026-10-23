@@ -24,15 +24,16 @@
     "docs:api": "node scripts/api-reference.mjs",
     "check:docs": "node scripts/api-reference.mjs --check",
     "check": "pnpm format:check && pnpm lint && pnpm check:deps && pnpm check:docs && pnpm typecheck && pnpm test",
-    "boot-check": "pnpm --filter @platform/api build && node scripts/boot-check.mjs \"\" && node scripts/boot-check.mjs invoicing",
-    "db:bootstrap": "pnpm --filter @platform/api db:bootstrap",
-    "db:generate": "pnpm --filter @platform/api db:generate",
-    "db:migrate": "pnpm --filter @platform/api db:migrate",
-    "db:reset": "pnpm --filter @platform/api db:reset",
-    "db:seed": "pnpm --filter @platform/api db:seed",
-    "db:migrate-legacy": "pnpm --filter @platform/api db:migrate-legacy",
-    "db:studio:platform": "pnpm --filter @platform/api db:studio:platform",
-    "db:studio:invoicing": "pnpm --filter @platform/api db:studio:invoicing"
+    "boot-check": "pnpm build && node scripts/boot-check.mjs platform && node scripts/boot-check.mjs sugrpay && node scripts/boot-check.mjs hq",
+    "db:bootstrap": "node scripts/with-env.mjs tsx scripts/db/bootstrap.ts",
+    "db:generate": "pnpm --filter @platform/platform-api db:generate && pnpm --filter @platform/sugrpay-api db:generate",
+    "db:migrate": "pnpm --filter @platform/platform-api db:migrate && pnpm --filter @platform/sugrpay-api db:migrate",
+    "db:reset": "pnpm --filter @platform/platform-api db:reset && pnpm --filter @platform/sugrpay-api db:reset && pnpm db:seed",
+    "db:seed": "node scripts/with-env.mjs tsx scripts/db/seed.ts",
+    "db:migrate-legacy": "node scripts/with-env.mjs tsx scripts/db/migrate-legacy.ts",
+    "db:studio:platform": "pnpm --filter @platform/platform-api db:studio",
+    "db:studio:invoicing": "pnpm --filter @platform/sugrpay-api db:studio",
+    "db:move-zoho-connections": "node scripts/with-env.mjs tsx scripts/db/move-zoho-connections.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -42,6 +43,10 @@
     "prettier": "^3.4.2",
     "turbo": "2.3.3",
     "typescript": "^5.7.2",
-    "typescript-eslint": "8.18.1"
+    "typescript-eslint": "8.18.1",
+    "tsx": "^4.19.2",
+    "@platform/kernel": "workspace:*",
+    "@platform/platform-contracts": "workspace:*",
+    "@platform/invoicing-contracts": "workspace:*"
   }
 }

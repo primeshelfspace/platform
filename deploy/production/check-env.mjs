@@ -5,7 +5,7 @@
  *   node deploy/production/check-env.mjs [path/to/.env]   (default: the repo's .env)
  *
  * Prints "config valid: …" and exits 0, or "config INVALID: …" and exits 1.
- * Needs a built API (apps/api/dist); `bash deploy/deploy.sh` builds it.
+ * Needs the built shared package (packages/server/dist); `bash deploy/deploy.sh` builds it.
  * update-secrets.sh runs this before it replaces the live .env.
  */
 import path from 'node:path';
@@ -15,7 +15,7 @@ import { loadRootEnv, ROOT } from '../../scripts/lib/env.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 loadRootEnv(process.argv[2] ? path.resolve(process.argv[2]) : path.join(ROOT, '.env'));
 const { getEnv } = await import(
-  pathToFileURL(path.join(here, '../../apps/api/dist/shared/config/env.js')).href
+  pathToFileURL(path.join(here, '../../packages/server/dist/config/env.js')).href
 );
 try {
   const e = getEnv();
