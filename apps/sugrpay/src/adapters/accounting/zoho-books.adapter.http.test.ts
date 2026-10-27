@@ -608,6 +608,25 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
     expect(error.retryable).toBe(true);
   });
 
+  it("classifies a revoked refresh token (invalid_grant) as AUTHENTICATION, not VALIDATION", async () => {
+    // Also a plain 400 on the OAuth endpoint, same as the rate-limit case
+    // above, but semantically the opposite: no amount of retrying fixes a
+    // revoked refresh token, and ZohoSyncService.recordFailure specifically
+    // watches for AUTHENTICATION + providerCode 'invalid_grant' to mark the
+    // connection as actually revoked (not just transiently unhealthy).
+    zohoServer.on('POST /oauth/v2/token', () => ({
+      status: 400,
+      body: { error: 'invalid_grant', error_description: 'refresh token is invalid' },
+    }));
+    const error = (await adapter
+      .refreshAccessToken('refresh-token-xyz')
+      .catch((e: unknown) => e)) as IntegrationError;
+
+    expect(error.errorClass).toBe('AUTHENTICATION');
+    expect(error.retryable).toBe(false);
+    expect(error.providerCode).toBe('invalid_grant');
+  });
+
   it('surfaces a provider message verbatim rather than paraphrasing it', async () => {
     zohoServer.on('GET /books/v3/organizations', () => ({
       status: 400,

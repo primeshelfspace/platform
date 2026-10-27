@@ -145,4 +145,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private syncGuardKey(brandId: string, recordId: string, action: string): string {
     return `zoho:sync-guard:${brandId}:${recordId}:${action}`;
   }
+
+  /**
+   * Short-lived mutual-exclusion lock, generalized for any caller keyed by
+   * its own string (e.g. a "don't let two jobs first-push the same
+   * never-synced record" guard). `SET … NX EX` is atomic, so two callers
+   * racing for the same key never both get `true`.
+   */
+  async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
+    const result = await this.cache.set(this.lockKey(key), '1', 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
+  }
+
+  async releaseLock(key: string): Promise<void> {
+    await this.cache.del(this.lockKey(key));
+  }
+
+  private lockKey(key: string): string {
+    return `zoho:lock:${key}`;
+  }
 }
