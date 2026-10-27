@@ -608,7 +608,7 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
     expect(error.retryable).toBe(true);
   });
 
-  it("classifies a revoked refresh token (invalid_grant) as AUTHENTICATION, not VALIDATION", async () => {
+  it('classifies a revoked refresh token (invalid_grant) as AUTHENTICATION, not VALIDATION', async () => {
     // Also a plain 400 on the OAuth endpoint, same as the rate-limit case
     // above, but semantically the opposite: no amount of retrying fixes a
     // revoked refresh token, and ZohoSyncService.recordFailure specifically

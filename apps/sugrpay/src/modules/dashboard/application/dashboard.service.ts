@@ -564,19 +564,17 @@ export class DashboardService {
             occurredAt: job.updatedAt,
           };
         }),
-        ...staleZohoConnections.map(
-          (conn): NeedsAttentionItem => ({
-            kind: 'ZOHO_SYNC_STALE',
-            brandId: conn.brandId,
-            brandName: brandId ? null : conn.brand.displayName,
-            invoiceNumber: null,
-            subject: 'Zoho Books',
-            detail: 'No Zoho sync activity since connecting — check webhook setup or run Sync now',
-            invoiceId: null,
-            syncJobId: null,
-            occurredAt: conn.createdAt,
-          }),
-        ),
+        ...staleZohoConnections.map((conn): NeedsAttentionItem => ({
+          kind: 'ZOHO_SYNC_STALE',
+          brandId: conn.brandId,
+          brandName: brandId ? null : conn.brand.displayName,
+          invoiceNumber: null,
+          subject: 'Zoho Books',
+          detail: 'No Zoho sync activity since connecting — check webhook setup or run Sync now',
+          invoiceId: null,
+          syncJobId: null,
+          occurredAt: conn.createdAt,
+        })),
         ...dueSoon.map((inv): NeedsAttentionItem => ({
           kind: 'DUE_SOON',
           brandId: inv.brandId,

@@ -259,16 +259,18 @@ describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
       },
     });
 
-    const pushInvoice = vi.fn().mockImplementation(async (_connection: unknown, dto: { remoteId: string | null }) => {
-      if (dto.remoteId === null) {
-        // Only the create call gets an artificial delay — this is the exact
-        // window the race exploits: both concurrent callers read
-        // zohoInvoiceId === null before either one's create call returns.
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        return { remoteId: 'remote-invoice-race-1', updatedAt: new Date('2026-08-20T10:00:00Z') };
-      }
-      return { remoteId: dto.remoteId, updatedAt: new Date('2026-08-20T10:00:05Z') };
-    });
+    const pushInvoice = vi
+      .fn()
+      .mockImplementation(async (_connection: unknown, dto: { remoteId: string | null }) => {
+        if (dto.remoteId === null) {
+          // Only the create call gets an artificial delay — this is the exact
+          // window the race exploits: both concurrent callers read
+          // zohoInvoiceId === null before either one's create call returns.
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          return { remoteId: 'remote-invoice-race-1', updatedAt: new Date('2026-08-20T10:00:00Z') };
+        }
+        return { remoteId: dto.remoteId, updatedAt: new Date('2026-08-20T10:00:05Z') };
+      });
     const sync = service({ pushInvoice });
 
     await Promise.all([

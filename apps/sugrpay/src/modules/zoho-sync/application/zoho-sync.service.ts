@@ -228,9 +228,10 @@ export class ZohoSyncService {
       // with another job trying to create the same contact — see
       // acquireFirstPushLock's own comment.
       const lockKey = customer.zohoContactId ? null : `zoho-first-push:customer:${customer.id}`;
+      let lockToken: string | null = null;
       if (lockKey) {
-        const acquired = await this.acquireFirstPushLock(lockKey);
-        if (!acquired) {
+        lockToken = await this.acquireFirstPushLock(lockKey);
+        if (!lockToken) {
           throw new IntegrationError({
             message: 'another push for this customer is already creating it in Zoho',
             errorClass: 'TRANSIENT',
@@ -293,7 +294,7 @@ export class ZohoSyncService {
           }),
         );
       } finally {
-        if (lockKey) await this.redis.releaseLock(lockKey);
+        if (lockKey && lockToken) await this.redis.releaseLock(lockKey, lockToken);
       }
     });
   }
@@ -319,9 +320,10 @@ export class ZohoSyncService {
       // payments on the same still-unsynced invoice) — see
       // acquireFirstPushLock's own comment.
       const lockKey = invoice.zohoInvoiceId ? null : `zoho-first-push:invoice:${invoice.id}`;
+      let lockToken: string | null = null;
       if (lockKey) {
-        const acquired = await this.acquireFirstPushLock(lockKey);
-        if (!acquired) {
+        lockToken = await this.acquireFirstPushLock(lockKey);
+        if (!lockToken) {
           throw new IntegrationError({
             message: 'another push for this invoice is already creating it in Zoho',
             errorClass: 'TRANSIENT',
@@ -413,7 +415,7 @@ export class ZohoSyncService {
           }),
         );
       } finally {
-        if (lockKey) await this.redis.releaseLock(lockKey);
+        if (lockKey && lockToken) await this.redis.releaseLock(lockKey, lockToken);
       }
     });
   }
@@ -573,12 +575,13 @@ export class ZohoSyncService {
    * caller throws in that case lets BullMQ's own backoff retry later instead
    * of busy-waiting in the worker.
    */
-  private async acquireFirstPushLock(key: string): Promise<boolean> {
+  private async acquireFirstPushLock(key: string): Promise<string | null> {
     for (let attempt = 0; attempt < FIRST_PUSH_LOCK_RETRY_ATTEMPTS; attempt++) {
-      if (await this.redis.acquireLock(key, FIRST_PUSH_LOCK_TTL_SECONDS)) return true;
+      const token = await this.redis.acquireLock(key, FIRST_PUSH_LOCK_TTL_SECONDS);
+      if (token) return token;
       await new Promise((resolve) => setTimeout(resolve, FIRST_PUSH_LOCK_RETRY_DELAY_MS));
     }
-    return false;
+    return null;
   }
 
   /**
