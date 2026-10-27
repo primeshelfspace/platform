@@ -19,6 +19,18 @@ autoInstallPeers: true
 # Run pre/post lifecycle scripts declared in package.json files.
 enablePrePostScripts: true
 
+# esbuild/turbo/rollup each ship one optionalDependency per platform they
+# support. Without this, pnpm still attempts every one of those tarballs
+# (openbsd, aix, android, …) on every install, which is wasted work here —
+# nothing in CI or deploy builds for a platform other than the one running
+# the install — and turns any registry hiccup into a long chain of doomed
+# retries for packages nothing on this machine will ever load.
+supportedArchitectures:
+  os:
+    - current
+  cpu:
+    - current
+
 # Build scripts are opt-in (pnpm >= 10). Each entry is a deliberate decision:
 # a package that runs code at install time is a supply-chain surface.
 allowBuilds:

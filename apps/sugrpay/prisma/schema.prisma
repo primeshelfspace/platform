@@ -470,6 +470,7 @@ model Invoice {
   payments  Payment[]
   events    InvoiceEvent[]
   checks    CheckSubmission[]
+  mailDeliveryEvents MailDeliveryEvent[]
 
   @@unique([brandId, number])
   /// Real uniqueness, not just an index — same reason as
@@ -565,6 +566,38 @@ model InvoiceEvent {
 
   @@index([invoiceId, occurredAt])
   @@map("invoice_event")
+}
+
+/// One row per mail-provider event for an invoice email: the send itself
+/// (eventType "SENT", written at send time) and every delivery-status
+/// callback that follows (DELIVERED, BOUNCED, COMPLAINED, ... — MailPort's
+/// MailEventType). The "SENT" row is what a webhook resolves providerMessageId
+/// back to an invoice through, since the provider's callback carries no
+/// tenant information of its own.
+///
+/// The unique constraint is the idempotency guard for webhook redelivery
+/// (NFR-INT-012's usual story): the same provider event arriving twice
+/// (eventType, providerMessageId) is a no-op the second time, not a second
+/// row — mirrors Payment.idempotencyKey's role for the payment-gateway
+/// webhook.
+model MailDeliveryEvent {
+  id                String    @id @default(uuid()) @db.Uuid
+  invoiceId         String    @map("invoice_id") @db.Uuid
+  brandId           String    @map("brand_id") @db.Uuid
+  providerMessageId String    @map("provider_message_id")
+  eventType         String    @map("event_type")
+  recipient         String
+  bounceKind        String?   @map("bounce_kind")
+  detail            String?
+  occurredAt        DateTime  @map("occurred_at")
+  receivedAt        DateTime  @default(now()) @map("received_at")
+  raw               Json?
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([providerMessageId, eventType])
+  @@index([invoiceId, occurredAt])
+  @@map("mail_delivery_event")
 }
 
 /// Images are storage keys, never binary in the database.

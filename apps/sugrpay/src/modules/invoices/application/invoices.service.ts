@@ -505,8 +505,9 @@ export class InvoicesService {
 
     const attachments = [logo, pdfAttachment].filter((a) => a !== null && a !== undefined);
 
+    let sendResult: Awaited<ReturnType<MailPort['send']>>;
     try {
-      await this.mail.send({
+      sendResult = await this.mail.send({
         to: [input.to],
         cc: input.cc ? [input.cc] : undefined,
         from: parseFrom(this.env.MAIL_FROM),
@@ -559,15 +560,34 @@ export class InvoicesService {
       );
     }
 
-    await this.prisma.withScope(scope, (tx) =>
-      tx.invoiceEvent.create({
+    await this.prisma.withScope(scope, async (tx) => {
+      // Sequential, not Promise.all: a `tx` is one reserved connection for
+      // the whole transaction, and issuing two queries on it concurrently
+      // corrupts the wire protocol instead of actually running them in
+      // parallel — Prisma's interactive transactions are not safe to fan out
+      // this way, however independent the two writes look.
+      await tx.invoiceEvent.create({
         data: {
           invoiceId: id,
           eventType: 'EMAIL_SENT',
           actor: isPublicScope(scope) ? 'system' : scope.userId,
         },
-      }),
-    );
+      });
+      // What a delivery-status webhook resolves providerMessageId back to
+      // an invoice through (MailEventsService) — the provider's own
+      // callback carries no brand/invoice/tenant information, only
+      // whatever id it assigned this message.
+      await tx.mailDeliveryEvent.create({
+        data: {
+          invoiceId: id,
+          brandId,
+          providerMessageId: sendResult.providerMessageId,
+          eventType: 'SENT',
+          recipient: input.to,
+          occurredAt: sendResult.acceptedAt,
+        },
+      });
+    });
   }
 
   /**

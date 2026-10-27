@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type {
   MailPort,
   MailDeliveryEvent,
@@ -28,7 +29,11 @@ export function createFakeMailPort(): FakeMailPort {
     send: async (input: SendMailInput) => {
       outbox.push(input);
       return {
-        providerMessageId: 'fake-message-id',
+        // Unique per call, matching every real provider: callers (now
+        // including InvoicesService's own MailDeliveryEvent bookkeeping) are
+        // entitled to assume a provider never hands back the same message id
+        // twice.
+        providerMessageId: `fake-message-${randomUUID()}`,
         acceptedAt: new Date(),
         recipients: [],
       };

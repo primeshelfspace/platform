@@ -11,6 +11,12 @@ import {
 } from '@platform/kernel';
 import { ENV, type Env } from '../../config/env.js';
 
+/** nodemailer's `accepted`/`rejected` arrays mix plain address strings with
+ * `{name, address}` objects depending on how the recipient was specified. */
+function addressText(entry: string | { address?: string; name?: string }): string {
+  return typeof entry === 'string' ? entry : (entry.address ?? entry.name ?? String(entry));
+}
+
 /**
  * SMTP MailPort implementation.
  *
@@ -89,13 +95,41 @@ export class SmtpMailAdapter implements MailPort {
         },
       });
 
+      // sendMail resolving is not the same as every recipient being accepted:
+      // a relay can take the DATA command and still 5xx one RCPT TO without
+      // failing the whole transaction — nodemailer reports that split as
+      // `accepted`/`rejected` rather than throwing. Reporting this send as
+      // sent would be exactly the "API success without delivery" gap this
+      // adapter exists to avoid; a rejected recipient throws here the same
+      // way a connection refusal already does, so the caller's existing
+      // catch (InvoicesService.sendEmail) treats both the same way.
+      if (info.rejected.length > 0) {
+        const rejected = info.rejected.map(addressText).join(', ');
+        const accepted = info.accepted.map(addressText).join(', ') || '(none)';
+        throw new IntegrationError({
+          message: `SMTP relay rejected ${info.rejected.length} recipient(s): ${rejected}`,
+          // A rejection returned alongside an otherwise-successful transaction
+          // is almost always the relay's own 5xx on that address (unknown
+          // mailbox, policy) rather than a transient condition — a transient
+          // one usually fails the whole transaction instead of splitting it.
+          errorClass: 'VALIDATION',
+          provider: this.providerName,
+          providerMessage: `accepted: ${accepted}; rejected: ${rejected}; relay response: ${info.response}`,
+        });
+      }
+
       this.seen.add(input.idempotencyKey);
       return {
         providerMessageId: info.messageId ?? randomUUID(),
         acceptedAt: new Date(),
-        recipients: [...input.to],
+        // Only recipients the relay actually took, not everyone input.to
+        // asked for — the two already provably differ whenever this point
+        // is reached with a non-empty `accepted`, since any full rejection
+        // would have thrown above instead.
+        recipients: info.accepted.map(addressText),
       };
     } catch (error) {
+      if (error instanceof IntegrationError) throw error;
       throw new IntegrationError({
         message: 'SMTP send failed',
         // A relay refusal is almost always transient; a permanent rejection

@@ -3,7 +3,7 @@
  * on every setup. Needs a superuser connection (DATABASE_ADMIN_URL) because
  * creating roles and databases is not something a module's own roles can do.
  *
- *   pnpm --filter @platform/api db:bootstrap
+ *   pnpm db:bootstrap
  *
  * For each module it reads <MODULE>_DATABASE_URL (runtime, non-owner role)
  * and <MODULE>_DIRECT_DATABASE_URL (owner role) and ensures:
