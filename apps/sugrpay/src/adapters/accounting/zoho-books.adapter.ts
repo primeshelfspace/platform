@@ -382,12 +382,35 @@ export class ZohoBooksAdapter implements AccountingPort {
     const retryAfter = response.headers.get('retry-after');
     const isOAuthRateLimit = response.status === 400 && oauthError === 'Access Denied';
 
+    // A revoked or otherwise rejected refresh token also comes back as a
+    // plain 400 (RFC 6749's invalid_grant/invalid_client/invalid_code),
+    // which classifyHttpStatus alone would read as VALIDATION — a class
+    // ZohoSyncService.recordFailure does not treat as a connection health
+    // signal, so a revoked connection would fail every push silently while
+    // the integrations panel kept reporting "Healthy". This is genuinely an
+    // AUTHENTICATION failure: no retry or validation fix on this platform's
+    // side can ever resolve it, only reconnecting the brand to Zoho can.
+    const isOAuthGrantRejected =
+      response.status === 400 &&
+      (oauthError === 'invalid_grant' ||
+        oauthError === 'invalid_client' ||
+        oauthError === 'invalid_code');
+
     return new IntegrationError({
       message: `Zoho Books: ${context} failed with ${response.status}`,
-      errorClass: isOAuthRateLimit ? 'TRANSIENT' : classifyHttpStatus(response.status),
+      errorClass: isOAuthRateLimit
+        ? 'TRANSIENT'
+        : isOAuthGrantRejected
+          ? 'AUTHENTICATION'
+          : classifyHttpStatus(response.status),
       provider: this.providerName,
       providerMessage,
-      providerCode,
+      // OAuth error bodies carry a string `error` (invalid_grant, ...)
+      // rather than the Books API's numeric `code` — surfaced here too so a
+      // caller can tell exactly which OAuth rejection this was (e.g.
+      // ZohoSyncService.recordFailure distinguishing a revoked refresh token
+      // from any other AUTHENTICATION failure).
+      providerCode: providerCode ?? oauthError,
       httpStatus: response.status,
       retryAfterMs: retryAfter ? Number(retryAfter) * 1000 : undefined,
     });

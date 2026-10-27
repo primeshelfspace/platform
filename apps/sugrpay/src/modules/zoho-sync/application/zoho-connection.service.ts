@@ -10,6 +10,7 @@ import {
 } from '@platform/server';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { ZohoBooksAdapter } from '../../../adapters/accounting/zoho-books.adapter.js';
+import type { ZohoWebhookDelivery } from './zoho-webhook.service.js';
 
 interface CachedAccessToken {
   readonly accessToken: string;
@@ -353,6 +354,28 @@ export class ZohoConnectionService {
     );
   }
 
+  /**
+   * Records that Zoho itself rejected the refresh token (invalid_grant) —
+   * unlike markUnhealthy's transient blip, there is no "heals itself on the
+   * next successful call" path from here: the credential is actually dead,
+   * and reconnecting via OAuth (which resets status back to CONNECTED in
+   * saveZohoConnection) is the only way forward regardless of what this
+   * reads in the meantime. Setting status (not just health) is intentional
+   * here for exactly the reason markUnhealthy's own comment says not to for
+   * a transient failure: buildAccountingConnection returning null for a
+   * REVOKED brand is correct, not a regression, once the token is actually gone.
+   */
+  async markRevoked(scope: Scope, brandId: string, reason: string): Promise<void> {
+    await this.prisma.withScope(scope, (tx) =>
+      tx.zohoConnection
+        .updateMany({
+          where: { brandId },
+          data: { status: 'REVOKED', health: reason.slice(0, 500) },
+        })
+        .catch(() => undefined),
+    );
+  }
+
   /** Called after every successful push (ZohoSyncService.runJob). This is what
    * makes the panel's "last sync" figure mean anything: before it was wired up
    * the column was set once, at connect time, and never advanced again. Also
@@ -415,5 +438,52 @@ export class ZohoConnectionService {
         (row) => (row.config as ZohoConnectionConfig | null)?.organizationId === organizationId,
       )
       .map((row) => ({ brandId: row.brandId, merchantId: row.brand.merchantId }));
+  }
+
+  /**
+   * Persists the last accepted webhook delivery for every brand connected to
+   * this organization (ZohoWebhookService.process) — same organization
+   * lookup as findBrandsForZohoOrganization, since a webhook carries no
+   * brandId of its own. Durable counterpart to what used to live only in
+   * Redis with a 30-day TTL: the "is Zoho actually calling us?" panel must
+   * not go permanently blank on a cache flush or a month of Zoho silence.
+   * Non-fatal by design, same as markUnhealthy/markRevoked — a webhook
+   * having been received and processed is the fact that matters; failing to
+   * record it for display must not turn into an error response back to Zoho.
+   */
+  async recordWebhookDelivery(organizationId: string, entry: ZohoWebhookDelivery): Promise<void> {
+    const brandIds = (await this.findBrandsForZohoOrganization(organizationId)).map(
+      (b) => b.brandId,
+    );
+    if (brandIds.length === 0) return;
+    await this.prisma
+      .withoutScope(
+        `zoho webhook: recording last delivery for organization ${organizationId}`,
+        (client) =>
+          client.zohoConnection.updateMany({
+            where: { brandId: { in: brandIds } },
+            data: { lastWebhookDelivery: entry as unknown as Prisma.InputJsonValue },
+          }),
+      )
+      .catch(() => undefined);
+  }
+
+  /** Multiple brands sharing one Zoho organization each get the delivery
+   * recorded (recordWebhookDelivery updates all of them), so any one row is
+   * representative — this just reads the first. */
+  async getLastWebhookDelivery(organizationId: string): Promise<ZohoWebhookDelivery | null> {
+    const brandIds = (await this.findBrandsForZohoOrganization(organizationId)).map(
+      (b) => b.brandId,
+    );
+    if (brandIds.length === 0) return null;
+    const row = await this.prisma.withoutScope(
+      `zoho webhook: reading last delivery for organization ${organizationId}`,
+      (client) =>
+        client.zohoConnection.findFirst({
+          where: { brandId: { in: brandIds } },
+          select: { lastWebhookDelivery: true },
+        }),
+    );
+    return (row?.lastWebhookDelivery as unknown as ZohoWebhookDelivery | null) ?? null;
   }
 }

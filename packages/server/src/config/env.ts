@@ -15,6 +15,14 @@ const booleanish = z
     typeof v === 'boolean' ? v : ['1', 'true', 'yes', 'on'].includes(v.toLowerCase()),
   );
 
+/** .env.example used to ship this exact value instead of a placeholder — any
+ * environment ever bootstrapped by blindly copying that file encrypts every
+ * stored credential (including the Zoho refresh token) under a key anyone
+ * with read access to this repository's history already has. Refusing to
+ * boot with it is a last line of defense against that history never
+ * actually getting rotated out of a real deployment. */
+const LEAKED_CREDENTIAL_ENCRYPTION_KEY = 'fG2F3Ahrw1zN97gZNFRAVdYSVQsnaw8IsM6RMaP/70U=';
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -58,6 +66,12 @@ const envSchema = z
       .min(1)
       .refine((v) => Buffer.from(v, 'base64').length === 32, {
         message: 'CREDENTIAL_ENCRYPTION_KEY must be 32 bytes, base64 encoded',
+      })
+      .refine((v) => v !== LEAKED_CREDENTIAL_ENCRYPTION_KEY, {
+        message:
+          'CREDENTIAL_ENCRYPTION_KEY is the placeholder value that used to be committed in ' +
+          '.env.example — generate a real one (openssl rand -base64 32) and rotate every ' +
+          'credential this key has ever encrypted if this value was ever used in a real environment',
       }),
 
     PAYMENT_GATEWAY_DRIVER: z.enum(['fake', 'numbers', 'stripe']).default('fake'),

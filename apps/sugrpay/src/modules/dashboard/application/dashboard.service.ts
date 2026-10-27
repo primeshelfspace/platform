@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import type { InvoiceStatus, SyncErrorClass } from '../../database/client.js';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma, type InvoiceStatus, type SyncErrorClass } from '../../database/client.js';
 import { PAYABLE_STATUSES } from '@platform/invoicing-contracts';
 import {
   formatMinorForDisplay,
@@ -7,6 +7,7 @@ import {
   type CurrencyCode,
   type Scope,
 } from '@platform/kernel';
+import { ENV, type Env } from '@platform/server';
 import {
   InvoicingPrismaService,
   type ScopedClient,
@@ -30,9 +31,28 @@ const SYNC_FAILURE_MESSAGE: Record<SyncErrorClass, string> = {
   PERMANENT: 'Zoho sync failed',
 };
 
-function syncFailureMessage(errorClass: SyncErrorClass | null): string {
+/**
+ * VALIDATION is the one class whose generic stand-in is worse than the real
+ * message: `SyncJob.lastError` for a VALIDATION failure is already the clean
+ * `IntegrationError.message` the sync code itself threw (e.g. "Zoho invoice
+ * ... uses number ... which already belongs to a different invoice" — see
+ * ZohoPullService's number-collision handling), not a raw provider payload,
+ * so there's nothing to scrub before showing it. Every other class keeps the
+ * plain-language stand-in: their lastError is more likely to be Zoho's own
+ * API text.
+ */
+function syncFailureMessage(errorClass: SyncErrorClass | null, lastError: string | null): string {
+  if (errorClass === 'VALIDATION' && lastError) return lastError;
   return errorClass ? SYNC_FAILURE_MESSAGE[errorClass] : SYNC_FAILURE_MESSAGE.PERMANENT;
 }
+
+/** How long a CONNECTED brand can go with zero sync signal (no push, no
+ * pull, no webhook delivery) before it's worth a Needs Attention item —
+ * long enough that a fresh connect's backfill queue has time to drain, short
+ * enough that a merchant whose webhooks never got registered (the real risk
+ * now that ZOHO_SCHEDULED_PULL_ENABLED defaults to false) finds out from the
+ * dashboard instead of noticing stale Zoho data weeks later. */
+const ZOHO_SYNC_STALE_AFTER_DAYS = 2;
 
 /** The KPI cards' and By Brand rollup's window — defaults to the current
  * calendar month, overridable by the header's date-range selector (This
@@ -92,7 +112,7 @@ export interface TopOverdueCustomer {
   readonly daysOverdue: number;
 }
 
-export type NeedsAttentionKind = 'STALE_DRAFT' | 'DUE_SOON' | 'SYNC_FAILED';
+export type NeedsAttentionKind = 'STALE_DRAFT' | 'DUE_SOON' | 'SYNC_FAILED' | 'ZOHO_SYNC_STALE';
 
 export interface NeedsAttentionItem {
   readonly kind: NeedsAttentionKind;
@@ -152,6 +172,10 @@ export interface CrossBrandCustomersResult {
 export interface IntegrationsStatus {
   readonly connected: boolean;
   readonly lastSyncAt: Date | null;
+  /** True when a brand in scope has a live Zoho connection but this process
+   * is running with ACCOUNTING_DRIVER != 'zoho' — every push is silently
+   * going to the fake adapter instead of reaching Zoho at all. */
+  readonly accountingDriverMismatch: boolean;
 }
 
 /** Bucket a single invoice into the donut chart's five-way grouping. The
@@ -203,6 +227,7 @@ export class DashboardService {
     private readonly prisma: InvoicingPrismaService,
     private readonly queue: QueueService,
     private readonly connections: ZohoConnectionService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   async getSummary(
@@ -405,8 +430,9 @@ export class DashboardService {
       const now = new Date();
       const staleCutoff = new Date(now.getTime() - DRAFT_UNSENT_ATTENTION_DAYS * DAY_MS);
       const dueSoonCutoff = new Date(now.getTime() + DUE_SOON_HOURS * 60 * 60 * 1000);
+      const zohoStaleCutoff = new Date(now.getTime() - ZOHO_SYNC_STALE_AFTER_DAYS * DAY_MS);
 
-      const [staleDrafts, dueSoon, failedJobs] = await Promise.all([
+      const [staleDrafts, dueSoon, failedJobs, staleZohoConnections] = await Promise.all([
         tx.invoice.findMany({
           where: {
             status: 'DRAFT',
@@ -454,7 +480,34 @@ export class DashboardService {
             objectType: true,
             objectId: true,
             errorClass: true,
+            lastError: true,
             updatedAt: true,
+            brand: { select: { displayName: true } },
+          },
+        }),
+        // Connected, with genuinely zero sync signal ever — no push, no pull,
+        // no webhook delivery. The real-world cause this targets:
+        // ZOHO_SCHEDULED_PULL_ENABLED defaults to false, so a brand whose
+        // webhook URLs were never pasted into Zoho (or were mistyped) has
+        // nothing pulling data in at all, and previously nothing surfaced
+        // that silence anywhere. A connection that synced once and has since
+        // gone quiet is a different, lesser case not covered here — it still
+        // has lastSyncAt/lastPulledAt evidence an operator can see on the
+        // integrations panel itself.
+        tx.zohoConnection.findMany({
+          where: {
+            status: 'CONNECTED',
+            createdAt: { lte: zohoStaleCutoff },
+            lastSyncAt: null,
+            lastPulledAt: null,
+            lastWebhookDelivery: { equals: Prisma.DbNull },
+            ...(brandId ? { brandId } : {}),
+          },
+          orderBy: { createdAt: 'asc' },
+          take: 20,
+          select: {
+            brandId: true,
+            createdAt: true,
             brand: { select: { displayName: true } },
           },
         }),
@@ -505,12 +558,23 @@ export class DashboardService {
               invoice?.customer.displayName ??
               customer?.displayName ??
               `${job.objectType.toLowerCase()} sync`,
-            detail: syncFailureMessage(job.errorClass),
+            detail: syncFailureMessage(job.errorClass, job.lastError),
             invoiceId: invoice?.id ?? null,
             syncJobId: job.id,
             occurredAt: job.updatedAt,
           };
         }),
+        ...staleZohoConnections.map((conn): NeedsAttentionItem => ({
+          kind: 'ZOHO_SYNC_STALE',
+          brandId: conn.brandId,
+          brandName: brandId ? null : conn.brand.displayName,
+          invoiceNumber: null,
+          subject: 'Zoho Books',
+          detail: 'No Zoho sync activity since connecting — check webhook setup or run Sync now',
+          invoiceId: null,
+          syncJobId: null,
+          occurredAt: conn.createdAt,
+        })),
         ...dueSoon.map((inv): NeedsAttentionItem => ({
           kind: 'DUE_SOON',
           brandId: inv.brandId,
@@ -772,7 +836,11 @@ export class DashboardService {
    */
   async getIntegrationsStatus(scope: Scope, brandId: string | null): Promise<IntegrationsStatus> {
     // Connections are the platform's — asked through its public API.
-    return this.connections.getConnectedSummary(scope, brandId);
+    const summary = await this.connections.getConnectedSummary(scope, brandId);
+    return {
+      ...summary,
+      accountingDriverMismatch: summary.connected && this.env.ACCOUNTING_DRIVER !== 'zoho',
+    };
   }
 
   /**

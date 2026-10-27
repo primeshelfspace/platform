@@ -34,6 +34,7 @@
     "db:studio:platform": "pnpm --filter @platform/platform-api db:studio",
     "db:studio:invoicing": "pnpm --filter @platform/sugrpay-api db:studio",
     "db:move-zoho-connections": "node scripts/with-env.mjs tsx scripts/db/move-zoho-connections.ts",
+    "db:rotate-credential-key": "node scripts/with-env.mjs tsx scripts/db/rotate-credential-key.ts",
     "stripe:register-payment-domains": "node scripts/with-env.mjs tsx scripts/stripe/register-payment-domains.ts"
   },
   "devDependencies": {

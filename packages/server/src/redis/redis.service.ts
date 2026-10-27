@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   Inject,
   Injectable,
@@ -144,5 +145,34 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * keys (zoho:access-token:…, ratelimit:brand:…) the same way those already are. */
   private syncGuardKey(brandId: string, recordId: string, action: string): string {
     return `zoho:sync-guard:${brandId}:${recordId}:${action}`;
+  }
+
+  /**
+   * Short-lived mutual-exclusion lock, generalized for any caller keyed by
+   * its own string (e.g. a "don't let two jobs first-push the same
+   * never-synced record" guard). `SET … NX EX` is atomic, so two callers
+   * racing for the same key never both get a token. Returns the holder's
+   * token, or null when someone else holds the lock.
+   */
+  async acquireLock(key: string, ttlSeconds: number): Promise<string | null> {
+    const token = randomUUID();
+    const result = await this.cache.set(this.lockKey(key), token, 'EX', ttlSeconds, 'NX');
+    return result === 'OK' ? token : null;
+  }
+
+  /** Releases the lock only if `token` still holds it. A holder that ran
+   * past the TTL must not delete the lock a second caller has since taken —
+   * that would let a third one in alongside it. */
+  async releaseLock(key: string, token: string): Promise<void> {
+    await this.cache.eval(
+      "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+      1,
+      this.lockKey(key),
+      token,
+    );
+  }
+
+  private lockKey(key: string): string {
+    return `zoho:lock:${key}`;
   }
 }

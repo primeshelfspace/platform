@@ -6,6 +6,7 @@
  *
  * Steps: env file → services → databases → migrations → seed → verify.
  */
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,8 +21,17 @@ log(`${c.bold}Sugrpay — local environment setup${c.reset}\n`);
 step('environment file');
 const envPath = path.join(ROOT, '.env');
 if (!fs.existsSync(envPath)) {
-  fs.copyFileSync(path.join(ROOT, '.env.example'), envPath);
-  ok('.env created from .env.example');
+  // .env.example carries a placeholder, never a usable key (env.ts refuses
+  // the one that used to be committed there) — each checkout gets its own.
+  const example = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8');
+  fs.writeFileSync(
+    envPath,
+    example.replace(
+      /^CREDENTIAL_ENCRYPTION_KEY=.*$/m,
+      `CREDENTIAL_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}`,
+    ),
+  );
+  ok('.env created from .env.example, with a fresh CREDENTIAL_ENCRYPTION_KEY');
 } else {
   ok('.env already present, left untouched');
 }
