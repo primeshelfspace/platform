@@ -17,7 +17,12 @@ import { PublicInvoicesService } from './application/public-invoices.service.js'
   // provider's delivery-event webhook with the same adapter that sent it).
   imports: [PaymentsModule, ZohoSyncModule, StorageModule, MailModule],
   controllers: [PublicInvoicesController],
-  providers: [PublicInvoicesService, InvoicePdfDownloadService, InvoicePdfService, MailEventsService],
+  providers: [
+    PublicInvoicesService,
+    InvoicePdfDownloadService,
+    InvoicePdfService,
+    MailEventsService,
+  ],
   // InvoicePdfService is also used by InvoicesModule, to attach a PDF to a
   // sent invoice email — one headless-Chromium instance for the whole
   // process, not a second one per module.

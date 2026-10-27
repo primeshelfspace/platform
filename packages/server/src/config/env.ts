@@ -35,6 +35,13 @@ const envSchema = z
     SUGRPAY_INTERNAL_URL: z.string().url().default('http://127.0.0.1:4002'),
     INTERNAL_API_KEY: z.string().min(32).optional(),
 
+    /**
+     * Signs the mail delivery webhook (POST /public/webhooks/mail): whatever
+     * posts delivery, bounce and complaint events shares this secret. Its own
+     * value — never SESSION_SECRET. Unset: the webhook accepts nothing.
+     */
+    MAIL_WEBHOOK_SECRET: z.string().min(32).optional(),
+
     // One database per module. Each module's runtime connection uses its own
     // NON-owner role, which row-level security binds and which can reach no
     // other module's database; the DIRECT url is that database's owner,

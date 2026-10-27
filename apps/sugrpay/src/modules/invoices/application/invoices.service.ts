@@ -408,7 +408,7 @@ export class InvoicesService {
       attachPdf?: boolean;
       preferredMethod?: 'CARD' | 'WALLET' | 'ACH' | 'CHECK';
     },
-  ): Promise<void> {
+  ): Promise<{ rejected: readonly string[] }> {
     const invoice = await this.prisma.withScope(scope, (tx) =>
       tx.invoice.findFirst({
         where: { id, brandId },
@@ -573,21 +573,44 @@ export class InvoicesService {
           actor: isPublicScope(scope) ? 'system' : scope.userId,
         },
       });
-      // What a delivery-status webhook resolves providerMessageId back to
-      // an invoice through (MailEventsService) — the provider's own
-      // callback carries no brand/invoice/tenant information, only
-      // whatever id it assigned this message.
-      await tx.mailDeliveryEvent.create({
-        data: {
+      // One row per recipient (To and CC): SENT for each the mail server
+      // accepted — what a delivery-status webhook resolves providerMessageId
+      // back to this invoice through (MailEventsService), since the provider's
+      // callback carries no tenant information — and REJECTED for each it
+      // refused while accepting the others.
+      const accepted = sendResult.recipients.length
+        ? sendResult.recipients
+        : [input.to, ...(input.cc ? [input.cc] : [])];
+      const rejected = sendResult.rejected ?? [];
+      await tx.mailDeliveryEvent.createMany({
+        data: [
+          ...accepted.map((recipient) => ({ recipient, eventType: 'SENT' as const })),
+          ...rejected.map((recipient) => ({ recipient, eventType: 'REJECTED' as const })),
+        ].map(({ recipient, eventType }) => ({
           invoiceId: id,
           brandId,
           providerMessageId: sendResult.providerMessageId,
-          eventType: 'SENT',
-          recipient: input.to,
+          eventType,
+          recipient: recipient.toLowerCase(),
           occurredAt: sendResult.acceptedAt,
-        },
+        })),
+        skipDuplicates: true,
       });
+      // A refused address is something the merchant must act on (a typo'd
+      // CC, a closed mailbox), so it joins the invoice's own timeline.
+      if (rejected.length > 0) {
+        await tx.invoiceEvent.create({
+          data: {
+            invoiceId: id,
+            eventType: 'EMAIL_REJECTED',
+            actor: 'system',
+            payload: { recipients: rejected },
+          },
+        });
+      }
     });
+
+    return { rejected: sendResult.rejected ?? [] };
   }
 
   /**

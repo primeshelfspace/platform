@@ -227,6 +227,7 @@ model Brand {
   checks             CheckSubmission[]
   pendingAssignments PendingBrandAssignment[]
   zohoConnection     ZohoConnection?
+  mailEvents         MailDeliveryEvent[]
 
   @@index([merchantId])
   @@map("brand")
@@ -321,19 +322,19 @@ model TaxRate {
 }
 
 model Customer {
-  id                String         @id @default(uuid()) @db.Uuid
-  brandId           String         @map("brand_id") @db.Uuid
-  type              CustomerType   @default(BUSINESS)
-  salutation        String?
-  firstName         String?        @map("first_name")
-  lastName          String?        @map("last_name")
-  companyName       String?        @map("company_name")
-  displayName       String         @map("display_name")
-  email             String?
-  phone             String?
-  billingAddress    Json?          @map("billing_address")
-  shippingAddress   Json?          @map("shipping_address")
-  zohoContactId     String?        @map("zoho_contact_id")
+  id                 String         @id @default(uuid()) @db.Uuid
+  brandId            String         @map("brand_id") @db.Uuid
+  type               CustomerType   @default(BUSINESS)
+  salutation         String?
+  firstName          String?        @map("first_name")
+  lastName           String?        @map("last_name")
+  companyName        String?        @map("company_name")
+  displayName        String         @map("display_name")
+  email              String?
+  phone              String?
+  billingAddress     Json?          @map("billing_address")
+  shippingAddress    Json?          @map("shipping_address")
+  zohoContactId      String?        @map("zoho_contact_id")
   /// The last_modified_time Zoho reported for this contact immediately after
   /// our own push. Lets ZohoPullService tell our own write echoing back from a
   /// genuine edit made in Zoho — without it, a push followed by a pull
@@ -341,16 +342,16 @@ model Customer {
   /// since upsertCustomer sends only contact_name but pullOneCustomer reads
   /// first_name/last_name back. Null means "never pushed from here", which
   /// correctly reads as "not an echo".
-  zohoSyncedVersion DateTime?      @map("zoho_synced_version")
+  zohoSyncedVersion  DateTime?      @map("zoho_synced_version")
   /// Set when a required-field check blocks an outbound Zoho push (FR-ZHO
   /// webhook "Outbound"/"mandatory fields"), so the reason is visible on the
   /// customer itself, not only in the Sync Dashboard's SyncJob trail. Cleared
   /// the moment a push for this customer succeeds.
-  zohoUnsyncedReason String?       @map("zoho_unsynced_reason")
-  notes             String?
-  status            CustomerStatus @default(ACTIVE)
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
+  zohoUnsyncedReason String?        @map("zoho_unsynced_reason")
+  notes              String?
+  status             CustomerStatus @default(ACTIVE)
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
 
   brand          Brand                   @relation(fields: [brandId], references: [id], onDelete: Cascade)
   invoices       Invoice[]
@@ -430,46 +431,46 @@ model Invoice {
   publicToken       String  @unique @map("public_token")
   publicTokenActive Boolean @default(true) @map("public_token_active")
 
-  notes             String?
-  internalNotes     String?        @map("internal_notes")
-  zohoInvoiceId     String?        @map("zoho_invoice_id")
+  notes              String?
+  internalNotes      String?        @map("internal_notes")
+  zohoInvoiceId      String?        @map("zoho_invoice_id")
   /// Same purpose as Customer.zohoSyncedVersion, and the more consequential of
   /// the two: pushInvoice sends tax and the card fee to Zoho as ordinary line
   /// items, so pulling our own push back rewrote subtotalMinor to include
   /// them, zeroed taxMinor, and left cardFeeMinor double-counted. A pull whose
   /// Zoho last_modified_time has not advanced past this value is skipped.
-  zohoSyncedVersion DateTime?      @map("zoho_synced_version")
+  zohoSyncedVersion  DateTime?      @map("zoho_synced_version")
   /// When a full reconciliation scan first failed to find this invoice in Zoho.
   /// Setting it also deactivates publicToken, which is what actually stops an
   /// invoice deleted in Zoho from staying collectable here. Cleared if the
   /// invoice turns up again. Status is deliberately left alone — see the
   /// migration comment for why inferring deletion from silence must not
   /// rewrite the ledger.
-  zohoMissingSince  DateTime?      @map("zoho_missing_since")
+  zohoMissingSince   DateTime?      @map("zoho_missing_since")
   /// Same purpose as Customer.zohoUnsyncedReason: a blocked outbound push
   /// (unsupported currency, no line items, ...) is recorded here so it is
   /// visible on the invoice itself, and cleared the moment a push succeeds.
-  zohoUnsyncedReason String?       @map("zoho_unsynced_reason")
-  taxRateId         String?        @map("tax_rate_id") @db.Uuid
-  issuedAt          DateTime?      @map("issued_at")
-  firstViewedAt     DateTime?      @map("first_viewed_at")
-  paidAt            DateTime?      @map("paid_at")
-  cancelledAt       DateTime?      @map("cancelled_at")
+  zohoUnsyncedReason String?        @map("zoho_unsynced_reason")
+  taxRateId          String?        @map("tax_rate_id") @db.Uuid
+  issuedAt           DateTime?      @map("issued_at")
+  firstViewedAt      DateTime?      @map("first_viewed_at")
+  paidAt             DateTime?      @map("paid_at")
+  cancelledAt        DateTime?      @map("cancelled_at")
   /// Set when a payment attempt starts, so a definitive failure can return the
   /// invoice to where it was (TDD-001 §8.2).
-  previousStatus    InvoiceStatus? @map("previous_status")
-  overdue           Boolean        @default(false)
+  previousStatus     InvoiceStatus? @map("previous_status")
+  overdue            Boolean        @default(false)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  brand     Brand             @relation(fields: [brandId], references: [id], onDelete: Cascade)
-  customer  Customer          @relation(fields: [customerId], references: [id])
-  taxRate   TaxRate?          @relation(fields: [taxRateId], references: [id])
-  lineItems LineItem[]
-  payments  Payment[]
-  events    InvoiceEvent[]
-  checks    CheckSubmission[]
+  brand              Brand               @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  customer           Customer            @relation(fields: [customerId], references: [id])
+  taxRate            TaxRate?            @relation(fields: [taxRateId], references: [id])
+  lineItems          LineItem[]
+  payments           Payment[]
+  events             InvoiceEvent[]
+  checks             CheckSubmission[]
   mailDeliveryEvents MailDeliveryEvent[]
 
   @@unique([brandId, number])
@@ -528,13 +529,13 @@ model Payment {
   /// discarded, which is what makes out-of-order webhooks safe (NFR-INT-012).
   lastEventAt      DateTime? @map("last_event_at")
 
-  declineReason String?   @map("decline_reason")
-  settledAt     DateTime? @map("settled_at")
-  refundedMinor BigInt    @default(0) @map("refunded_minor")
-  zohoPaymentId String?   @map("zoho_payment_id")
+  declineReason      String?   @map("decline_reason")
+  settledAt          DateTime? @map("settled_at")
+  refundedMinor      BigInt    @default(0) @map("refunded_minor")
+  zohoPaymentId      String?   @map("zoho_payment_id")
   /// Same purpose as Customer.zohoUnsyncedReason. Payment sync is
   /// platform → Zoho only, so this is the only unsynced-reason surface for it.
-  zohoUnsyncedReason String? @map("zoho_unsynced_reason")
+  zohoUnsyncedReason String?   @map("zoho_unsynced_reason")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -568,36 +569,46 @@ model InvoiceEvent {
   @@map("invoice_event")
 }
 
-/// One row per mail-provider event for an invoice email: the send itself
-/// (eventType "SENT", written at send time) and every delivery-status
-/// callback that follows (DELIVERED, BOUNCED, COMPLAINED, ... — MailPort's
-/// MailEventType). The "SENT" row is what a webhook resolves providerMessageId
-/// back to an invoice through, since the provider's callback carries no
-/// tenant information of its own.
-///
-/// The unique constraint is the idempotency guard for webhook redelivery
-/// (NFR-INT-012's usual story): the same provider event arriving twice
-/// (eventType, providerMessageId) is a no-op the second time, not a second
-/// row — mirrors Payment.idempotencyKey's role for the payment-gateway
-/// webhook.
+/// One row per recipient per mail event for an invoice email: SENT (accepted by
+/// the mail server) or REJECTED (refused) at send time, then every delivery
+/// callback (DELIVERED, BOUNCED, COMPLAINED, ...). The SENT rows are how a
+/// webhook resolves providerMessageId back to an invoice — the provider's
+/// callback carries no tenant information of its own. Unique per (message,
+/// event, recipient): a redelivered webhook is a no-op.
 model MailDeliveryEvent {
-  id                String    @id @default(uuid()) @db.Uuid
-  invoiceId         String    @map("invoice_id") @db.Uuid
-  brandId           String    @map("brand_id") @db.Uuid
-  providerMessageId String    @map("provider_message_id")
-  eventType         String    @map("event_type")
+  id                String                @id @default(uuid()) @db.Uuid
+  invoiceId         String                @map("invoice_id") @db.Uuid
+  brandId           String                @map("brand_id") @db.Uuid
+  providerMessageId String                @map("provider_message_id")
+  eventType         MailDeliveryEventType @map("event_type")
   recipient         String
-  bounceKind        String?   @map("bounce_kind")
+  bounceKind        MailBounceKind?       @map("bounce_kind")
   detail            String?
-  occurredAt        DateTime  @map("occurred_at")
-  receivedAt        DateTime  @default(now()) @map("received_at")
-  raw               Json?
+  occurredAt        DateTime              @map("occurred_at")
+  receivedAt        DateTime              @default(now()) @map("received_at")
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  brand   Brand   @relation(fields: [brandId], references: [id], onDelete: Cascade)
 
-  @@unique([providerMessageId, eventType])
+  @@unique([providerMessageId, eventType, recipient])
   @@index([invoiceId, occurredAt])
   @@map("mail_delivery_event")
+}
+
+enum MailDeliveryEventType {
+  SENT
+  REJECTED
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  OPENED
+  CLICKED
+  DEFERRED
+}
+
+enum MailBounceKind {
+  HARD
+  SOFT
 }
 
 /// Images are storage keys, never binary in the database.
@@ -692,7 +703,7 @@ model PendingBrandAssignment {
 
   // merchantId is the platform's company id — no foreign key, since the
   // company lives in the platform's database.
-  assignedBrand Brand?   @relation(fields: [assignedBrandId], references: [id], onDelete: SetNull)
+  assignedBrand Brand? @relation(fields: [assignedBrandId], references: [id], onDelete: SetNull)
 
   /// A redelivered webhook for the same never-resolved record must refresh
   /// this row, not duplicate it.

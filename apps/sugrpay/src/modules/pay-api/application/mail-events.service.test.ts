@@ -38,15 +38,24 @@ const describeWithDb = hasDb ? describe : describe.skip;
  * one does), and whose verifySignature/parseDeliveryEvent are set per test —
  * exactly the two methods a real webhook controller calls, which is what
  * MailEventsService exercises here without actually standing up HTTP. */
-function createScriptedMailPort(): MailPort & { nextProviderMessageId: string } {
+function createScriptedMailPort(): MailPort & {
+  nextProviderMessageId: string;
+  refuse: Set<string>;
+} {
   const port = {
     providerName: 'scripted-fake',
     nextProviderMessageId: 'unset',
-    send: async (_input: SendMailInput): Promise<SendMailResult> => ({
-      providerMessageId: port.nextProviderMessageId,
-      acceptedAt: new Date(),
-      recipients: [..._input.to],
-    }),
+    /** Addresses the fake mail server refuses (while accepting the rest). */
+    refuse: new Set<string>(),
+    send: async (_input: SendMailInput): Promise<SendMailResult> => {
+      const all = [..._input.to, ...(_input.cc ?? [])];
+      return {
+        providerMessageId: port.nextProviderMessageId,
+        acceptedAt: new Date(),
+        recipients: all.filter((a) => !port.refuse.has(a)),
+        rejected: all.filter((a) => port.refuse.has(a)),
+      };
+    },
     renderPreview: async (input: RenderPreviewInput) => ({ html: input.html }),
     verifySignature: () => true,
     parseDeliveryEvent: (): PortMailDeliveryEvent => {
@@ -170,7 +179,7 @@ describeWithDb('MailEventsService', () => {
       occurredAt: new Date(),
       detail: 'mailbox does not exist',
       bounceKind: 'HARD',
-      raw: { note: 'test' },
+      raw: null,
     });
 
     await mailEvents.handleWebhook(Buffer.from('{}'), {});
@@ -197,7 +206,7 @@ describeWithDb('MailEventsService', () => {
       occurredAt: new Date(),
       detail: null,
       bounceKind: null,
-      raw: {},
+      raw: null,
     });
 
     await mailEvents.handleWebhook(Buffer.from('{}'), {});
@@ -222,7 +231,7 @@ describeWithDb('MailEventsService', () => {
       occurredAt: new Date(),
       detail: null,
       bounceKind: 'HARD',
-      raw: {},
+      raw: null,
     });
 
     // Resolves without throwing — an unattributable event is logged and
@@ -234,11 +243,63 @@ describeWithDb('MailEventsService', () => {
     const original = mail.verifySignature;
     mail.verifySignature = () => false;
     try {
-      await expect(mailEvents.handleWebhook(Buffer.from('{}'), {})).rejects.toThrow(
-        /signature/i,
-      );
+      await expect(mailEvents.handleWebhook(Buffer.from('{}'), {})).rejects.toThrow(/signature/i);
     } finally {
       mail.verifySignature = original;
     }
+  });
+
+  it('tracks every recipient, To and CC', async () => {
+    const invoiceId = await issuedInvoiceId();
+    const providerMessageId = `pm-${randomUUID()}`;
+    mail.nextProviderMessageId = providerMessageId;
+    await invoices.sendEmail(ownerScope, brandId, invoiceId, {
+      to: 'customer@mail-events-test.example',
+      cc: 'accounts@mail-events-test.example',
+      subject: 'Test invoice',
+      body: 'Please pay this invoice.',
+      attachPdf: false,
+    });
+
+    const sent = await owner.mailDeliveryEvent.findMany({
+      where: { providerMessageId, eventType: 'SENT' },
+      orderBy: { recipient: 'asc' },
+    });
+    expect(sent.map((row) => row.recipient)).toEqual([
+      'accounts@mail-events-test.example',
+      'customer@mail-events-test.example',
+    ]);
+  });
+
+  it('records an address the mail server refused, and puts it on the timeline', async () => {
+    const invoiceId = await issuedInvoiceId();
+    const providerMessageId = `pm-${randomUUID()}`;
+    mail.nextProviderMessageId = providerMessageId;
+    mail.refuse.add('typo@mail-events-test.example');
+    try {
+      const result = await invoices.sendEmail(ownerScope, brandId, invoiceId, {
+        to: 'customer@mail-events-test.example',
+        cc: 'typo@mail-events-test.example',
+        subject: 'Test invoice',
+        body: 'Please pay this invoice.',
+        attachPdf: false,
+      });
+      // Sent — the customer got it — with the refused CC reported back.
+      expect(result.rejected).toEqual(['typo@mail-events-test.example']);
+    } finally {
+      mail.refuse.clear();
+    }
+
+    const rows = await owner.mailDeliveryEvent.findMany({ where: { providerMessageId } });
+    expect(rows.map((row) => [row.eventType, row.recipient]).sort()).toEqual([
+      ['REJECTED', 'typo@mail-events-test.example'],
+      ['SENT', 'customer@mail-events-test.example'],
+    ]);
+    const timeline = await owner.invoiceEvent.findFirst({
+      where: { invoiceId, eventType: 'EMAIL_REJECTED' },
+    });
+    expect((timeline?.payload as { recipients?: string[] } | null)?.recipients).toEqual([
+      'typo@mail-events-test.example',
+    ]);
   });
 });

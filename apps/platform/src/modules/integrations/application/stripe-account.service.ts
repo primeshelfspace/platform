@@ -128,6 +128,49 @@ export class StripeAccountService {
       }),
     );
     this.logger.log(`brand ${brandId} connected Stripe account ${accountId}`);
+    await this.registerPaymentDomain(accountId);
+  }
+
+  /**
+   * Apple Pay and Google Pay appear on the payment page only for a website
+   * registered with the Stripe account taking the payment — here, the brand's
+   * connected account (payments are made on it directly). Registers the
+   * payment page's host; Stripe then handles the wallet verification itself.
+   * Safe to repeat. A failure is logged, not thrown: a brand whose wallets are
+   * not yet available can still connect and take card and bank payments, and
+   * scripts/stripe/register-payment-domains.ts retries every brand.
+   */
+  async registerPaymentDomain(accountId: string): Promise<boolean> {
+    const domain = new URL(this.env.PAYMENT_PUBLIC_URL).hostname;
+    if (domain === 'localhost' || domain === '127.0.0.1') return false;
+    try {
+      const existing = await this.platformClient().paymentMethodDomains.list(
+        { domain_name: domain, limit: 1 },
+        { stripeAccount: accountId },
+      );
+      const found = existing.data[0];
+      if (found) {
+        if (!found.enabled) {
+          await this.platformClient().paymentMethodDomains.update(
+            found.id,
+            { enabled: true },
+            { stripeAccount: accountId },
+          );
+        }
+        return true;
+      }
+      await this.platformClient().paymentMethodDomains.create(
+        { domain_name: domain, enabled: true },
+        { stripeAccount: accountId },
+      );
+      this.logger.log(`registered ${domain} for Apple Pay / Google Pay on ${accountId}`);
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `could not register ${domain} for wallets on ${accountId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
   }
 
   /**

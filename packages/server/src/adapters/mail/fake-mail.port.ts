@@ -35,7 +35,8 @@ export function createFakeMailPort(): FakeMailPort {
         // twice.
         providerMessageId: `fake-message-${randomUUID()}`,
         acceptedAt: new Date(),
-        recipients: [],
+        recipients: [...input.to, ...(input.cc ?? [])],
+        rejected: [],
       };
     },
     renderPreview: async (input: RenderPreviewInput) => ({ html: input.html }),
