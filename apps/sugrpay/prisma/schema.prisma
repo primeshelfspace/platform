@@ -730,6 +730,11 @@ model ZohoConnection {
   /// Cursor for incremental pulls (FR-ZHO-030): when the last successful pull
   /// *started*, so a record modified during that pull is not missed.
   lastPulledAt         DateTime?            @map("last_pulled_at")
+  /// Last accepted Zoho webhook delivery for this organization — `{ at,
+  /// objectType, event, remoteId, outcome }` (ZohoWebhookDelivery). Persisted
+  /// here (not just cached in Redis) so the "is Zoho actually calling us?"
+  /// panel survives a cache flush/restart instead of silently going blank.
+  lastWebhookDelivery  Json?                @map("last_webhook_delivery")
   health               String?
   /// Minutes between scheduled pulls for this brand (FR-ZHO-030).
   pullFrequencyMinutes Int                  @default(15) @map("pull_frequency_minutes")
