@@ -102,6 +102,8 @@ export interface InvoiceActivityEntry {
   readonly toStatus: string | null;
   readonly actor: string;
   readonly occurredAt: Date;
+  /** For email problems: which address, and why (e.g. a refused CC). */
+  readonly detail: string | null;
 }
 
 /**
@@ -323,6 +325,7 @@ export class InvoicesService {
       toStatus: e.toStatus,
       actor: e.actor,
       occurredAt: e.occurredAt,
+      detail: eventDetail(e.eventType, e.payload),
     }));
   }
 
@@ -948,4 +951,29 @@ export class InvoicesService {
     }
     return updated;
   }
+}
+
+/** One line for the timeline about an email problem: which address, and why.
+ * Only for the email events; everything else on the timeline speaks for
+ * itself. Built from the event's own payload — never the raw provider data. */
+function eventDetail(eventType: string, payload: unknown): string | null {
+  const data = (payload ?? {}) as {
+    recipient?: unknown;
+    recipients?: unknown;
+    bounceKind?: unknown;
+    detail?: unknown;
+  };
+  const text = (value: unknown) => (typeof value === 'string' ? value : null);
+  if (eventType === 'EMAIL_REJECTED' && Array.isArray(data.recipients)) {
+    return data.recipients.filter((r): r is string => typeof r === 'string').join(', ') || null;
+  }
+  if (eventType === 'EMAIL_BOUNCED' || eventType === 'EMAIL_COMPLAINED') {
+    const parts = [
+      text(data.recipient),
+      data.bounceKind === 'HARD' ? 'permanent' : data.bounceKind === 'SOFT' ? 'temporary' : null,
+      text(data.detail),
+    ].filter(Boolean);
+    return parts.length ? parts.join(' · ').slice(0, 300) : null;
+  }
+  return null;
 }

@@ -301,5 +301,11 @@ describeWithDb('MailEventsService', () => {
     expect((timeline?.payload as { recipients?: string[] } | null)?.recipients).toEqual([
       'typo@mail-events-test.example',
     ]);
+
+    // What the merchant sees on the invoice's timeline.
+    const activity = await invoices.getActivity(ownerScope, brandId, invoiceId);
+    expect(activity.find((e) => e.eventType === 'EMAIL_REJECTED')?.detail).toBe(
+      'typo@mail-events-test.example',
+    );
   });
 });
