@@ -156,9 +156,11 @@ export class InvoicesController {
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @Param('id', zodPipe(idSchema)) id: string,
     @Body(zodPipe(sendInvoiceEmailSchema)) body: SendInvoiceEmailInput,
-  ): Promise<{ sent: true }> {
-    await this.invoices.sendEmail(scope, brandId, id, body);
-    return { sent: true };
+  ): Promise<{ sent: true; rejected: readonly string[] }> {
+    // rejected: addresses the mail server refused while taking the others
+    // (e.g. a mistyped CC). Empty when everyone got it.
+    const { rejected } = await this.invoices.sendEmail(scope, brandId, id, body);
+    return { sent: true, rejected };
   }
 
   /** The Invoice Details drawer's "Record Payment" — money received outside

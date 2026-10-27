@@ -31,6 +31,7 @@ import {
   type PaymentAttemptResult,
 } from '../../payments/application/payments.service.js';
 import { InvoicePdfDownloadService } from '../application/invoice-pdf-download.service.js';
+import { MailEventsService } from '../application/mail-events.service.js';
 import {
   PublicInvoicesService,
   type PublicInvoiceView,
@@ -61,6 +62,7 @@ export class PublicInvoicesController {
     private readonly publicInvoices: PublicInvoicesService,
     private readonly payments: PaymentsService,
     private readonly pdfDownloads: InvoicePdfDownloadService,
+    private readonly mailEvents: MailEventsService,
   ) {}
 
   @Get('invoices/:token')
@@ -209,6 +211,25 @@ export class PublicInvoicesController {
       throw new BadRequestException('missing request body');
     }
     await this.payments.handleWebhook(request.rawBody, request.headers as Record<string, string>);
+    return { received: true };
+  }
+
+  /**
+   * The mail provider's delivery/bounce/complaint callback (FR-PAY §10.2,
+   * mirrors the two webhooks above). Everything this endpoint accepts is
+   * already in SmtpMailAdapter's own internal format — see its
+   * verifySignature/parseDeliveryEvent for the shape a provider must be
+   * configured to post in, since there is no single universal format across
+   * SMTP relays the way there is for a single gateway's SDK.
+   */
+  @Post('webhooks/mail')
+  @Public()
+  @HttpCode(200)
+  async mailWebhook(@Req() request: RawBodyRequest<Request>): Promise<{ received: true }> {
+    if (!request.rawBody) {
+      throw new BadRequestException('missing request body');
+    }
+    await this.mailEvents.handleWebhook(request.rawBody, request.headers as Record<string, string>);
     return { received: true };
   }
 }

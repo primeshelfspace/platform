@@ -6,6 +6,7 @@
  *
  * Steps: env file → services → databases → migrations → seed → verify.
  */
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,8 +21,17 @@ log(`${c.bold}Sugrpay — local environment setup${c.reset}\n`);
 step('environment file');
 const envPath = path.join(ROOT, '.env');
 if (!fs.existsSync(envPath)) {
-  fs.copyFileSync(path.join(ROOT, '.env.example'), envPath);
-  ok('.env created from .env.example');
+  // .env.example carries a placeholder, never a usable key (env.ts refuses
+  // the one that used to be committed there) — each checkout gets its own.
+  const example = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8');
+  fs.writeFileSync(
+    envPath,
+    example.replace(
+      /^CREDENTIAL_ENCRYPTION_KEY=.*$/m,
+      `CREDENTIAL_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}`,
+    ),
+  );
+  ok('.env created from .env.example, with a fresh CREDENTIAL_ENCRYPTION_KEY');
 } else {
   ok('.env already present, left untouched');
 }
@@ -37,9 +47,23 @@ runOrExit('pnpm', ['--filter', './packages/*', 'build'], { cwd: ROOT });
 ok('shared packages built');
 
 // 4. Databases (one per module) --------------------------------------------
+// db:bootstrap and db:seed are root-level scripts (scripts/db/*.ts, shared
+// across every app); db:migrate is a root composite that filters to each
+// app with its own schema (platform-api, sugrpay-api — hq has none).
+//
+// bootstrap.ts imports each app's generated Prisma client purely for
+// PrismaClient's raw-query methods (no models of its own are touched) — but
+// on a fresh checkout nothing has generated it yet, since generation is
+// otherwise only a side effect of db:migrate, which cannot run until the
+// databases bootstrap creates exist. `prisma generate` itself needs no live
+// database (it only reads the schema file), so it can safely run first.
 log();
+step('generating Prisma clients');
+runOrExit('pnpm', ['db:generate'], { cwd: ROOT });
+ok('Prisma clients generated');
+
 step('creating module databases and roles (DATABASE_ADMIN_URL)');
-const bootstrap = run('pnpm', ['--filter', '@platform/api', 'db:bootstrap'], {
+const bootstrap = run('pnpm', ['db:bootstrap'], {
   cwd: ROOT,
   stdio: 'inherit',
 });
@@ -53,11 +77,11 @@ if (bootstrap.code !== 0) {
 ok('platform and invoicing databases ready');
 
 step('applying migrations (platform, invoicing)');
-runOrExit('pnpm', ['--filter', '@platform/api', 'db:migrate'], { cwd: ROOT });
+runOrExit('pnpm', ['db:migrate'], { cwd: ROOT });
 ok('schemas up to date');
 
 step('seeding multi-brand dataset');
-runOrExit('pnpm', ['--filter', '@platform/api', 'db:seed'], { cwd: ROOT });
+runOrExit('pnpm', ['db:seed'], { cwd: ROOT });
 ok('seed data loaded');
 
 // 5. Verify -----------------------------------------------------------------
@@ -82,8 +106,10 @@ if (healthy) {
   log(
     `${c.green}${c.bold}Ready in ${secs}s.${c.reset} Start the stack with ${c.bold}pnpm dev${c.reset}:`,
   );
-  log(`  ${c.dim}api    ${c.reset}http://localhost:4000/health`);
-  log(`  ${c.dim}mail   ${c.reset}http://localhost:1080`);
+  log(`  ${c.dim}platform${c.reset}http://localhost:4001/health`);
+  log(`  ${c.dim}sugrpay ${c.reset}http://localhost:4002/health`);
+  log(`  ${c.dim}hq      ${c.reset}http://localhost:4003/health`);
+  log(`  ${c.dim}mail    ${c.reset}http://localhost:1080`);
   log(`  ${c.dim}web apps live in the sugrpay-frontend repository${c.reset}`);
 } else {
   warn(`setup finished in ${secs}s with unhealthy services — see above`);

@@ -20,12 +20,6 @@ export interface ZohoWebhookDelivery {
   readonly outcome: string;
 }
 
-const DELIVERY_LOG_TTL_SECONDS = 30 * 24 * 60 * 60;
-
-function deliveryKey(organizationId: string): string {
-  return `zoho:webhook-last-delivery:${organizationId}`;
-}
-
 export interface ZohoWebhookResult {
   /** What the caller (ZohoWebhookController) should answer Zoho with. */
   readonly status: 200 | 404;
@@ -257,19 +251,16 @@ export class ZohoWebhookService {
   /** Last accepted delivery per organization, shown on the Zoho integration
    * panel so "is Zoho actually calling us?" can be answered without server
    * logs. Only authenticated deliveries reach the service, so this cannot be
-   * written by an arbitrary caller. Non-fatal by design. */
+   * written by an arbitrary caller. Persisted on ZohoConnection (not just
+   * cached), so it survives a cache flush or a long stretch of Zoho
+   * silence — see ZohoConnectionService.recordWebhookDelivery. Non-fatal by
+   * design: that method already swallows its own failures. */
   private async recordDelivery(organizationId: string, entry: ZohoWebhookDelivery): Promise<void> {
-    await this.redis
-      .setJson(deliveryKey(organizationId), entry, DELIVERY_LOG_TTL_SECONDS)
-      .catch((error: unknown) => {
-        this.logger.warn(
-          `could not record zoho webhook delivery: ${error instanceof Error ? error.message : error}`,
-        );
-      });
+    await this.connections.recordWebhookDelivery(organizationId, entry);
   }
 
   async lastDelivery(organizationId: string): Promise<ZohoWebhookDelivery | null> {
-    return (await this.redis.getJson<ZohoWebhookDelivery>(deliveryKey(organizationId))) ?? null;
+    return this.connections.getLastWebhookDelivery(organizationId);
   }
 
   private async findLocalRecords(

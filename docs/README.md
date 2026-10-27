@@ -30,10 +30,11 @@
 
 ## Integrations
 
-| Document                                                                 | Covers                            |
-| ------------------------------------------------------------------------ | --------------------------------- |
-| [integrations/zoho-books.md](integrations/zoho-books.md)                 | Connecting and syncing Zoho Books |
-| [integrations/zoho-books-sandbox.md](integrations/zoho-books-sandbox.md) | Testing against a Zoho sandbox    |
+| Document                                                                 | Covers                                         |
+| ------------------------------------------------------------------------ | ---------------------------------------------- |
+| [integrations/zoho-books.md](integrations/zoho-books.md)                 | Connecting and syncing Zoho Books              |
+| [integrations/zoho-books-sandbox.md](integrations/zoho-books-sandbox.md) | Testing against a Zoho sandbox                 |
+| [integrations/mail-delivery.md](integrations/mail-delivery.md)           | Invoice email delivery, bounces and complaints |
 
 ## Product
 

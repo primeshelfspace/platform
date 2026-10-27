@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { configureApp, getEnv } from '@platform/server';
 import { AppModule } from './app.module.js';
+import { InvoicingPrismaService } from './modules/database/invoicing-prisma.service.js';
 import { QueueService } from './infra/queue/queue.service.js';
 
 /** The Sugrpay API (sugrpay-api.sugrpay.com). Background jobs run in worker.ts. */
@@ -36,6 +37,31 @@ async function bootstrap(): Promise<void> {
     `adapters — gateway: ${env.PAYMENT_GATEWAY_DRIVER}, accounting: ${env.ACCOUNTING_DRIVER}, ` +
       `mail: ${env.MAIL_DRIVER}, storage: ${env.STORAGE_DRIVER}`,
   );
+
+  // A brand can be live-connected to Zoho (rows in zoho_connection) while
+  // this process runs with ACCOUNTING_DRIVER=fake — a misconfigured env, not
+  // a code path anything else catches, since AccountingModule's factory
+  // picks the adapter once at boot with no further validation (see its own
+  // comment). Every push would then silently go to FakeAccountingAdapter
+  // instead of Zoho: not an error anywhere, just data that never arrives.
+  // Logged loudly rather than refused at boot — this must not crash an
+  // already-running deployment over what might be a deliberate staging
+  // config with no real Zoho brands yet; accountingDriverMismatch on the
+  // dashboard's integrations-status surfaces the same fact per-brand.
+  if (env.ACCOUNTING_DRIVER !== 'zoho') {
+    const prisma = app.get(InvoicingPrismaService);
+    const connectedCount = await prisma.withoutScope(
+      'boot check: counting live Zoho connections against the active accounting driver',
+      (client) => client.zohoConnection.count({ where: { status: 'CONNECTED' } }),
+    );
+    if (connectedCount > 0) {
+      logger.error(
+        `MISCONFIGURATION: ${connectedCount} brand(s) have a CONNECTED Zoho Books connection, ` +
+          `but ACCOUNTING_DRIVER=${env.ACCOUNTING_DRIVER} — every customer/invoice push is going ` +
+          `to the fake adapter and NOT reaching Zoho. Set ACCOUNTING_DRIVER=zoho.`,
+      );
+    }
+  }
 }
 
 bootstrap().catch((error: unknown) => {

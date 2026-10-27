@@ -102,6 +102,8 @@ export interface InvoiceActivityEntry {
   readonly toStatus: string | null;
   readonly actor: string;
   readonly occurredAt: Date;
+  /** For email problems: which address, and why (e.g. a refused CC). */
+  readonly detail: string | null;
 }
 
 /**
@@ -323,6 +325,7 @@ export class InvoicesService {
       toStatus: e.toStatus,
       actor: e.actor,
       occurredAt: e.occurredAt,
+      detail: eventDetail(e.eventType, e.payload),
     }));
   }
 
@@ -408,7 +411,7 @@ export class InvoicesService {
       attachPdf?: boolean;
       preferredMethod?: 'CARD' | 'WALLET' | 'ACH' | 'CHECK';
     },
-  ): Promise<void> {
+  ): Promise<{ rejected: readonly string[] }> {
     const invoice = await this.prisma.withScope(scope, (tx) =>
       tx.invoice.findFirst({
         where: { id, brandId },
@@ -505,8 +508,9 @@ export class InvoicesService {
 
     const attachments = [logo, pdfAttachment].filter((a) => a !== null && a !== undefined);
 
+    let sendResult: Awaited<ReturnType<MailPort['send']>>;
     try {
-      await this.mail.send({
+      sendResult = await this.mail.send({
         to: [input.to],
         cc: input.cc ? [input.cc] : undefined,
         from: parseFrom(this.env.MAIL_FROM),
@@ -559,15 +563,57 @@ export class InvoicesService {
       );
     }
 
-    await this.prisma.withScope(scope, (tx) =>
-      tx.invoiceEvent.create({
+    await this.prisma.withScope(scope, async (tx) => {
+      // Sequential, not Promise.all: a `tx` is one reserved connection for
+      // the whole transaction, and issuing two queries on it concurrently
+      // corrupts the wire protocol instead of actually running them in
+      // parallel — Prisma's interactive transactions are not safe to fan out
+      // this way, however independent the two writes look.
+      await tx.invoiceEvent.create({
         data: {
           invoiceId: id,
           eventType: 'EMAIL_SENT',
           actor: isPublicScope(scope) ? 'system' : scope.userId,
         },
-      }),
-    );
+      });
+      // One row per recipient (To and CC): SENT for each the mail server
+      // accepted — what a delivery-status webhook resolves providerMessageId
+      // back to this invoice through (MailEventsService), since the provider's
+      // callback carries no tenant information — and REJECTED for each it
+      // refused while accepting the others.
+      const accepted = sendResult.recipients.length
+        ? sendResult.recipients
+        : [input.to, ...(input.cc ? [input.cc] : [])];
+      const rejected = sendResult.rejected ?? [];
+      await tx.mailDeliveryEvent.createMany({
+        data: [
+          ...accepted.map((recipient) => ({ recipient, eventType: 'SENT' as const })),
+          ...rejected.map((recipient) => ({ recipient, eventType: 'REJECTED' as const })),
+        ].map(({ recipient, eventType }) => ({
+          invoiceId: id,
+          brandId,
+          providerMessageId: sendResult.providerMessageId,
+          eventType,
+          recipient: recipient.toLowerCase(),
+          occurredAt: sendResult.acceptedAt,
+        })),
+        skipDuplicates: true,
+      });
+      // A refused address is something the merchant must act on (a typo'd
+      // CC, a closed mailbox), so it joins the invoice's own timeline.
+      if (rejected.length > 0) {
+        await tx.invoiceEvent.create({
+          data: {
+            invoiceId: id,
+            eventType: 'EMAIL_REJECTED',
+            actor: 'system',
+            payload: { recipients: rejected },
+          },
+        });
+      }
+    });
+
+    return { rejected: sendResult.rejected ?? [] };
   }
 
   /**
@@ -905,4 +951,29 @@ export class InvoicesService {
     }
     return updated;
   }
+}
+
+/** One line for the timeline about an email problem: which address, and why.
+ * Only for the email events; everything else on the timeline speaks for
+ * itself. Built from the event's own payload — never the raw provider data. */
+function eventDetail(eventType: string, payload: unknown): string | null {
+  const data = (payload ?? {}) as {
+    recipient?: unknown;
+    recipients?: unknown;
+    bounceKind?: unknown;
+    detail?: unknown;
+  };
+  const text = (value: unknown) => (typeof value === 'string' ? value : null);
+  if (eventType === 'EMAIL_REJECTED' && Array.isArray(data.recipients)) {
+    return data.recipients.filter((r): r is string => typeof r === 'string').join(', ') || null;
+  }
+  if (eventType === 'EMAIL_BOUNCED' || eventType === 'EMAIL_COMPLAINED') {
+    const parts = [
+      text(data.recipient),
+      data.bounceKind === 'HARD' ? 'permanent' : data.bounceKind === 'SOFT' ? 'temporary' : null,
+      text(data.detail),
+    ].filter(Boolean);
+    return parts.length ? parts.join(' · ').slice(0, 300) : null;
+  }
+  return null;
 }

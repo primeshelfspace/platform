@@ -53,7 +53,12 @@ export interface SendMailInput {
 export interface SendMailResult {
   readonly providerMessageId: string;
   readonly acceptedAt: Date;
+  /** The recipients the mail server accepted. */
   readonly recipients: readonly string[];
+  /** Recipients the server refused while accepting the others (e.g. an
+   * unknown CC address). Empty or absent when every recipient was taken; a
+   * send where none was accepted throws instead. */
+  readonly rejected?: readonly string[];
 }
 
 export const MAIL_EVENT_TYPES = [

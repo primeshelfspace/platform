@@ -26,6 +26,8 @@ const OUT = path.join(ROOT, 'docs/api/endpoints.md');
 
 /** One line per route, keyed "METHOD /path". */
 const DESCRIPTIONS = {
+  'POST /public/webhooks/mail':
+    'Mail delivery events (delivered, bounced, spam complaint) for invoice emails, signed with MAIL_WEBHOOK_SECRET. A bounce or complaint is added to the invoice timeline. See docs/integrations/mail-delivery.md.',
   'POST /internal/sessions/resolve':
     "Platform: who a session token belongs to (the caller's scope, or null). What a product API's request guard asks on every signed-in request.",
   'GET /internal/brands/:brandId/stripe-account':

@@ -28,6 +28,15 @@ export interface BackfillCounts {
  * counts as "settled enough to push". */
 const SETTLED_PAYMENT_STATUSES = ['SETTLED', 'PARTIALLY_REFUNDED', 'REFUNDED'] as const;
 
+/** How long a first-push lock (see acquireFirstPushLock) survives a crash
+ * mid-push — long enough to outlive one Zoho create call, short enough that
+ * a dead worker doesn't block the record forever. */
+const FIRST_PUSH_LOCK_TTL_SECONDS = 20;
+/** ~2s of total wait: the other side of this race is a single Zoho HTTP call
+ * away from releasing the lock, not a long-running job. */
+const FIRST_PUSH_LOCK_RETRY_ATTEMPTS = 5;
+const FIRST_PUSH_LOCK_RETRY_DELAY_MS = 400;
+
 interface BackfillPayment {
   readonly id: string;
   readonly invoiceId: string;
@@ -107,15 +116,12 @@ export class ZohoSyncService {
    * An invoice already covered by one of the payment jobs below is NOT also
    * given its own direct job, and likewise a customer already covered by one
    * of the invoice jobs — pushInvoice/pushPayment cascade to their
-   * prerequisite inline, and two jobs racing to inline-push the same
-   * never-synced customer or invoice at once would create a duplicate
-   * contact or invoice in Zoho. This closes that race for the common shape
-   * (one payment per invoice, one invoice's worth of history per customer).
-   * It does not fully close it for an invoice with more than one settled
-   * payment still unsynced — those payment jobs can still race each other to
-   * push the same invoice. Accepted here: Zoho is a downstream mirror, not
-   * the ledger of record, so the worst case is a duplicate entry a bookkeeper
-   * merges by hand, not a financial error.
+   * prerequisite inline. This is an optimization, not the only defense
+   * against duplicates: two jobs racing to inline-push the same never-synced
+   * customer or invoice (e.g. an invoice with more than one settled payment
+   * still unsynced) are additionally serialized by acquireFirstPushLock
+   * inside pushCustomer/pushInvoice themselves, which closes the race this
+   * comment used to document as merely accepted.
    */
   async enqueueBackfill(
     brandId: string,
@@ -214,56 +220,82 @@ export class ZohoSyncService {
     }
 
     await this.runJob(scope, brandId, 'CUSTOMER', customerId, async () => {
-      const customer = await this.prisma.withScope(scope, (tx) =>
+      let customer = await this.prisma.withScope(scope, (tx) =>
         tx.customer.findUniqueOrThrow({ where: { id: customerId }, include: { brand: true } }),
       );
 
-      const dto: AccountingCustomer = {
-        localId: customer.id,
-        remoteId: customer.zohoContactId,
-        type: customer.type,
-        displayName: customer.displayName,
-        companyName: customer.companyName,
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        email: customer.email,
-        phone: customer.phone,
-        billingAddress: customer.billingAddress as unknown as AccountingAddress | null,
-        shippingAddress: customer.shippingAddress as unknown as AccountingAddress | null,
-        currency: customer.brand.currency as AccountingCustomer['currency'],
-      };
-
-      const unsyncedReason = this.validateCustomerForSync(dto);
-      if (unsyncedReason) {
-        await this.markUnsynced(scope, 'customer', customer.id, unsyncedReason);
-        throw new IntegrationError({
-          message: unsyncedReason,
-          errorClass: 'VALIDATION',
-          provider: 'zoho-books',
-        });
+      // First push (no zohoContactId yet) is the only case that can race
+      // with another job trying to create the same contact — see
+      // acquireFirstPushLock's own comment.
+      const lockKey = customer.zohoContactId ? null : `zoho-first-push:customer:${customer.id}`;
+      let lockToken: string | null = null;
+      if (lockKey) {
+        lockToken = await this.acquireFirstPushLock(lockKey);
+        if (!lockToken) {
+          throw new IntegrationError({
+            message: 'another push for this customer is already creating it in Zoho',
+            errorClass: 'TRANSIENT',
+            provider: 'zoho-books',
+          });
+        }
+        // The lock wait may have let a concurrent push finish and set
+        // zohoContactId — re-read so the dto below targets an update, not a
+        // second create, of the same contact.
+        customer = await this.prisma.withScope(scope, (tx) =>
+          tx.customer.findUniqueOrThrow({ where: { id: customerId }, include: { brand: true } }),
+        );
       }
 
-      // FR-ZHO-webhook loop prevention: written before the outbound call so
-      // the webhook Zoho fires right back for this same write — recognised
-      // by ZohoWebhookService via the same (brandId, customer.id, 'customer')
-      // key — is dropped as a duplicate instead of being re-applied.
-      await this.redis.markSyncAction(brandId, customer.id, 'customer');
-      const result = await this.zoho.upsertCustomer(connection, dto);
-      await this.prisma.withScope(scope, (tx) =>
-        tx.customer.update({
-          where: { id: customer.id },
-          data: {
-            zohoContactId: result.remoteId,
-            // Zoho's own last_modified_time for the record we just wrote, so
-            // the next pull can recognise this write coming back rather than
-            // treating it as a remote edit and overwriting firstName/lastName
-            // with whatever Zoho derived from contact_name (Customer
-            // .zohoSyncedVersion in schema.prisma spells out why).
-            zohoSyncedVersion: result.updatedAt ?? null,
-            zohoUnsyncedReason: null,
-          },
-        }),
-      );
+      try {
+        const dto: AccountingCustomer = {
+          localId: customer.id,
+          remoteId: customer.zohoContactId,
+          type: customer.type,
+          displayName: customer.displayName,
+          companyName: customer.companyName,
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+          email: customer.email,
+          phone: customer.phone,
+          billingAddress: customer.billingAddress as unknown as AccountingAddress | null,
+          shippingAddress: customer.shippingAddress as unknown as AccountingAddress | null,
+          currency: customer.brand.currency as AccountingCustomer['currency'],
+        };
+
+        const unsyncedReason = this.validateCustomerForSync(dto);
+        if (unsyncedReason) {
+          await this.markUnsynced(scope, 'customer', customer.id, unsyncedReason);
+          throw new IntegrationError({
+            message: unsyncedReason,
+            errorClass: 'VALIDATION',
+            provider: 'zoho-books',
+          });
+        }
+
+        // FR-ZHO-webhook loop prevention: written before the outbound call so
+        // the webhook Zoho fires right back for this same write — recognised
+        // by ZohoWebhookService via the same (brandId, customer.id, 'customer')
+        // key — is dropped as a duplicate instead of being re-applied.
+        await this.redis.markSyncAction(brandId, customer.id, 'customer');
+        const result = await this.zoho.upsertCustomer(connection, dto);
+        await this.prisma.withScope(scope, (tx) =>
+          tx.customer.update({
+            where: { id: customer.id },
+            data: {
+              zohoContactId: result.remoteId,
+              // Zoho's own last_modified_time for the record we just wrote, so
+              // the next pull can recognise this write coming back rather than
+              // treating it as a remote edit and overwriting firstName/lastName
+              // with whatever Zoho derived from contact_name (Customer
+              // .zohoSyncedVersion in schema.prisma spells out why).
+              zohoSyncedVersion: result.updatedAt ?? null,
+              zohoUnsyncedReason: null,
+            },
+          }),
+        );
+      } finally {
+        if (lockKey && lockToken) await this.redis.releaseLock(lockKey, lockToken);
+      }
     });
   }
 
@@ -276,85 +308,115 @@ export class ZohoSyncService {
     if (flags && !flags.invoiceSyncEnabled) return;
 
     await this.runJob(scope, brandId, 'INVOICE', invoiceId, async () => {
-      const invoice = await this.prisma.withScope(scope, (tx) =>
+      let invoice = await this.prisma.withScope(scope, (tx) =>
         tx.invoice.findUniqueOrThrow({
           where: { id: invoiceId },
           include: { lineItems: { orderBy: { position: 'asc' } }, customer: true, taxRate: true },
         }),
       );
 
-      if (!invoice.customer.zohoContactId) {
-        await this.pushCustomer(brandId, invoice.customerId, { viaCascade: true });
-      }
-      const customerRemoteId = (
-        await this.prisma.withScope(scope, (tx) =>
-          tx.customer.findUniqueOrThrow({
-            where: { id: invoice.customerId },
-            select: { zohoContactId: true },
+      // First push (no zohoInvoiceId yet) is the only case that can race with
+      // another job trying to create the same invoice (e.g. two settled
+      // payments on the same still-unsynced invoice) — see
+      // acquireFirstPushLock's own comment.
+      const lockKey = invoice.zohoInvoiceId ? null : `zoho-first-push:invoice:${invoice.id}`;
+      let lockToken: string | null = null;
+      if (lockKey) {
+        lockToken = await this.acquireFirstPushLock(lockKey);
+        if (!lockToken) {
+          throw new IntegrationError({
+            message: 'another push for this invoice is already creating it in Zoho',
+            errorClass: 'TRANSIENT',
+            provider: 'zoho-books',
+          });
+        }
+        // The lock wait may have let a concurrent push finish and set
+        // zohoInvoiceId — re-read so the dto below targets an update, not a
+        // second create, of the same invoice.
+        invoice = await this.prisma.withScope(scope, (tx) =>
+          tx.invoice.findUniqueOrThrow({
+            where: { id: invoiceId },
+            include: { lineItems: { orderBy: { position: 'asc' } }, customer: true, taxRate: true },
           }),
-        )
-      ).zohoContactId;
-      if (!customerRemoteId) {
-        throw new IntegrationError({
-          message: 'customer push did not yield a Zoho contact id',
-          errorClass: 'PERMANENT',
-          provider: 'zoho-books',
-        });
+        );
       }
 
-      const dto: AccountingInvoice = {
-        localId: invoice.id,
-        remoteId: invoice.zohoInvoiceId,
-        number: invoice.number,
-        customerRemoteId,
-        currency: invoice.currency as AccountingInvoice['currency'],
-        invoiceDate: invoice.invoiceDate,
-        dueDate: invoice.dueDate,
-        lines: invoice.lineItems.map((line) => ({
-          name: line.itemName,
-          description: line.description,
-          quantity: line.quantity,
-          unitPriceMinor: Number(line.unitPriceMinor),
-          lineTotalMinor: Number(line.lineTotalMinor),
-          taxExempt: line.taxExempt,
-          remoteTaxId: invoice.taxRate?.zohoTaxId ?? null,
-        })),
-        subtotalMinor: Number(invoice.subtotalMinor),
-        taxRateBpApplied: invoice.taxRateBpApplied,
-        taxMinor: Number(invoice.taxMinor),
-        cardFeeMinor: Number(invoice.cardFeeMinor),
-        totalMinor: Number(invoice.totalMinor),
-        notes: invoice.notes,
-        status: this.toAccountingInvoiceStatus(invoice.status),
-      };
+      try {
+        if (!invoice.customer.zohoContactId) {
+          await this.pushCustomer(brandId, invoice.customerId, { viaCascade: true });
+        }
+        const customerRemoteId = (
+          await this.prisma.withScope(scope, (tx) =>
+            tx.customer.findUniqueOrThrow({
+              where: { id: invoice.customerId },
+              select: { zohoContactId: true },
+            }),
+          )
+        ).zohoContactId;
+        if (!customerRemoteId) {
+          throw new IntegrationError({
+            message: 'customer push did not yield a Zoho contact id',
+            errorClass: 'PERMANENT',
+            provider: 'zoho-books',
+          });
+        }
 
-      const unsyncedReason = this.validateInvoiceForSync(dto);
-      if (unsyncedReason) {
-        await this.markUnsynced(scope, 'invoice', invoice.id, unsyncedReason);
-        throw new IntegrationError({
-          message: unsyncedReason,
-          errorClass: 'VALIDATION',
-          provider: 'zoho-books',
-        });
+        const dto: AccountingInvoice = {
+          localId: invoice.id,
+          remoteId: invoice.zohoInvoiceId,
+          number: invoice.number,
+          customerRemoteId,
+          currency: invoice.currency as AccountingInvoice['currency'],
+          invoiceDate: invoice.invoiceDate,
+          dueDate: invoice.dueDate,
+          lines: invoice.lineItems.map((line) => ({
+            name: line.itemName,
+            description: line.description,
+            quantity: line.quantity,
+            unitPriceMinor: Number(line.unitPriceMinor),
+            lineTotalMinor: Number(line.lineTotalMinor),
+            taxExempt: line.taxExempt,
+            remoteTaxId: invoice.taxRate?.zohoTaxId ?? null,
+          })),
+          subtotalMinor: Number(invoice.subtotalMinor),
+          taxRateBpApplied: invoice.taxRateBpApplied,
+          taxMinor: Number(invoice.taxMinor),
+          cardFeeMinor: Number(invoice.cardFeeMinor),
+          totalMinor: Number(invoice.totalMinor),
+          notes: invoice.notes,
+          status: this.toAccountingInvoiceStatus(invoice.status),
+        };
+
+        const unsyncedReason = this.validateInvoiceForSync(dto);
+        if (unsyncedReason) {
+          await this.markUnsynced(scope, 'invoice', invoice.id, unsyncedReason);
+          throw new IntegrationError({
+            message: unsyncedReason,
+            errorClass: 'VALIDATION',
+            provider: 'zoho-books',
+          });
+        }
+
+        // See pushCustomer's own comment on this same call.
+        await this.redis.markSyncAction(brandId, invoice.id, 'invoice');
+        const result = await this.zoho.pushInvoice(connection, dto);
+        await this.prisma.withScope(scope, (tx) =>
+          tx.invoice.update({
+            where: { id: invoice.id },
+            data: {
+              zohoInvoiceId: result.remoteId,
+              // The load-bearing half of echo suppression: tax and the card fee
+              // went to Zoho as ordinary line items, so without this the next
+              // pull reads our own write back as a changed invoice and rewrites
+              // subtotalMinor to include them. See Invoice.zohoSyncedVersion.
+              zohoSyncedVersion: result.updatedAt ?? null,
+              zohoUnsyncedReason: null,
+            },
+          }),
+        );
+      } finally {
+        if (lockKey && lockToken) await this.redis.releaseLock(lockKey, lockToken);
       }
-
-      // See pushCustomer's own comment on this same call.
-      await this.redis.markSyncAction(brandId, invoice.id, 'invoice');
-      const result = await this.zoho.pushInvoice(connection, dto);
-      await this.prisma.withScope(scope, (tx) =>
-        tx.invoice.update({
-          where: { id: invoice.id },
-          data: {
-            zohoInvoiceId: result.remoteId,
-            // The load-bearing half of echo suppression: tax and the card fee
-            // went to Zoho as ordinary line items, so without this the next
-            // pull reads our own write back as a changed invoice and rewrites
-            // subtotalMinor to include them. See Invoice.zohoSyncedVersion.
-            zohoSyncedVersion: result.updatedAt ?? null,
-            zohoUnsyncedReason: null,
-          },
-        }),
-      );
     });
   }
 
@@ -502,6 +564,27 @@ export class ZohoSyncService {
   }
 
   /**
+   * Serializes concurrent first-pushes of the same not-yet-synced record —
+   * closes the duplicate-create race pushCustomer/pushInvoice guard against
+   * (two payments settling close together both pushing the same never-synced
+   * invoice, or two invoices racing to cascade-create the same never-synced
+   * customer). A short retry loop, not a long wait: the other side of this
+   * race is a single Zoho HTTP call away from releasing the lock, so a
+   * caller that still can't acquire it after ~2s is more likely contending
+   * with a genuinely stuck job than a normal one — the TRANSIENT error the
+   * caller throws in that case lets BullMQ's own backoff retry later instead
+   * of busy-waiting in the worker.
+   */
+  private async acquireFirstPushLock(key: string): Promise<string | null> {
+    for (let attempt = 0; attempt < FIRST_PUSH_LOCK_RETRY_ATTEMPTS; attempt++) {
+      const token = await this.redis.acquireLock(key, FIRST_PUSH_LOCK_TTL_SECONDS);
+      if (token) return token;
+      await new Promise((resolve) => setTimeout(resolve, FIRST_PUSH_LOCK_RETRY_DELAY_MS));
+    }
+    return null;
+  }
+
+  /**
    * Resolves the brand's Zoho connection for a push. Null means "never
    * connected" — a legitimate no-op the caller already knows how to handle.
    * A thrown error means the brand *is* connected but the OAuth refresh
@@ -589,16 +672,29 @@ export class ZohoSyncService {
 
     // A revoked or rejected credential is the one failure an operator has to
     // act on themselves, and it was previously invisible: the panel kept
-    // reporting "Healthy" while every job failed behind it. markUnhealthy
+    // reporting "Healthy" while every job failed behind it. An actually
+    // revoked refresh token (providerCode 'invalid_grant' — see
+    // ZohoBooksAdapter.toIntegrationError) sets status itself via
+    // markRevoked, since that credential cannot self-heal; every other
+    // AUTHENTICATION case (a plain 401/403, or a token rejected for a reason
+    // that might still clear up) goes through markUnhealthy instead, which
     // deliberately leaves `status` alone — see its own comment for why
     // halting here would be worse than surfacing it.
     if (integrationError?.errorClass === 'AUTHENTICATION') {
       try {
-        await this.connections.markUnhealthy(
-          scope,
-          brandId,
-          integrationError.providerMessage ?? integrationError.message,
-        );
+        if (integrationError.providerCode === 'invalid_grant') {
+          await this.connections.markRevoked(
+            scope,
+            brandId,
+            integrationError.providerMessage ?? integrationError.message,
+          );
+        } else {
+          await this.connections.markUnhealthy(
+            scope,
+            brandId,
+            integrationError.providerMessage ?? integrationError.message,
+          );
+        }
       } catch (healthError) {
         this.logger.warn(
           `could not record unhealthy state for brand ${brandId}: ` +

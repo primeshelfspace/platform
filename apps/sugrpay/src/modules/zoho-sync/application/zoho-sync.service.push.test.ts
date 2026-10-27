@@ -227,6 +227,64 @@ describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
     expect(dto.remoteId).toBe('remote-invoice-void-1');
   });
 
+  it('serializes two concurrent first-pushes of the same never-synced invoice into one create', async () => {
+    // Reproduces the race enqueueBackfill's own comment used to document as
+    // accepted: two jobs (e.g. two payments settling close together) both
+    // trying to first-push the same still-unsynced invoice. Without the
+    // first-push lock, both would see zohoInvoiceId === null and both call
+    // the adapter's create path, producing a duplicate invoice in Zoho.
+    const customer = await owner.customer.create({
+      data: { brandId, displayName: 'Acme Co', zohoContactId: 'contact-1' },
+    });
+    const invoice = await owner.invoice.create({
+      data: {
+        brandId,
+        customerId: customer.id,
+        number: 'INV-RACE-0001',
+        invoiceDate: new Date('2026-08-01'),
+        dueDate: new Date('2026-08-31'),
+        currency: 'USD',
+        publicToken: randomUUID(),
+        lineItems: {
+          create: [
+            {
+              position: 0,
+              itemName: 'Widget',
+              quantity: 1,
+              unitPriceMinor: 1000n,
+              lineTotalMinor: 1000n,
+            },
+          ],
+        },
+      },
+    });
+
+    const pushInvoice = vi
+      .fn()
+      .mockImplementation(async (_connection: unknown, dto: { remoteId: string | null }) => {
+        if (dto.remoteId === null) {
+          // Only the create call gets an artificial delay — this is the exact
+          // window the race exploits: both concurrent callers read
+          // zohoInvoiceId === null before either one's create call returns.
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          return { remoteId: 'remote-invoice-race-1', updatedAt: new Date('2026-08-20T10:00:00Z') };
+        }
+        return { remoteId: dto.remoteId, updatedAt: new Date('2026-08-20T10:00:05Z') };
+      });
+    const sync = service({ pushInvoice });
+
+    await Promise.all([
+      sync.pushInvoice(brandId, invoice.id),
+      sync.pushInvoice(brandId, invoice.id),
+    ]);
+
+    const createCalls = pushInvoice.mock.calls.filter(([, dto]) => dto.remoteId === null);
+    expect(createCalls).toHaveLength(1);
+
+    const updated = await owner.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(updated.zohoInvoiceId).toBe('remote-invoice-race-1');
+  });
+
   it('drops a payment with a non-positive amount before ever reaching Zoho', async () => {
     const customer = await owner.customer.create({
       data: { brandId, displayName: 'Acme Co', zohoContactId: 'contact-1' },

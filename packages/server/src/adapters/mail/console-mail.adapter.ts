@@ -28,7 +28,7 @@ export class ConsoleMailAdapter implements MailPort {
     return {
       providerMessageId: `console-${randomUUID()}`,
       acceptedAt: new Date(),
-      recipients: [...input.to],
+      recipients: [...input.to, ...(input.cc ?? [])],
     };
   }
 
