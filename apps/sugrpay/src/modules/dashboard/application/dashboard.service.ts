@@ -18,6 +18,8 @@ import { ZohoConnectionService } from '../../zoho-sync/application/zoho-connecti
 const DRAFT_UNSENT_ATTENTION_DAYS = 3;
 const DUE_SOON_HOURS = 24;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** The shape of this platform's own row ids (Postgres uuid). */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Plain-language stand-ins for a failed sync, shown on the merchant-facing
  * dashboard instead of the provider's own error text (`SyncJob.lastError`),
@@ -515,12 +517,16 @@ export class DashboardService {
 
       // Failed jobs on an INVOICE or CUSTOMER carry that object's id — resolve
       // it to a real invoice number / customer name for display, batched
-      // rather than one lookup per job.
+      // rather than one lookup per job. Only ids of our own rows: a pull
+      // job's objectId is Zoho's id, or 'list' / 'reconcile' for a whole
+      // scan, and handing one of those to a uuid column fails the entire
+      // query — one failed Zoho list call used to take this panel down.
+      const localId = (id: string | null): id is string => UUID.test(id ?? '');
       const invoiceIds = failedJobs
-        .filter((j) => j.objectType === 'INVOICE' && j.objectId)
+        .filter((j) => j.objectType === 'INVOICE' && localId(j.objectId))
         .map((j) => j.objectId!);
       const customerIds = failedJobs
-        .filter((j) => j.objectType === 'CUSTOMER' && j.objectId)
+        .filter((j) => j.objectType === 'CUSTOMER' && localId(j.objectId))
         .map((j) => j.objectId!);
       const [jobInvoices, jobCustomers] = await Promise.all([
         invoiceIds.length
