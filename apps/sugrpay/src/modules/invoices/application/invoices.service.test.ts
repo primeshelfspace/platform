@@ -27,7 +27,9 @@ const describeWithDb = hasDb ? describe : describe.skip;
 describeWithDb('InvoicesService', () => {
   const prisma = new InvoicingPrismaService(env!);
   const queue = createFakeQueueService();
-  const customers = new CustomersService(prisma, queue);
+  const customers = new CustomersService(prisma, queue, {
+    enrichCustomerFromZohoOnDemand: async () => false,
+  } as unknown as ZohoPullService);
   const mail = createFakeMailPort();
   // No onModuleInit call — fine as long as no test here exercises
   // attachPdf: true, which is the only path that touches the browser.
@@ -41,7 +43,7 @@ describeWithDb('InvoicesService', () => {
     // No test here creates a Zoho-sourced invoice, so findOne's on-demand
     // enrichment branch never fires — a real ZohoPullService (OAuth
     // connection, rate limiting, ...) would be pure overhead.
-    {} as ZohoPullService,
+    { enrichCustomerFromZohoOnDemand: async () => false } as unknown as ZohoPullService,
   );
   const owner = new PrismaClient({
     datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },

@@ -54,7 +54,16 @@ async function bootstrap(): Promise<void> {
       // force is set only by the on-demand "pull now" endpoint
       // (zoho-connect.controller.ts) — it bypasses pullBrand's contacts
       // full-scan floor, which the scheduled tick below must never do.
-      'zoho-pull-brand': (job) => zohoPull.pullBrand(job.data.brandId, job.data.force === true),
+      // backfillAfter is set by the Zoho connect callback: the first import,
+      // then everything that existed here before the connection is pushed.
+      // skipPayments: payments sync normally from then on.
+      'zoho-pull-brand': async (job) => {
+        const counts = await zohoPull.pullBrand(job.data.brandId, job.data.force === true);
+        if (job.data.backfillAfter === true) {
+          await zohoSync.enqueueBackfill(job.data.brandId, { skipPayments: true });
+        }
+        return counts;
+      },
     };
 
     // The every-minute 'scheduled-sync' tick: reaps orphaned sync jobs and

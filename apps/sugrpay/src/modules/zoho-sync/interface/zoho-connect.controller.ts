@@ -280,33 +280,22 @@ export class ZohoConnectController {
         { organizationId: organization.organizationId, organizationName: organization.name },
       );
 
-      // Everything that existed before this connection is worth pushing too,
-      // not just what happens from here on (FR-ZHO-013). Enqueuing is fast —
-      // awaited so a failure here can still redirect with connected=1 rather
-      // than silently losing it, but it must never block on the jobs
-      // actually running.
-      try {
-        // skipPayments: a fresh connection should only call Zoho for
-        // customers and invoices — payments sync normally from here on via
-        // the scheduled tick and the manual "pull now"/"backfill" actions.
-        await this.sync.enqueueBackfill(brandId, { skipPayments: true });
-      } catch (backfillError) {
-        this.logger.warn(
-          `initial backfill enqueue failed for brand ${brandId}: ${backfillError instanceof Error ? backfillError.message : backfillError}`,
-        );
-      }
+      // The access token this exchange just returned is good for an hour:
+      // keep it for the jobs below, which would otherwise each refresh one.
+      await this.connections.cacheAccessToken(brandId, tokens.accessToken, tokens.expiresAt);
 
-      // The other direction: bring in whatever already exists in Zoho
-      // (contacts most of all) right away, rather than waiting for the
-      // brand's own pullFrequencyMinutes to elapse on the scheduled-sync
-      // cron. Same fire-and-don't-block shape as the backfill above — a
-      // failure here is logged, not fatal to the connect itself, since the
-      // cron will still pick it up on schedule regardless.
+      // One job, in this order: bring in what already exists in Zoho (two
+      // list scans, no per-record calls), then push what existed here before
+      // the connection (FR-ZHO-013) — the worker queues that backfill once the
+      // import is done. Importing first means a customer Zoho already has is
+      // linked before anything here tries to create it again. Enqueuing is
+      // fast; a failure is logged, not fatal to the connect: the scheduled
+      // pull and the manual backfill both still cover it.
       try {
-        await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId });
-      } catch (pullError) {
+        await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId, backfillAfter: true });
+      } catch (enqueueError) {
         this.logger.warn(
-          `initial pull enqueue failed for brand ${brandId}: ${pullError instanceof Error ? pullError.message : pullError}`,
+          `initial import enqueue failed for brand ${brandId}: ${enqueueError instanceof Error ? enqueueError.message : enqueueError}`,
         );
       }
 

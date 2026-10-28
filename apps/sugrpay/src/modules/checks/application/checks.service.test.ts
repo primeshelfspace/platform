@@ -28,7 +28,9 @@ const describeWithDb = hasDb ? describe : describe.skip;
 describeWithDb('ChecksService', () => {
   const prisma = new InvoicingPrismaService(env!);
   const queue = createFakeQueueService();
-  const customers = new CustomersService(prisma, queue);
+  const customers = new CustomersService(prisma, queue, {
+    enrichCustomerFromZohoOnDemand: async () => false,
+  } as unknown as ZohoPullService);
   const mail = createFakeMailPort();
   const invoices = new InvoicesService(
     prisma,
@@ -37,7 +39,7 @@ describeWithDb('ChecksService', () => {
     env!,
     new LocalDiskAdapter(env!),
     new InvoicePdfService(),
-    {} as ZohoPullService,
+    { enrichCustomerFromZohoOnDemand: async () => false } as unknown as ZohoPullService,
   );
   const checks = new ChecksService(prisma, invoices, new LocalDiskAdapter(env!));
   const owner = new PrismaClient({

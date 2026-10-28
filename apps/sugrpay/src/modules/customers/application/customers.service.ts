@@ -2,6 +2,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, type Customer, type CustomerContactPerson } from '../../database/client.js';
@@ -12,6 +13,7 @@ import {
   type ScopedClient,
 } from '../../database/invoicing-prisma.service.js';
 import { QueueService } from '../../../infra/queue/queue.service.js';
+import { ZohoPullService } from '../../zoho-sync/application/zoho-pull.service.js';
 
 /** A row's outstanding balance, invoice count and settled-payment count — the
  * three figures the listing table shows per customer (FR-CUS list view). */
@@ -54,9 +56,12 @@ const COLLECTED_PAYMENT_STATUSES = ['SETTLED'] as const;
  */
 @Injectable()
 export class CustomersService {
+  private readonly logger = new Logger(CustomersService.name);
+
   constructor(
     private readonly prisma: InvoicingPrismaService,
     private readonly queue: QueueService,
+    private readonly zohoPull: ZohoPullService,
   ) {}
 
   async list(scope: Scope, brandId: string, query: CustomerListQuery): Promise<CustomerListResult> {
@@ -180,6 +185,17 @@ export class CustomersService {
   }
 
   async findOne(scope: Scope, brandId: string, id: string): Promise<CustomerWithContacts> {
+    // A contact imported from Zoho's list has no addresses or contact
+    // persons yet: fetched here, the first time it is opened. Non-fatal —
+    // the customer still shows with what is already stored.
+    await this.zohoPull
+      .enrichCustomerFromZohoOnDemand(scope, brandId, id)
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `could not fetch Zoho contact detail on demand for customer ${id}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
     const customer = await this.prisma.withScope(scope, (tx) =>
       tx.customer.findFirst({
         where: { id, brandId },

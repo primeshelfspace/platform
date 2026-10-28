@@ -31,7 +31,9 @@ describeWithDb('PaymentsService', () => {
   const prisma = new InvoicingPrismaService(env!);
   const gateway = new FakeGatewayAdapter();
   const queue = createFakeQueueService();
-  const customers = new CustomersService(prisma, queue);
+  const customers = new CustomersService(prisma, queue, {
+    enrichCustomerFromZohoOnDemand: async () => false,
+  } as unknown as ZohoPullService);
   const invoices = new InvoicesService(
     prisma,
     queue,
@@ -41,7 +43,7 @@ describeWithDb('PaymentsService', () => {
     new InvoicePdfService(),
     // No test here creates a Zoho-sourced invoice, so findOne's on-demand
     // enrichment branch never fires.
-    {} as ZohoPullService,
+    { enrichCustomerFromZohoOnDemand: async () => false } as unknown as ZohoPullService,
   );
   const payments = new PaymentsService(prisma, env!, gateway, queue);
   const owner = new PrismaClient({
