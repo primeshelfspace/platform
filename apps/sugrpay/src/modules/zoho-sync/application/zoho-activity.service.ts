@@ -6,6 +6,10 @@ export interface ZohoActivityEntry {
   readonly direction: 'PUSH' | 'PULL';
   readonly objectType: string;
   readonly objectId: string | null;
+  /** What the row is about, in words: "78 contacts in 1 call, 78 saved" for a
+   * list scan, the customer's name or the invoice number for one record.
+   * Null on rows written before this existed. */
+  readonly summary: string | null;
   readonly status: string;
   readonly errorClass: string | null;
   readonly lastError: string | null;
@@ -59,6 +63,7 @@ export class ZohoActivityService {
         direction: row.direction,
         objectType: row.objectType,
         objectId: row.objectId,
+        summary: row.summary,
         status: row.status,
         errorClass: row.errorClass,
         lastError: row.lastError,

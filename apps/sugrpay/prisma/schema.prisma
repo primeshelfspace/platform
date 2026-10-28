@@ -660,6 +660,9 @@ model SyncJob {
   /// The provider's verbatim message, so an operator sees what was actually
   /// said rather than a paraphrase.
   lastError     String?             @map("last_error")
+  /// What the row is about, for the integration log: "78 contacts, 78 saved"
+  /// for a list scan, the customer name or invoice number for one record.
+  summary       String?
   nextAttemptAt DateTime?           @map("next_attempt_at")
   completedAt   DateTime?           @map("completed_at")
   createdAt     DateTime            @default(now()) @map("created_at")

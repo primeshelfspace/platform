@@ -219,10 +219,11 @@ export class ZohoSyncService {
       if (flags && !flags.customerSyncEnabled) return;
     }
 
-    await this.runJob(scope, brandId, 'CUSTOMER', customerId, async () => {
+    await this.runJob(scope, brandId, 'CUSTOMER', customerId, async (name) => {
       let customer = await this.prisma.withScope(scope, (tx) =>
         tx.customer.findUniqueOrThrow({ where: { id: customerId }, include: { brand: true } }),
       );
+      name(customer.displayName);
 
       // First push (no zohoContactId yet) is the only case that can race
       // with another job trying to create the same contact — see
@@ -315,13 +316,14 @@ export class ZohoSyncService {
     const flags = await this.connections.getSyncFlags(scope, brandId);
     if (flags && !flags.invoiceSyncEnabled) return;
 
-    await this.runJob(scope, brandId, 'INVOICE', invoiceId, async () => {
+    await this.runJob(scope, brandId, 'INVOICE', invoiceId, async (name) => {
       let invoice = await this.prisma.withScope(scope, (tx) =>
         tx.invoice.findUniqueOrThrow({
           where: { id: invoiceId },
           include: { lineItems: { orderBy: { position: 'asc' } }, customer: true, taxRate: true },
         }),
       );
+      name(`Invoice ${invoice.number}`);
 
       // First push (no zohoInvoiceId yet) is the only case that can race with
       // another job trying to create the same invoice (e.g. two settled
@@ -440,13 +442,14 @@ export class ZohoSyncService {
     const flags = await this.connections.getSyncFlags(scope, brandId);
     if (flags && !flags.invoiceSyncEnabled) return;
 
-    await this.runJob(scope, brandId, 'PAYMENT', paymentId, async () => {
+    await this.runJob(scope, brandId, 'PAYMENT', paymentId, async (name) => {
       const payment = await this.prisma.withScope(scope, (tx) =>
         tx.payment.findUniqueOrThrow({
           where: { id: paymentId },
           include: { invoice: { include: { customer: true } } },
         }),
       );
+      name(`Payment on invoice ${payment.invoice.number}`);
 
       if (!payment.invoice.zohoInvoiceId) {
         await this.pushInvoice(brandId, payment.invoiceId);
@@ -650,6 +653,7 @@ export class ZohoSyncService {
     objectId: string,
     jobId: string,
     error: unknown,
+    summary: string | null = null,
   ): Promise<never> {
     const integrationError = error instanceof IntegrationError ? error : null;
     // Guarded for the same reason as below: recording why we failed must
@@ -665,6 +669,7 @@ export class ZohoSyncService {
             lastError:
               integrationError?.providerMessage ??
               (error instanceof Error ? error.message : String(error)),
+            ...(summary ? { summary } : {}),
           },
         }),
       );
@@ -732,8 +737,11 @@ export class ZohoSyncService {
     brandId: string,
     objectType: 'CUSTOMER' | 'INVOICE' | 'PAYMENT',
     objectId: string,
-    work: () => Promise<void>,
+    /** Given a setter for the log's wording: the customer's name or the
+     * invoice number, rather than a cut-off id. */
+    work: (name: (summary: string) => void) => Promise<void>,
   ): Promise<void> {
+    let summary: string | null = null;
     const job = await this.prisma.withoutScope(
       `recording sync job start for brand ${brandId}`,
       (client) =>
@@ -751,7 +759,9 @@ export class ZohoSyncService {
     );
 
     try {
-      await work();
+      await work((value) => {
+        summary = value.slice(0, 500);
+      });
       // Guarded: the write to Zoho has already landed. Letting the audit write
       // fail the job would have BullMQ retry a push that already succeeded.
       try {
@@ -760,7 +770,7 @@ export class ZohoSyncService {
           (client) =>
             client.syncJob.update({
               where: { id: job.id },
-              data: { status: 'SUCCEEDED', completedAt: new Date() },
+              data: { status: 'SUCCEEDED', completedAt: new Date(), summary },
             }),
         );
       } catch (auditError) {
@@ -787,7 +797,7 @@ export class ZohoSyncService {
         );
       }
     } catch (error) {
-      await this.recordFailure(scope, brandId, objectType, objectId, job.id, error);
+      await this.recordFailure(scope, brandId, objectType, objectId, job.id, error, summary);
     }
   }
 }

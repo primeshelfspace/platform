@@ -273,6 +273,7 @@ describeWithDb('ZohoPullService', () => {
       fakeInvoiceListItem(`list-only-invoice-${n}-${run}`, `LO-${n}-${run.slice(0, 8)}`, id),
     );
     const svc = service(zoho, redis);
+    const startedAt = new Date();
 
     // The order pullBrand runs them in: contacts, then invoices.
     expect(await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false)).toBe(3);
@@ -280,6 +281,18 @@ describeWithDb('ZohoPullService', () => {
 
     expect(zoho.getContactCalls).toBe(0);
     expect(zoho.getInvoiceCalls).toBe(0);
+
+    // The log has one row per Zoho call, not one per record saved.
+    const logged = await owner.syncJob.findMany({
+      where: { brandId, direction: 'PULL', createdAt: { gte: startedAt } },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(logged.map((j) => [j.objectType, j.objectId, j.status])).toEqual([
+      ['CUSTOMER', 'list', 'SUCCEEDED'],
+      ['INVOICE', 'list', 'SUCCEEDED'],
+    ]);
+    expect(logged[0]!.summary).toMatch(/^\d+ contacts in 1 call, 3 saved$/);
+    expect(logged[1]!.summary).toBe('3 invoices in 1 call, 3 saved');
     const imported = await owner.customer.findMany({
       where: { brandId, zohoContactId: { in: contactIds } },
     });
@@ -314,6 +327,12 @@ describeWithDb('ZohoPullService', () => {
 
     expect(await svc.enrichCustomerFromZohoOnDemand(scope, brandId, customer.id)).toBe(true);
     expect(zoho.getContactCalls).toBe(1);
+    // That one call is one row, named.
+    const row = await owner.syncJob.findFirstOrThrow({
+      where: { brandId, objectId: contactId },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(row.summary).toBe('On Demand Co');
     const enriched = await owner.customer.findFirstOrThrow({
       where: { id: customer.id },
       include: { contactPersons: true },

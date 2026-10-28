@@ -14009,6 +14009,10 @@
           "direction": { "type": "string", "enum": ["PUSH", "PULL"] },
           "objectType": { "type": "string" },
           "objectId": { "type": ["string", "null"] },
+          "summary": {
+            "type": ["string", "null"],
+            "description": "What the row is about, in words: \"78 contacts in 1 call, 78 saved\" for a list scan, the customer's name or the invoice number for one record. Null on rows written before this existed."
+          },
           "status": { "type": "string" },
           "errorClass": { "type": ["string", "null"] },
           "lastError": { "type": ["string", "null"] },
@@ -14018,6 +14022,7 @@
           "direction",
           "objectType",
           "objectId",
+          "summary",
           "status",
           "errorClass",
           "lastError",
