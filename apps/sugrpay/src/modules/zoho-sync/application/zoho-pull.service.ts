@@ -81,6 +81,10 @@ const RECONCILE_CREATION_GRACE_MS = 10 * 60 * 1000;
  * onto our Customer.status. Undefined is a defensive fallback only - Status.All
  * (see listContactsPage) should always return one - and reads as ACTIVE, the
  * same default the column itself has. */
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
 function mapContactStatus(status: string | undefined): 'ACTIVE' | 'ARCHIVED' {
   return status === 'inactive' ? 'ARCHIVED' : 'ACTIVE';
 }
@@ -485,40 +489,53 @@ export class ZohoPullService {
     cursor: Date | null,
     force = false,
   ): Promise<{ touched: number; seen: Array<{ contactId: string; status: string | undefined }> }> {
-    return this.recordPull(brandId, 'CUSTOMER', 'list', async () => {
-      let page = 1;
-      let hasMore = true;
-      let touched = 0;
-      // Every contact Zoho reported, due or not — reconcileContactPresence
-      // needs the full picture, not just the changed subset.
-      const seen: Array<{ contactId: string; status: string | undefined }> = [];
+    let calls = 0;
+    return this.recordPull(
+      brandId,
+      'CUSTOMER',
+      'list',
+      async () => {
+        let page = 1;
+        let hasMore = true;
+        let touched = 0;
+        // Every contact Zoho reported, due or not — reconcileContactPresence
+        // needs the full picture, not just the changed subset.
+        const seen: Array<{ contactId: string; status: string | undefined }> = [];
 
-      while (hasMore) {
-        const { contacts, hasMorePage } = await this.zoho.listContactsPage(connection, page);
-        for (const item of contacts) {
-          seen.push({ contactId: item.contact_id, status: item.status });
-        }
-        const versions = await this.localContactVersions(
-          scope,
-          brandId,
-          contacts.map((item) => item.contact_id),
-        );
-        const due = contacts.filter((item) => this.isContactDue(item, versions, cursor, force));
-        // Applied from the list item itself: no call per contact. The list has
-        // everything but addresses and contact persons, which are fetched when
-        // the customer is first opened (enrichCustomerFromZohoOnDemand).
-        for (const item of due) {
-          const applied = await this.pullRecordTolerantly(
-            () => this.applyContactListItem(scope, brandId, item),
-            `Zoho contact ${item.contact_id}`,
+        while (hasMore) {
+          const { contacts, hasMorePage } = await this.zoho.listContactsPage(connection, page);
+          calls++;
+          for (const item of contacts) {
+            seen.push({ contactId: item.contact_id, status: item.status });
+          }
+          const versions = await this.localContactVersions(
+            scope,
+            brandId,
+            contacts.map((item) => item.contact_id),
           );
-          if (applied) touched++;
+          const due = contacts.filter((item) => this.isContactDue(item, versions, cursor, force));
+          // Applied from the list item itself: no call per contact. The list has
+          // everything but addresses and contact persons, which are fetched when
+          // the customer is first opened (enrichCustomerFromZohoOnDemand).
+          for (const item of due) {
+            const applied = await this.pullRecordTolerantly(
+              () => this.applyContactListItem(scope, brandId, item),
+              `Zoho contact ${item.contact_id}`,
+            );
+            if (applied) touched++;
+          }
+          hasMore = hasMorePage;
+          page++;
         }
-        hasMore = hasMorePage;
-        page++;
-      }
-      return { touched, seen };
-    });
+        return { touched, seen };
+      },
+      {
+        summary: (result) =>
+          result
+            ? `${result.seen.length} contacts in ${plural(calls, 'call')}, ${result.touched} saved`
+            : null,
+      },
+    );
   }
 
   /** zohoContactId -> zohoSyncedVersion for this page's contacts that already
@@ -585,40 +602,47 @@ export class ZohoPullService {
     item: ZohoContactListItem,
   ): Promise<boolean> {
     const contactId = item.contact_id;
-    return this.recordPull(brandId, 'CUSTOMER', contactId, async () => {
-      const existing = await this.prisma.withScope(scope, (tx) =>
-        tx.customer.findFirst({
-          where: { brandId, zohoContactId: contactId },
-          select: { zohoSyncedVersion: true },
-        }),
-      );
-      if (this.isOwnPushEcho(item.last_modified_time, existing?.zohoSyncedVersion)) return false;
+    return this.recordPull(
+      brandId,
+      'CUSTOMER',
+      contactId,
+      async () => {
+        const existing = await this.prisma.withScope(scope, (tx) =>
+          tx.customer.findFirst({
+            where: { brandId, zohoContactId: contactId },
+            select: { zohoSyncedVersion: true },
+          }),
+        );
+        if (this.isOwnPushEcho(item.last_modified_time, existing?.zohoSyncedVersion)) return false;
 
-      const type = item.customer_sub_type
-        ? ((item.customer_sub_type === 'individual' ? 'INDIVIDUAL' : 'BUSINESS') as
-            'INDIVIDUAL' | 'BUSINESS')
-        : undefined;
-      const data = {
-        ...(type ? { type } : {}),
-        displayName: item.contact_name,
-        companyName: item.company_name ?? null,
-        firstName: item.first_name ?? null,
-        lastName: item.last_name ?? null,
-        email: item.email ?? null,
-        phone: item.phone ?? null,
-        status: mapContactStatus(item.status),
-        zohoSyncedVersion: this.parseZohoTimestamp(item.last_modified_time),
-      };
-      // Same race-safe upsert as pullOneCustomer.
-      await this.prisma.withScope(scope, (tx) =>
-        tx.customer.upsert({
-          where: { brandId_zohoContactId: { brandId, zohoContactId: contactId } },
-          create: { type: 'BUSINESS', ...data, brandId, zohoContactId: contactId },
-          update: data,
-        }),
-      );
-      return true;
-    });
+        const type = item.customer_sub_type
+          ? ((item.customer_sub_type === 'individual' ? 'INDIVIDUAL' : 'BUSINESS') as
+              'INDIVIDUAL' | 'BUSINESS')
+          : undefined;
+        const data = {
+          ...(type ? { type } : {}),
+          displayName: item.contact_name,
+          companyName: item.company_name ?? null,
+          firstName: item.first_name ?? null,
+          lastName: item.last_name ?? null,
+          email: item.email ?? null,
+          phone: item.phone ?? null,
+          status: mapContactStatus(item.status),
+          zohoSyncedVersion: this.parseZohoTimestamp(item.last_modified_time),
+        };
+        // Same race-safe upsert as pullOneCustomer.
+        await this.prisma.withScope(scope, (tx) =>
+          tx.customer.upsert({
+            where: { brandId_zohoContactId: { brandId, zohoContactId: contactId } },
+            create: { type: 'BUSINESS', ...data, brandId, zohoContactId: contactId },
+            update: data,
+          }),
+        );
+        return true;
+      },
+      // No Zoho call of its own: the list scan's row already covers it.
+      { onlyIfFailed: true, summary: () => item.contact_name },
+    );
   }
 
   /**
@@ -663,112 +687,120 @@ export class ZohoPullService {
     contactId: string,
     opts?: { readonly evenIfUnchanged?: boolean },
   ): Promise<boolean> {
-    return this.recordPull(brandId, 'CUSTOMER', contactId, async () => {
-      const contact = await this.zoho.getContact(connection, contactId);
+    let name: string | null = null;
+    return this.recordPull(
+      brandId,
+      'CUSTOMER',
+      contactId,
+      async () => {
+        const contact = await this.zoho.getContact(connection, contactId);
+        name = contact.contact_name;
 
-      const existing = await this.prisma.withScope(scope, (tx) =>
-        tx.customer.findFirst({
-          where: { brandId, zohoContactId: contactId },
-          select: { zohoSyncedVersion: true, billingAddress: true, shippingAddress: true },
-        }),
-      );
-      if (
-        !opts?.evenIfUnchanged &&
-        this.isOwnPushEcho(contact.last_modified_time, existing?.zohoSyncedVersion)
-      ) {
-        this.logger.debug(
-          `skipping Zoho contact ${contactId} — unchanged since this platform's own push`,
+        const existing = await this.prisma.withScope(scope, (tx) =>
+          tx.customer.findFirst({
+            where: { brandId, zohoContactId: contactId },
+            select: { zohoSyncedVersion: true, billingAddress: true, shippingAddress: true },
+          }),
         );
-        return false;
-      }
+        if (
+          !opts?.evenIfUnchanged &&
+          this.isOwnPushEcho(contact.last_modified_time, existing?.zohoSyncedVersion)
+        ) {
+          this.logger.debug(
+            `skipping Zoho contact ${contactId} — unchanged since this platform's own push`,
+          );
+          return false;
+        }
 
-      const data = {
-        type: (contact.customer_sub_type === 'individual' ? 'INDIVIDUAL' : 'BUSINESS') as
-          'INDIVIDUAL' | 'BUSINESS',
-        displayName: contact.contact_name,
-        companyName: contact.company_name ?? null,
-        firstName: contact.first_name ?? null,
-        lastName: contact.last_name ?? null,
-        email: contact.email ?? null,
-        phone: contact.phone ?? null,
-        status: mapContactStatus(contact.status),
-        zohoSyncedVersion: this.parseZohoTimestamp(contact.last_modified_time),
-        zohoDetailVersion: this.parseZohoTimestamp(contact.last_modified_time),
-        billingAddress: (this.preserveLocalCountry(
-          this.zoho.fromZohoAddress(contact.billing_address),
-          existing?.billingAddress,
-        ) ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-        shippingAddress: (this.preserveLocalCountry(
-          this.zoho.fromZohoAddress(contact.shipping_address),
-          existing?.shippingAddress,
-        ) ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-      };
+        const data = {
+          type: (contact.customer_sub_type === 'individual' ? 'INDIVIDUAL' : 'BUSINESS') as
+            'INDIVIDUAL' | 'BUSINESS',
+          displayName: contact.contact_name,
+          companyName: contact.company_name ?? null,
+          firstName: contact.first_name ?? null,
+          lastName: contact.last_name ?? null,
+          email: contact.email ?? null,
+          phone: contact.phone ?? null,
+          status: mapContactStatus(contact.status),
+          zohoSyncedVersion: this.parseZohoTimestamp(contact.last_modified_time),
+          zohoDetailVersion: this.parseZohoTimestamp(contact.last_modified_time),
+          billingAddress: (this.preserveLocalCountry(
+            this.zoho.fromZohoAddress(contact.billing_address),
+            existing?.billingAddress,
+          ) ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+          shippingAddress: (this.preserveLocalCountry(
+            this.zoho.fromZohoAddress(contact.shipping_address),
+            existing?.shippingAddress,
+          ) ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        };
 
-      // A single upsert, not a separate findFirst-then-create/update: two
-      // concurrent calls for the same not-yet-seen contact_id (the cascades
-      // below, or two pages' worth of the same due-list) resolve cleanly
-      // here — proven against a real concurrent race, not assumed — because
-      // Postgres compiles this to a genuine INSERT ... ON CONFLICT
-      // (brand_id, zoho_contact_id) DO UPDATE, which is atomic: one caller's
-      // INSERT wins, the other's own attempt transparently becomes the
-      // UPDATE branch, with neither seeing an error. (The line-item replace
-      // in pullOneInvoice below needed more than this — see its own comment
-      // — but that turned out to be a real race in a *different* place, not
-      // evidence that upsert itself needed the same treatment.)
-      await this.prisma.withScope(scope, async (tx) => {
-        const row = await tx.customer.upsert({
-          where: { brandId_zohoContactId: { brandId, zohoContactId: contactId } },
-          create: { ...data, brandId, zohoContactId: contactId },
-          update: data,
-        });
+        // A single upsert, not a separate findFirst-then-create/update: two
+        // concurrent calls for the same not-yet-seen contact_id (the cascades
+        // below, or two pages' worth of the same due-list) resolve cleanly
+        // here — proven against a real concurrent race, not assumed — because
+        // Postgres compiles this to a genuine INSERT ... ON CONFLICT
+        // (brand_id, zoho_contact_id) DO UPDATE, which is atomic: one caller's
+        // INSERT wins, the other's own attempt transparently becomes the
+        // UPDATE branch, with neither seeing an error. (The line-item replace
+        // in pullOneInvoice below needed more than this — see its own comment
+        // — but that turned out to be a real race in a *different* place, not
+        // evidence that upsert itself needed the same treatment.)
+        await this.prisma.withScope(scope, async (tx) => {
+          const row = await tx.customer.upsert({
+            where: { brandId_zohoContactId: { brandId, zohoContactId: contactId } },
+            create: { ...data, brandId, zohoContactId: contactId },
+            update: data,
+          });
 
-        // Same recipe as pullOneInvoice's line items, for the same reason:
-        // upsert each contact person individually (race-safe the same way
-        // the customer row above is — customerId_zohoContactPersonId is a
-        // real constraint), then a plain delete for the ones no longer
-        // present, scoped by id rather than a naive wipe-and-recreate.
-        const contactPersons = contact.contact_persons ?? [];
-        for (const person of contactPersons) {
-          const personData = {
-            salutation: person.salutation ?? null,
-            firstName: person.first_name,
-            lastName: person.last_name ?? null,
-            email: person.email ?? null,
-            phone: person.phone ?? null,
-            mobile: person.mobile ?? null,
-            skype: person.skype ?? null,
-            designation: person.designation ?? null,
-            department: person.department ?? null,
-            isPrimaryContact: person.is_primary_contact ?? false,
-          };
-          await tx.customerContactPerson.upsert({
-            where: {
-              customerId_zohoContactPersonId: {
+          // Same recipe as pullOneInvoice's line items, for the same reason:
+          // upsert each contact person individually (race-safe the same way
+          // the customer row above is — customerId_zohoContactPersonId is a
+          // real constraint), then a plain delete for the ones no longer
+          // present, scoped by id rather than a naive wipe-and-recreate.
+          const contactPersons = contact.contact_persons ?? [];
+          for (const person of contactPersons) {
+            const personData = {
+              salutation: person.salutation ?? null,
+              firstName: person.first_name,
+              lastName: person.last_name ?? null,
+              email: person.email ?? null,
+              phone: person.phone ?? null,
+              mobile: person.mobile ?? null,
+              skype: person.skype ?? null,
+              designation: person.designation ?? null,
+              department: person.department ?? null,
+              isPrimaryContact: person.is_primary_contact ?? false,
+            };
+            await tx.customerContactPerson.upsert({
+              where: {
+                customerId_zohoContactPersonId: {
+                  customerId: row.id,
+                  zohoContactPersonId: person.contact_person_id,
+                },
+              },
+              create: {
+                ...personData,
                 customerId: row.id,
                 zohoContactPersonId: person.contact_person_id,
               },
-            },
-            create: {
-              ...personData,
+              update: personData,
+            });
+          }
+          // notIn: [] (Zoho now reports zero contact persons) correctly
+          // matches every existing Zoho-sourced row here, not none — SQL's
+          // NULL semantics keep any locally-created contact person (a future
+          // possibility; zohoContactPersonId null) out of this filter either way.
+          await tx.customerContactPerson.deleteMany({
+            where: {
               customerId: row.id,
-              zohoContactPersonId: person.contact_person_id,
+              zohoContactPersonId: { notIn: contactPersons.map((p) => p.contact_person_id) },
             },
-            update: personData,
           });
-        }
-        // notIn: [] (Zoho now reports zero contact persons) correctly
-        // matches every existing Zoho-sourced row here, not none — SQL's
-        // NULL semantics keep any locally-created contact person (a future
-        // possibility; zohoContactPersonId null) out of this filter either way.
-        await tx.customerContactPerson.deleteMany({
-          where: {
-            customerId: row.id,
-            zohoContactPersonId: { notIn: contactPersons.map((p) => p.contact_person_id) },
-          },
         });
-      });
-      return true;
-    });
+        return true;
+      },
+      { summary: () => name },
+    );
   }
 
   /**
@@ -914,6 +946,8 @@ export class ZohoPullService {
     brandId: string,
     connection: AccountingConnection,
   ): Promise<void> {
+    let calls = 0;
+    let summaryText: string | null = null;
     await this.recordPull(
       brandId,
       'INVOICE',
@@ -930,6 +964,7 @@ export class ZohoPullService {
             page,
             null,
           );
+          calls++;
           for (const item of invoices) seen.add(item.invoice_id);
           hasMore = hasMorePage;
           page++;
@@ -993,9 +1028,12 @@ export class ZohoPullService {
               `payment links restored`,
           );
         }
+        summaryText =
+          `${seen.size} invoices checked for deletion in ${plural(calls, 'call')}` +
+          (nowMissing.length ? `, ${nowMissing.length} missing from Zoho` : '');
         return true;
       },
-      { skippedWhen: (applied) => applied === false },
+      { skippedWhen: (applied) => applied === false, summary: () => summaryText },
     );
   }
 
@@ -1018,33 +1056,55 @@ export class ZohoPullService {
     connection: AccountingConnection,
     cursor: Date | null,
   ): Promise<number> {
-    return this.recordPull(brandId, 'INVOICE', 'list', async () => {
-      let page = 1;
-      let hasMore = true;
-      let touched = 0;
-      const sinceIso = cursor ? cursor.toISOString() : null;
+    let calls = 0;
+    let listed = 0;
+    // Saving an invoice from the list costs no call, except re-reading one
+    // already here that was edited in Zoho (its line items are not on the
+    // list). Those are counted into this scan's row rather than logged apart.
+    const scan = { detailCalls: 0 };
+    return this.recordPull(
+      brandId,
+      'INVOICE',
+      'list',
+      async () => {
+        let page = 1;
+        let hasMore = true;
+        let touched = 0;
+        const sinceIso = cursor ? cursor.toISOString() : null;
 
-      while (hasMore) {
-        const { invoices, hasMorePage } = await this.zoho.listInvoicesPage(
-          connection,
-          page,
-          sinceIso,
-        );
-        // No per-item Zoho call here (list-only), so there is no round-trip
-        // latency to overlap and no need for mapWithConcurrency — a plain
-        // sequential loop over the page is enough.
-        for (const item of invoices) {
-          const applied = await this.pullRecordTolerantly(
-            () => this.pullOneInvoice(scope, brandId, connection, item),
-            `Zoho invoice ${item.invoice_id}`,
+        while (hasMore) {
+          const { invoices, hasMorePage } = await this.zoho.listInvoicesPage(
+            connection,
+            page,
+            sinceIso,
           );
-          if (applied) touched++;
+          calls++;
+          listed += invoices.length;
+          // No per-item Zoho call here (list-only), so there is no round-trip
+          // latency to overlap and no need for mapWithConcurrency — a plain
+          // sequential loop over the page is enough.
+          for (const item of invoices) {
+            const applied = await this.pullRecordTolerantly(
+              () => this.pullOneInvoice(scope, brandId, connection, item, undefined, scan),
+              `Zoho invoice ${item.invoice_id}`,
+            );
+            if (applied) touched++;
+          }
+          hasMore = hasMorePage;
+          page++;
         }
-        hasMore = hasMorePage;
-        page++;
-      }
-      return touched;
-    });
+        return touched;
+      },
+      {
+        summary: (touched) =>
+          touched === undefined
+            ? null
+            : `${listed} invoices in ${plural(calls + scan.detailCalls, 'call')}, ${touched} saved` +
+              (scan.detailCalls
+                ? ` (${scan.detailCalls} edited in Zoho, re-read for their line items)`
+                : ''),
+      },
+    );
   }
 
   private async pullOneInvoice(
@@ -1055,6 +1115,9 @@ export class ZohoPullService {
     /** Already-fetched detail for this invoice (the webhook path fetches it
      * up front), so the line-item refresh below does not fetch it again. */
     prefetchedDetail?: ZohoInvoiceDetail,
+    /** Set when saving from the invoice list scan: no row of its own unless it
+     * fails (the scan's row covers it), and any detail call is counted here. */
+    fromScan?: { detailCalls: number },
   ): Promise<boolean> {
     const invoiceId = item.invoice_id;
     return this.recordPull(
@@ -1124,6 +1187,7 @@ export class ZohoPullService {
         // the next pull retries the invoice, instead of treating it as already
         // up to date with stale line items.
         if (existing && existing._count.lineItems > 0) {
+          if (!prefetchedDetail && fromScan) fromScan.detailCalls++;
           const detail = prefetchedDetail ?? (await this.zoho.getInvoice(connection, invoiceId));
           await this.applyInvoiceDetail(scope, existing.id, detail, currency);
         }
@@ -1214,7 +1278,11 @@ export class ZohoPullService {
         });
         return true;
       },
-      { skippedWhen: (applied) => applied === false },
+      {
+        skippedWhen: (applied) => applied === false,
+        summary: () => `Invoice ${item.invoice_number}`,
+        onlyIfFailed: Boolean(fromScan),
+      },
     );
   }
 
@@ -1241,7 +1309,7 @@ export class ZohoPullService {
     const existing = await this.prisma.withScope(scope, (tx) =>
       tx.invoice.findFirst({
         where: { id: invoiceId, brandId },
-        select: { zohoInvoiceId: true, currency: true },
+        select: { zohoInvoiceId: true, currency: true, number: true },
       }),
     );
     if (!existing?.zohoInvoiceId) return false;
@@ -1260,7 +1328,10 @@ export class ZohoPullService {
         await this.applyInvoiceDetail(scope, invoiceId, detail, currency);
         return true;
       },
-      { skippedWhen: (applied) => applied === false },
+      {
+        skippedWhen: (applied) => applied === false,
+        summary: () => `Invoice ${existing.number}, line items`,
+      },
     );
   }
 
@@ -1402,31 +1473,50 @@ export class ZohoPullService {
 
   /** Mirrors ZohoSyncService.runJob but for direction: PULL — kept as its
    * own small copy rather than shared, so a change to the push path's
-   * retry/recording behaviour cannot silently alter the pull path's. */
+   * retry/recording behaviour cannot silently alter the pull path's.
+   *
+   * The integration log reads as one row per Zoho call. A list scan is one
+   * row whose summary says what it covered ("78 contacts, 78 saved"); the
+   * records it saves from that one response are `onlyIfFailed`: no row
+   * unless saving one fails, which still has to be visible. A row per saved
+   * record made one call look like dozens. */
   private async recordPull<T>(
     brandId: string,
     objectType: 'CUSTOMER' | 'INVOICE',
     objectId: string,
     work: () => Promise<T>,
-    options?: { readonly skippedWhen?: (result: T) => boolean },
+    options?: {
+      readonly skippedWhen?: (result: T) => boolean;
+      /** Words for the log: a count for a scan, a name for a record. */
+      readonly summary?: (result: T | undefined) => string | null;
+      readonly onlyIfFailed?: boolean;
+    },
   ): Promise<T> {
-    const job = await this.prisma.withoutScope(
-      `recording pull job start for brand ${brandId}`,
-      (client) =>
-        client.syncJob.create({
-          data: {
-            brandId,
-            provider: 'ZOHO_BOOKS',
-            direction: 'PULL',
-            objectType,
-            objectId,
-            status: 'RUNNING',
-          },
-        }),
-    );
+    const summaryOf = (result: T | undefined): string | null => {
+      try {
+        return options?.summary?.(result)?.slice(0, 500) ?? null;
+      } catch {
+        return null;
+      }
+    };
+    const job = options?.onlyIfFailed
+      ? null
+      : await this.prisma.withoutScope(`recording pull job start for brand ${brandId}`, (client) =>
+          client.syncJob.create({
+            data: {
+              brandId,
+              provider: 'ZOHO_BOOKS',
+              direction: 'PULL',
+              objectType,
+              objectId,
+              status: 'RUNNING',
+            },
+          }),
+        );
 
     try {
       const result = await work();
+      if (!job) return result;
       // An explicit predicate rather than treating any falsy result as a skip:
       // the list wrappers legitimately return 0 for "nothing had changed", which
       // is a real success, not a refusal to represent something.
@@ -1440,7 +1530,11 @@ export class ZohoPullService {
           (client) =>
             client.syncJob.update({
               where: { id: job.id },
-              data: { status: skipped ? 'SKIPPED' : 'SUCCEEDED', completedAt: new Date() },
+              data: {
+                status: skipped ? 'SKIPPED' : 'SUCCEEDED',
+                completedAt: new Date(),
+                summary: summaryOf(result),
+              },
             }),
         );
       } catch (auditError) {
@@ -1458,19 +1552,29 @@ export class ZohoPullService {
       // which is what pullRecordTolerantly and the queue's retry policy both
       // read to decide what to do next.
       try {
+        const failure = {
+          status: 'FAILED' as const,
+          errorClass: integrationError?.errorClass ?? ('PERMANENT' as const),
+          lastError:
+            integrationError?.providerMessage ??
+            (error instanceof Error ? error.message : String(error)),
+          summary: summaryOf(undefined),
+        };
         await this.prisma.withoutScope(
           `recording pull job failure for brand ${brandId}`,
           (client) =>
-            client.syncJob.update({
-              where: { id: job.id },
-              data: {
-                status: 'FAILED',
-                errorClass: integrationError?.errorClass ?? 'PERMANENT',
-                lastError:
-                  integrationError?.providerMessage ??
-                  (error instanceof Error ? error.message : String(error)),
-              },
-            }),
+            job
+              ? client.syncJob.update({ where: { id: job.id }, data: failure })
+              : client.syncJob.create({
+                  data: {
+                    brandId,
+                    provider: 'ZOHO_BOOKS',
+                    direction: 'PULL',
+                    objectType,
+                    objectId,
+                    ...failure,
+                  },
+                }),
         );
       } catch (auditError) {
         this.logger.warn(
