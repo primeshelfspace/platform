@@ -51,6 +51,7 @@ function makeController(overrides: { queueEnqueue?: ReturnType<typeof vi.fn> } =
 
   const connections = {
     saveZohoConnection: vi.fn().mockResolvedValue(undefined),
+    cacheAccessToken: vi.fn().mockResolvedValue(undefined),
   } as unknown as ZohoConnectionService;
 
   const systemScope = {
@@ -78,17 +79,27 @@ function makeController(overrides: { queueEnqueue?: ReturnType<typeof vi.fn> } =
 }
 
 describe('ZohoConnectController.callback', () => {
-  it('enqueues both the push backfill and a pull, on a successful connect', async () => {
-    const { controller, sync, queue } = makeController();
+  it('enqueues one import that pushes the backfill after it, and keeps the token', async () => {
+    const { controller, sync, queue, connections } = makeController();
     const state = signOAuthState(BRAND_ID, 'zoho', SESSION_SECRET);
     const response = makeResponse();
 
     await controller.callback('auth-code', state, undefined, response);
 
-    expect(sync.enqueueBackfill).toHaveBeenCalledWith(BRAND_ID, { skipPayments: true });
+    // The backfill is queued by the worker once the import is done, not here:
+    // importing first links customers Zoho already has before any push.
+    expect(sync.enqueueBackfill).not.toHaveBeenCalled();
+    expect(queue.enqueue).toHaveBeenCalledTimes(1);
     expect(queue.enqueue).toHaveBeenCalledWith('sync', 'zoho-pull-brand', {
       brandId: BRAND_ID,
+      backfillAfter: true,
     });
+    // The exchange's own access token, so the first jobs need no refresh.
+    expect(connections.cacheAccessToken).toHaveBeenCalledWith(
+      BRAND_ID,
+      'access-token',
+      expect.any(Date),
+    );
     expect(response.redirect).toHaveBeenCalledWith(
       expect.stringContaining(`brandId=${BRAND_ID}&connected=1`),
     );

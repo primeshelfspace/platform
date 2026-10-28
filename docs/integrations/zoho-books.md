@@ -43,6 +43,13 @@ connects.
 - **Pull** (Zoho → Sugrpay): driven by Zoho webhooks, plus the **Sync now**
   button; a timed pull every N minutes is off unless
   `ZOHO_SCHEDULED_PULL_ENABLED=true`.
+- **On connect**, one job imports what Zoho already has, then pushes what
+  existed here before. The import reads only Zoho's two lists, contacts then
+  invoices (one call per 200 records), with no call per record. A contact's
+  addresses and contact persons, which the list doesn't carry, are fetched the
+  first time the customer (or one of its invoices) is opened; an invoice's
+  line items likewise. The access token from connecting is reused, and only
+  one job per brand refreshes it at a time.
 - The worker must be running for push and pull jobs:
   `pnpm --filter @platform/sugrpay-api dev:worker`.
 

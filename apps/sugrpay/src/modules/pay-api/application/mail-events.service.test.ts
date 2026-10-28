@@ -69,7 +69,9 @@ describeWithDb('MailEventsService', () => {
   const prisma = new InvoicingPrismaService(env!);
   const mail = createScriptedMailPort();
   const queue = createFakeQueueService();
-  const customers = new CustomersService(prisma, queue);
+  const customers = new CustomersService(prisma, queue, {
+    enrichCustomerFromZohoOnDemand: async () => false,
+  } as unknown as ZohoPullService);
   const invoices = new InvoicesService(
     prisma,
     queue,
@@ -77,7 +79,7 @@ describeWithDb('MailEventsService', () => {
     env!,
     new LocalDiskAdapter(env!),
     new InvoicePdfService(),
-    {} as ZohoPullService,
+    { enrichCustomerFromZohoOnDemand: async () => false } as unknown as ZohoPullService,
   );
   const mailEvents = new MailEventsService(mail, prisma);
   const owner = new PrismaClient({

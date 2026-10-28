@@ -293,6 +293,21 @@ export class InvoicesService {
       }
     }
 
+    // Same for the customer's address, shown on the invoice: a contact
+    // imported from Zoho's list gets its detail the first time it is needed.
+    const customerEnriched = await this.zohoPull
+      .enrichCustomerFromZohoOnDemand(scope, brandId, invoice.customerId)
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `could not fetch Zoho contact detail on demand for invoice ${id}: ` +
+            `${error instanceof Error ? error.message : String(error)}`,
+        );
+        return false;
+      });
+    if (customerEnriched) {
+      invoice = (await load()) ?? invoice;
+    }
+
     return {
       ...invoice,
       customer: {

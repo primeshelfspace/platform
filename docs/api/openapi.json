@@ -1671,6 +1671,11 @@
                       "type": ["string", "null"],
                       "description": "The last_modified_time Zoho reported for this contact immediately after our own push. Lets ZohoPullService tell our own write echoing back from a genuine edit made in Zoho — without it, a push followed by a pull replaced firstName/lastName with whatever Zoho derived from contact_name, since upsertCustomer sends only contact_name but pullOneCustomer reads first_name/last_name back. Null means \"never pushed from here\", which correctly reads as \"not an echo\"."
                     },
+                    "zohoDetailVersion": {
+                      "format": "date-time",
+                      "type": ["string", "null"],
+                      "description": "The Zoho last_modified_time of the full contact (addresses, contact persons) last applied here. The contact scan imports from Zoho's list alone, which carries neither, so a contact whose zohoSyncedVersion is newer than this (or this is null) has its detail fetched the first time it is opened — one call then, instead of one per contact on every import."
+                    },
                     "zohoUnsyncedReason": {
                       "type": ["string", "null"],
                       "description": "Set when a required-field check blocks an outbound Zoho push (FR-ZHO webhook \"Outbound\"/\"mandatory fields\"), so the reason is visible on the customer itself, not only in the Sync Dashboard's SyncJob trail. Cleared the moment a push for this customer succeeds."
@@ -1695,6 +1700,7 @@
                     "shippingAddress",
                     "zohoContactId",
                     "zohoSyncedVersion",
+                    "zohoDetailVersion",
                     "zohoUnsyncedReason",
                     "notes"
                   ]
@@ -2011,6 +2017,11 @@
                       "type": ["string", "null"],
                       "description": "The last_modified_time Zoho reported for this contact immediately after our own push. Lets ZohoPullService tell our own write echoing back from a genuine edit made in Zoho — without it, a push followed by a pull replaced firstName/lastName with whatever Zoho derived from contact_name, since upsertCustomer sends only contact_name but pullOneCustomer reads first_name/last_name back. Null means \"never pushed from here\", which correctly reads as \"not an echo\"."
                     },
+                    "zohoDetailVersion": {
+                      "format": "date-time",
+                      "type": ["string", "null"],
+                      "description": "The Zoho last_modified_time of the full contact (addresses, contact persons) last applied here. The contact scan imports from Zoho's list alone, which carries neither, so a contact whose zohoSyncedVersion is newer than this (or this is null) has its detail fetched the first time it is opened — one call then, instead of one per contact on every import."
+                    },
                     "zohoUnsyncedReason": {
                       "type": ["string", "null"],
                       "description": "Set when a required-field check blocks an outbound Zoho push (FR-ZHO webhook \"Outbound\"/\"mandatory fields\"), so the reason is visible on the customer itself, not only in the Sync Dashboard's SyncJob trail. Cleared the moment a push for this customer succeeds."
@@ -2035,6 +2046,7 @@
                     "shippingAddress",
                     "zohoContactId",
                     "zohoSyncedVersion",
+                    "zohoDetailVersion",
                     "zohoUnsyncedReason",
                     "notes"
                   ]
@@ -12250,6 +12262,11 @@
             "type": ["string", "null"],
             "description": "The last_modified_time Zoho reported for this contact immediately after our own push. Lets ZohoPullService tell our own write echoing back from a genuine edit made in Zoho — without it, a push followed by a pull replaced firstName/lastName with whatever Zoho derived from contact_name, since upsertCustomer sends only contact_name but pullOneCustomer reads first_name/last_name back. Null means \"never pushed from here\", which correctly reads as \"not an echo\"."
           },
+          "zohoDetailVersion": {
+            "format": "date-time",
+            "type": ["string", "null"],
+            "description": "The Zoho last_modified_time of the full contact (addresses, contact persons) last applied here. The contact scan imports from Zoho's list alone, which carries neither, so a contact whose zohoSyncedVersion is newer than this (or this is null) has its detail fetched the first time it is opened — one call then, instead of one per contact on every import."
+          },
           "zohoUnsyncedReason": {
             "type": ["string", "null"],
             "description": "Set when a required-field check blocks an outbound Zoho push (FR-ZHO webhook \"Outbound\"/\"mandatory fields\"), so the reason is visible on the customer itself, not only in the Sync Dashboard's SyncJob trail. Cleared the moment a push for this customer succeeds."
@@ -12277,6 +12294,7 @@
           "shippingAddress",
           "zohoContactId",
           "zohoSyncedVersion",
+          "zohoDetailVersion",
           "zohoUnsyncedReason",
           "notes"
         ]
@@ -12347,6 +12365,11 @@
             "type": ["string", "null"],
             "description": "The last_modified_time Zoho reported for this contact immediately after our own push. Lets ZohoPullService tell our own write echoing back from a genuine edit made in Zoho — without it, a push followed by a pull replaced firstName/lastName with whatever Zoho derived from contact_name, since upsertCustomer sends only contact_name but pullOneCustomer reads first_name/last_name back. Null means \"never pushed from here\", which correctly reads as \"not an echo\"."
           },
+          "zohoDetailVersion": {
+            "format": "date-time",
+            "type": ["string", "null"],
+            "description": "The Zoho last_modified_time of the full contact (addresses, contact persons) last applied here. The contact scan imports from Zoho's list alone, which carries neither, so a contact whose zohoSyncedVersion is newer than this (or this is null) has its detail fetched the first time it is opened — one call then, instead of one per contact on every import."
+          },
           "zohoUnsyncedReason": {
             "type": ["string", "null"],
             "description": "Set when a required-field check blocks an outbound Zoho push (FR-ZHO webhook \"Outbound\"/\"mandatory fields\"), so the reason is visible on the customer itself, not only in the Sync Dashboard's SyncJob trail. Cleared the moment a push for this customer succeeds."
@@ -12372,6 +12395,7 @@
           "shippingAddress",
           "zohoContactId",
           "zohoSyncedVersion",
+          "zohoDetailVersion",
           "zohoUnsyncedReason",
           "notes"
         ]

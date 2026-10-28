@@ -9,7 +9,6 @@ import {
   type CurrencyCode,
   type Scope,
 } from '@platform/kernel';
-import { mapWithConcurrency } from '@platform/server';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { RedisService } from '@platform/server';
 import { SystemScopeResolver } from '../../platform-access/index.js';
@@ -30,18 +29,6 @@ export interface PullCounts {
   readonly customers: number;
   readonly invoices: number;
 }
-
-/**
- * How many of a page's per-contact getContact detail fetches run at once —
- * the only remaining per-record detail fetch in the pull path (invoices are
- * list-only). This is about overlapping round-trip latency, not the real
- * throughput ceiling — ZohoBooksAdapter.request's own per-brand rate limiter
- * is what actually paces requests against Zoho's 100-req/min budget, so
- * raising this only helps up to the point that limiter has enough concurrent
- * callers to keep it saturated; it can't push traffic past what the limiter
- * allows.
- */
-const PULL_DETAIL_CONCURRENCY = 8;
 
 /** Whether a Zoho line item is one pushInvoice added for tax or the card fee,
  * rather than a real product line. Matched on name and description together
@@ -314,27 +301,29 @@ export class ZohoPullService {
     const pullStartedAt = new Date();
     const cursor = await this.connections.getLastPulledAt(scope, brandId);
 
-    // The two entity types don't depend on each other's *completion*
-    // anymore — pullOneInvoice's cascade into a not-yet-seen customer is
-    // upsert-safe now (brandId_zohoContactId / brandId_zohoInvoiceId), the
-    // same property that already made mapWithConcurrency safe within a
-    // single phase. Running the phases concurrently instead of sequentially
-    // overlaps their network waiting time; ZohoBooksAdapter.request's shared
-    // per-brand rate limiter is still what caps how much of that time turns
-    // into actual Zoho traffic, so this is free concurrency, not more load.
-    const [customers, invoices] = await Promise.all([
-      this.pullAndReconcileCustomers(scope, brandId, connection, cursor, forceFullScan),
+    // Contacts first, then invoices: an invoice whose customer is already
+    // here needs no call to fetch that customer. Run side by side, an invoice
+    // listed before its customer was saved fetched the contact on its own —
+    // on a first import, most of a page of invoices did, each one a call.
+    const customers = await this.pullAndReconcileCustomers(
+      scope,
+      brandId,
+      connection,
+      cursor,
+      forceFullScan,
+    );
+    const [invoices] = await Promise.all([
       this.pullInvoices(scope, brandId, connection, cursor),
       // Deletion detection, on its own much coarser clock. Safe to run
-      // alongside the two phases above: it only ever acts on records that
-      // predate its own scan by RECONCILE_CREATION_GRACE_MS, so nothing those
-      // phases create during this run is in scope for it.
+      // alongside the invoice phase: it only ever acts on records that
+      // predate its own scan by RECONCILE_CREATION_GRACE_MS, so nothing that
+      // phase creates during this run is in scope for it.
       // Non-fatal on purpose. This is a secondary, hourly concern, and its full
       // unfiltered scan is the most likely of any phase to hit the rate limit —
       // letting it reject would block recordPullRun below and freeze the cursor
       // for the two phases that actually keep data fresh. Its own SyncJob row
       // records the failure, and the next hour retries it.
-      this.reconcileInvoicePresenceIfDue(scope, brandId, connection, forceFullScan).catch(
+      this.reconcileInvoicePresenceIfDue(scope, brandId, connection, cursor, forceFullScan).catch(
         (error: unknown) => {
           this.logger.warn(
             `invoice deletion reconciliation failed for brand ${brandId} (the pull itself was ` +
@@ -515,16 +504,16 @@ export class ZohoPullService {
           contacts.map((item) => item.contact_id),
         );
         const due = contacts.filter((item) => this.isContactDue(item, versions, cursor, force));
-        // Counts records actually written, not records considered — an echo of
-        // our own push is fetched and then skipped, and reporting it as pulled
-        // would overstate what the run did.
-        const applied = await mapWithConcurrency(due, PULL_DETAIL_CONCURRENCY, (item) =>
-          this.pullRecordTolerantly(
-            () => this.pullOneCustomer(scope, brandId, connection, item.contact_id),
+        // Applied from the list item itself: no call per contact. The list has
+        // everything but addresses and contact persons, which are fetched when
+        // the customer is first opened (enrichCustomerFromZohoOnDemand).
+        for (const item of due) {
+          const applied = await this.pullRecordTolerantly(
+            () => this.applyContactListItem(scope, brandId, item),
             `Zoho contact ${item.contact_id}`,
-          ),
-        );
-        touched += applied.filter(Boolean).length;
+          );
+          if (applied) touched++;
+        }
         hasMore = hasMorePage;
         page++;
       }
@@ -583,13 +572,96 @@ export class ZohoPullService {
     return force || !cursor || remote > cursor;
   }
 
-  /** Also used as the cascade target when an invoice or payment references a
-   * Zoho contact_id we have not seen locally yet. */
+  /**
+   * One contact from the list scan, applied from the list item alone — no
+   * Zoho call. Writes what the list carries (names, email, phone, type,
+   * status) and leaves addresses and contact persons, which only the detail
+   * has, to enrichCustomerFromZohoOnDemand: zohoDetailVersion stays behind
+   * zohoSyncedVersion, which is what marks the detail as due.
+   */
+  private async applyContactListItem(
+    scope: Scope,
+    brandId: string,
+    item: ZohoContactListItem,
+  ): Promise<boolean> {
+    const contactId = item.contact_id;
+    return this.recordPull(brandId, 'CUSTOMER', contactId, async () => {
+      const existing = await this.prisma.withScope(scope, (tx) =>
+        tx.customer.findFirst({
+          where: { brandId, zohoContactId: contactId },
+          select: { zohoSyncedVersion: true },
+        }),
+      );
+      if (this.isOwnPushEcho(item.last_modified_time, existing?.zohoSyncedVersion)) return false;
+
+      const type = item.customer_sub_type
+        ? ((item.customer_sub_type === 'individual' ? 'INDIVIDUAL' : 'BUSINESS') as
+            'INDIVIDUAL' | 'BUSINESS')
+        : undefined;
+      const data = {
+        ...(type ? { type } : {}),
+        displayName: item.contact_name,
+        companyName: item.company_name ?? null,
+        firstName: item.first_name ?? null,
+        lastName: item.last_name ?? null,
+        email: item.email ?? null,
+        phone: item.phone ?? null,
+        status: mapContactStatus(item.status),
+        zohoSyncedVersion: this.parseZohoTimestamp(item.last_modified_time),
+      };
+      // Same race-safe upsert as pullOneCustomer.
+      await this.prisma.withScope(scope, (tx) =>
+        tx.customer.upsert({
+          where: { brandId_zohoContactId: { brandId, zohoContactId: contactId } },
+          create: { type: 'BUSINESS', ...data, brandId, zohoContactId: contactId },
+          update: data,
+        }),
+      );
+      return true;
+    });
+  }
+
+  /**
+   * The full contact (addresses, contact persons) for a customer imported
+   * from the list, fetched the first time someone opens it — or again once
+   * Zoho reports a newer version than the detail last applied. One call per
+   * customer actually looked at, instead of one per contact on every import.
+   * Non-fatal for the caller: it shows whatever is already stored.
+   */
+  async enrichCustomerFromZohoOnDemand(
+    scope: Scope,
+    brandId: string,
+    customerId: string,
+  ): Promise<boolean> {
+    const customer = await this.prisma.withScope(scope, (tx) =>
+      tx.customer.findFirst({
+        where: { id: customerId, brandId },
+        select: { zohoContactId: true, zohoSyncedVersion: true, zohoDetailVersion: true },
+      }),
+    );
+    if (!customer?.zohoContactId) return false;
+    const detailCurrent =
+      customer.zohoDetailVersion &&
+      (!customer.zohoSyncedVersion || customer.zohoDetailVersion >= customer.zohoSyncedVersion);
+    if (detailCurrent) return false;
+
+    const connection = await this.connections.buildAccountingConnection(scope, brandId);
+    if (!connection) return false;
+    return this.pullOneCustomer(scope, brandId, connection, customer.zohoContactId, {
+      // The list scan already stamped this version, so the echo check would
+      // read the detail as "nothing new" and skip the addresses it came for.
+      evenIfUnchanged: true,
+    });
+  }
+
+  /** The full contact by id: webhooks, the on-demand enrichment above, and
+   * the cascade when an invoice references a contact not seen locally yet. */
   private async pullOneCustomer(
     scope: Scope,
     brandId: string,
     connection: AccountingConnection,
     contactId: string,
+    opts?: { readonly evenIfUnchanged?: boolean },
   ): Promise<boolean> {
     return this.recordPull(brandId, 'CUSTOMER', contactId, async () => {
       const contact = await this.zoho.getContact(connection, contactId);
@@ -600,7 +672,10 @@ export class ZohoPullService {
           select: { zohoSyncedVersion: true, billingAddress: true, shippingAddress: true },
         }),
       );
-      if (this.isOwnPushEcho(contact.last_modified_time, existing?.zohoSyncedVersion)) {
+      if (
+        !opts?.evenIfUnchanged &&
+        this.isOwnPushEcho(contact.last_modified_time, existing?.zohoSyncedVersion)
+      ) {
         this.logger.debug(
           `skipping Zoho contact ${contactId} — unchanged since this platform's own push`,
         );
@@ -618,6 +693,7 @@ export class ZohoPullService {
         phone: contact.phone ?? null,
         status: mapContactStatus(contact.status),
         zohoSyncedVersion: this.parseZohoTimestamp(contact.last_modified_time),
+        zohoDetailVersion: this.parseZohoTimestamp(contact.last_modified_time),
         billingAddress: (this.preserveLocalCountry(
           this.zoho.fromZohoAddress(contact.billing_address),
           existing?.billingAddress,
@@ -783,9 +859,19 @@ export class ZohoPullService {
     scope: Scope,
     brandId: string,
     connection: AccountingConnection,
+    cursor: Date | null,
     force: boolean,
   ): Promise<void> {
     const floorKey = `zoho:invoices-reconciled:${brandId}`;
+    // A first pull (no cursor) lists every invoice in its own phase, so
+    // there is nothing here this scan could find missing: starting the clock
+    // instead saves a second full pass over the same list.
+    if (!cursor && !force) {
+      await this.redis
+        .setJson(floorKey, true, INVOICE_RECONCILE_FLOOR_SECONDS)
+        .catch(() => undefined);
+      return;
+    }
     if (!force && (await this.redis.getJson<boolean>(floorKey))) return;
     try {
       await this.reconcileInvoicePresence(scope, brandId, connection);

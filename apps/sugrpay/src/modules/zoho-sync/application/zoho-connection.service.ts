@@ -24,6 +24,12 @@ interface CachedAccessToken {
  * Zoho's own rate limiting — see the incident this comment is next to). */
 const TOKEN_CACHE_SAFETY_BUFFER_MS = 2 * 60 * 1000;
 
+/** How long one job may hold the brand's refresh lock, and how long the
+ * others wait (polling the cache) for its token before refreshing anyway. */
+const TOKEN_REFRESH_LOCK_SECONDS = 30;
+const TOKEN_REFRESH_WAIT_MS = 10_000;
+const TOKEN_REFRESH_POLL_MS = 250;
+
 export interface ZohoCredentials {
   readonly refreshToken: string;
   readonly apiDomain: string;
@@ -275,18 +281,47 @@ export class ZohoConnectionService {
     ) as ZohoCredentials;
     const config = row.config as unknown as ZohoConnectionConfig;
 
-    const cached = await this.redis.getJson<CachedAccessToken>(this.tokenCacheKey(brandId));
-    if (cached && new Date(cached.expiresAt).getTime() > Date.now()) {
-      return {
-        brandId,
-        organisationId: config.organizationId,
-        accessToken: cached.accessToken,
-        refreshToken: credentials.refreshToken,
-        expiresAt: new Date(cached.expiresAt),
-      };
-    }
+    const connection = (token: CachedAccessToken): AccountingConnection => ({
+      brandId,
+      organisationId: config.organizationId,
+      accessToken: token.accessToken,
+      refreshToken: credentials.refreshToken,
+      expiresAt: new Date(token.expiresAt),
+    });
 
-    const { accessToken, expiresAt } = await this.zoho.refreshAccessToken(credentials.refreshToken);
+    const cached = await this.cachedAccessToken(brandId);
+    if (cached) return connection(cached);
+
+    // One refresh per brand at a time: jobs that start together (a backfill,
+    // a pull and its cascades) wait for the first one's token rather than
+    // each asking Zoho's OAuth server for their own.
+    const lockKey = `zoho:token-refresh:${brandId}`;
+    const lockToken = await this.redis.acquireLock(lockKey, TOKEN_REFRESH_LOCK_SECONDS);
+    if (!lockToken) {
+      for (let waited = 0; waited < TOKEN_REFRESH_WAIT_MS; waited += TOKEN_REFRESH_POLL_MS) {
+        await new Promise((resolve) => setTimeout(resolve, TOKEN_REFRESH_POLL_MS));
+        const fresh = await this.cachedAccessToken(brandId);
+        if (fresh) return connection(fresh);
+      }
+      // The holder is taking too long or died: refresh independently.
+    }
+    try {
+      const again = lockToken ? await this.cachedAccessToken(brandId) : null;
+      if (again) return connection(again);
+      const { accessToken, expiresAt } = await this.zoho.refreshAccessToken(
+        credentials.refreshToken,
+      );
+      await this.cacheAccessToken(brandId, accessToken, expiresAt);
+      return connection({ accessToken, expiresAt: expiresAt.toISOString() });
+    } finally {
+      if (lockToken) await this.redis.releaseLock(lockKey, lockToken);
+    }
+  }
+
+  /** Keeps an access token for the brand's jobs until shortly before it
+   * expires. Also called by the connect callback with the token its code
+   * exchange returned, so the first jobs after connecting need no refresh. */
+  async cacheAccessToken(brandId: string, accessToken: string, expiresAt: Date): Promise<void> {
     const ttlSeconds = Math.max(
       60,
       Math.round((expiresAt.getTime() - TOKEN_CACHE_SAFETY_BUFFER_MS - Date.now()) / 1000),
@@ -296,14 +331,11 @@ export class ZohoConnectionService {
       { accessToken, expiresAt: expiresAt.toISOString() } satisfies CachedAccessToken,
       ttlSeconds,
     );
+  }
 
-    return {
-      brandId,
-      organisationId: config.organizationId,
-      accessToken,
-      refreshToken: credentials.refreshToken,
-      expiresAt,
-    };
+  private async cachedAccessToken(brandId: string): Promise<CachedAccessToken | null> {
+    const cached = await this.redis.getJson<CachedAccessToken>(this.tokenCacheKey(brandId));
+    return cached && new Date(cached.expiresAt).getTime() > Date.now() ? cached : null;
   }
 
   private tokenCacheKey(brandId: string): string {

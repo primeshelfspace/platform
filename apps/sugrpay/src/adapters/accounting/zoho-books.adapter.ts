@@ -73,6 +73,8 @@ export interface ZohoContactListItem {
   phone?: string;
   first_name?: string;
   last_name?: string;
+  /** 'business' | 'individual'. On the list response as well as the detail. */
+  customer_sub_type?: string;
   last_modified_time?: string;
   /** 'active' | 'inactive' — Zoho's own archive flag. Mapped onto our
    * Customer.status by ZohoPullService rather than treated as a value to
@@ -105,7 +107,6 @@ export interface ZohoContactPerson {
 /** GET /contacts/{id} only — billing/shipping address and contact_persons are
  * absent from the list response. */
 export interface ZohoContactDetail extends ZohoContactListItem {
-  customer_sub_type?: string;
   billing_address?: ZohoAddressResponse;
   shipping_address?: ZohoAddressResponse;
   contact_persons?: ZohoContactPerson[];

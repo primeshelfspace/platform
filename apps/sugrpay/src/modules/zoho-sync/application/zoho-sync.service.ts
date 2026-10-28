@@ -289,6 +289,14 @@ export class ZohoSyncService {
               // with whatever Zoho derived from contact_name (Customer
               // .zohoSyncedVersion in schema.prisma spells out why).
               zohoSyncedVersion: result.updatedAt ?? null,
+              // Created in Zoho from this record, or its detail was already
+              // here: what Zoho holds now is what this row holds. A contact
+              // imported from Zoho's list whose detail was never fetched
+              // stays due, or its addresses would never come down.
+              zohoDetailVersion:
+                customer.zohoContactId && !customer.zohoDetailVersion
+                  ? null
+                  : (result.updatedAt ?? null),
               zohoUnsyncedReason: null,
             },
           }),

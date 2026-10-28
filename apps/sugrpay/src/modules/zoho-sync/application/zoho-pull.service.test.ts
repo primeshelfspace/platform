@@ -250,8 +250,81 @@ describeWithDb('ZohoPullService', () => {
         brandId: string,
         invoiceId: string,
       ) => Promise<boolean>;
+      enrichCustomerFromZohoOnDemand: (
+        scope: RequestScope,
+        brandId: string,
+        customerId: string,
+      ) => Promise<boolean>;
     };
   }
+
+  it('imports a first scan of contacts and invoices from the two lists alone, with no per-record call', async () => {
+    const zoho = new FakeZohoBooksAdapter();
+    const run = randomUUID();
+    const contactIds = [1, 2, 3].map((n) => `list-only-contact-${n}-${run}`);
+    zoho.listedContacts = contactIds.map((id, n) => ({
+      contact_id: id,
+      contact_name: `List Only ${n}`,
+      email: `list-only-${n}-${run}@example.com`,
+      customer_sub_type: 'individual',
+      last_modified_time: '2026-09-01T10:00:00+0000',
+    }));
+    zoho.listedInvoices = contactIds.map((id, n) =>
+      fakeInvoiceListItem(`list-only-invoice-${n}-${run}`, `LO-${n}-${run.slice(0, 8)}`, id),
+    );
+    const svc = service(zoho, redis);
+
+    // The order pullBrand runs them in: contacts, then invoices.
+    expect(await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false)).toBe(3);
+    expect(await svc.pullInvoices(scope, brandId, connection, null)).toBe(3);
+
+    expect(zoho.getContactCalls).toBe(0);
+    expect(zoho.getInvoiceCalls).toBe(0);
+    const imported = await owner.customer.findMany({
+      where: { brandId, zohoContactId: { in: contactIds } },
+    });
+    expect(imported).toHaveLength(3);
+    expect(
+      imported.every((c) => c.type === 'INDIVIDUAL' && c.email?.endsWith('@example.com')),
+    ).toBe(true);
+    // Detail not fetched yet: due the first time each is opened.
+    expect(imported.every((c) => c.zohoDetailVersion === null)).toBe(true);
+  });
+
+  it("fetches a list-imported contact's addresses and persons once, when it is first opened", async () => {
+    const zoho = new FakeZohoBooksAdapter();
+    const contactId = `on-demand-contact-${randomUUID()}`;
+    const version = '2026-09-02T10:00:00+0000';
+    zoho.listedContacts = [
+      { contact_id: contactId, contact_name: 'On Demand Co', last_modified_time: version },
+    ];
+    zoho.contacts.set(contactId, {
+      ...fakeContact(contactId, 'On Demand Co', [
+        { contact_person_id: `person-${contactId}`, first_name: 'Ada', is_primary_contact: true },
+      ]),
+      last_modified_time: version,
+      billing_address: { address: '1 Main St', city: 'Austin', state: 'TX', zip: '78701' },
+    });
+    const svc = service(zoho, redis);
+    await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false);
+    const customer = await owner.customer.findFirstOrThrow({
+      where: { brandId, zohoContactId: contactId },
+    });
+    expect(customer.billingAddress).toBeNull();
+
+    expect(await svc.enrichCustomerFromZohoOnDemand(scope, brandId, customer.id)).toBe(true);
+    expect(zoho.getContactCalls).toBe(1);
+    const enriched = await owner.customer.findFirstOrThrow({
+      where: { id: customer.id },
+      include: { contactPersons: true },
+    });
+    expect(enriched.billingAddress).not.toBeNull();
+    expect(enriched.contactPersons.map((p) => p.firstName)).toEqual(['Ada']);
+
+    // Opened again with nothing new in Zoho: no call.
+    expect(await svc.enrichCustomerFromZohoOnDemand(scope, brandId, customer.id)).toBe(false);
+    expect(zoho.getContactCalls).toBe(1);
+  });
 
   it('resolves two invoices racing to create the same not-yet-seen customer into exactly one row', async () => {
     const zoho = new FakeZohoBooksAdapter();
@@ -470,7 +543,7 @@ describeWithDb('ZohoPullService', () => {
     });
   });
 
-  it('scans contacts on every scheduled run, fetching only the ones that changed', async () => {
+  it('scans contacts on every scheduled run, applying only the ones that changed, with no per-contact call', async () => {
     // No 15-minute floor any more: contact scans follow the brand's own sync
     // frequency, so an edit made right after one scan lands on the next run.
     const zoho = new FakeZohoBooksAdapter();
@@ -486,11 +559,12 @@ describeWithDb('ZohoPullService', () => {
     const svc = service(zoho, redis);
 
     expect(await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false)).toBe(1);
-    expect(zoho.getContactCalls).toBe(1);
+    // Imported from the list item alone.
+    expect(zoho.getContactCalls).toBe(0);
 
-    // Unchanged in Zoho: the scan runs, but no detail fetch.
+    // Unchanged in Zoho: the scan runs and applies nothing.
     expect(await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false)).toBe(0);
-    expect(zoho.getContactCalls).toBe(1);
+    expect(zoho.getContactCalls).toBe(0);
 
     // Edited in Zoho, then the very next unforced run picks it up.
     const v2 = '2026-09-01T10:01:00+0000';
@@ -502,7 +576,11 @@ describeWithDb('ZohoPullService', () => {
       { contact_id: contactId, contact_name: 'Edited Co', last_modified_time: v2 },
     ];
     expect(await svc.pullAndReconcileCustomers(scope, brandId, connection, null, false)).toBe(1);
-    expect(zoho.getContactCalls).toBe(2);
+    expect(zoho.getContactCalls).toBe(0);
+    const row = await prisma.withScope(scope, (tx) =>
+      tx.customer.findFirstOrThrow({ where: { brandId, zohoContactId: contactId } }),
+    );
+    expect(row.displayName).toBe('Edited Co');
   });
 
   it('applies a Zoho contact edit even when the brand cursor has already moved past it', async () => {
