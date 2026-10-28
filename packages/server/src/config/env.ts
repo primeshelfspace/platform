@@ -165,6 +165,13 @@ const envSchema = z
     ZOHO_SCHEDULED_PULL_ENABLED: booleanish.default(false),
 
     API_PUBLIC_URL: z.string().url().default('http://localhost:4001'),
+    /** Signs the JWT a user carries into a product from Select Your Products
+     * (POST /company/products/:product/continue). At least 32 characters;
+     * required in production. */
+    PRODUCT_JWT_SECRET: z.string().min(32).optional(),
+    /** Where HQ's web app lives. Unset: HQ can be enabled, but Continue into
+     * it answers "not available yet". */
+    HQ_PUBLIC_URL: z.string().url().optional(),
     /** The Swagger page at /docs on every API (packages/server/src/api-docs.ts). */
     API_DOCS_ENABLED: booleanish.default(true),
     ADMIN_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
@@ -244,6 +251,13 @@ const envSchema = z
     // A fake adapter in production would silently swallow real money and real
     // customer email. Refuse to boot rather than discover it later.
     if (env.APP_ENV === 'production') {
+      if (!env.PRODUCT_JWT_SECRET) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PRODUCT_JWT_SECRET'],
+          message: 'users cannot continue into a product without PRODUCT_JWT_SECRET',
+        });
+      }
       if (!env.INTERNAL_API_KEY) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

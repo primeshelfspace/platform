@@ -98,8 +98,24 @@ function fakePrisma(users: UserRow[], audit: AuditRow[]) {
     },
   };
 
+  // AuthService.registerFailure's one UPDATE, with the same rule: a lock that
+  // has ended starts the count again at 1; the fifth in a row locks for 2 hours.
+  // Values arrive in the order the statement interpolates them.
+  const withLockout = {
+    ...client,
+    $queryRaw: async (_sql: TemplateStringsArray, ...values: unknown[]) => {
+      const [max, hours, userId] = values as [number, number, string];
+      const row = users.find((u) => u.id === userId);
+      if (!row) return [];
+      const lockEnded = row.lockedUntil !== null && row.lockedUntil.getTime() <= Date.now();
+      row.failedLogins = lockEnded ? 1 : row.failedLogins + 1;
+      row.lockedUntil = row.failedLogins >= max ? new Date(Date.now() + hours * 3_600_000) : null;
+      return [{ failed_logins: row.failedLogins, locked: row.lockedUntil !== null }];
+    },
+  };
+
   return {
-    withoutScope: async <T>(_reason: string, work: (c: unknown) => Promise<T>) => work(client),
+    withoutScope: async <T>(_reason: string, work: (c: unknown) => Promise<T>) => work(withLockout),
     withScope: async <T>(_scope: unknown, work: (c: unknown) => Promise<T>) => work(client),
   } as unknown as PlatformPrismaService;
 }
@@ -270,8 +286,8 @@ describe('AuthService.login', () => {
     expect(JSON.stringify(audit)).not.toContain('hunter2');
   });
 
-  // FR-AUTH-002.
-  it('locks the account for 30 minutes on the fifth failure in 15 minutes', async () => {
+  // Sign In: 5 failed attempts in a row lock the account for 2 hours.
+  it('locks the account for 2 hours on the fifth failure in a row', async () => {
     for (let i = 0; i < 4; i += 1) {
       await expect(auth.login({ ...attempt, password: 'wrong' })).rejects.toThrow();
     }
@@ -282,8 +298,8 @@ describe('AuthService.login', () => {
 
     expect(users[0]!.failedLogins).toBe(5);
     const lockedFor = users[0]!.lockedUntil!.getTime() - Date.now();
-    expect(lockedFor).toBeGreaterThan(29 * 60_000);
-    expect(lockedFor).toBeLessThanOrEqual(30 * 60_000);
+    expect(lockedFor).toBeGreaterThan(119 * 60_000);
+    expect(lockedFor).toBeLessThanOrEqual(120 * 60_000);
   });
 
   // FR-AUTH-002 says *consecutive*. A successful sign-in ends any run of
@@ -309,24 +325,35 @@ describe('AuthService.login', () => {
     await expect(auth.login(attempt)).resolves.toBeDefined();
   });
 
-  it('ignores failures that fall outside the 15-minute window', async () => {
-    audit.push(
-      ...Array.from({ length: 4 }, () => ({
-        merchantId: 'merchant-1',
-        actorId: 'user-1',
-        action: 'AUTH_LOGIN',
-        outcome: 'FAILURE',
-        sourceIp: null,
-        occurredAt: new Date(Date.now() - 20 * 60_000),
-        metadata: null,
-      })),
-    );
+  // In a row, however far apart: there is no time window any more.
+  it('counts failures in a row however long ago the earlier ones were', async () => {
+    users[0]!.failedLogins = 4;
 
     await expect(auth.login({ ...attempt, password: 'wrong' })).rejects.toThrow();
 
-    // Only the one just made counts; the stale four do not.
+    expect(users[0]!.failedLogins).toBe(5);
+    expect(users[0]!.lockedUntil).not.toBeNull();
+  });
+
+  it('counts the first failure after a lock has ended as the first again', async () => {
+    users[0]!.failedLogins = 5;
+    users[0]!.lockedUntil = new Date(Date.now() - 1_000);
+
+    await expect(auth.login({ ...attempt, password: 'wrong' })).rejects.toThrow();
+
     expect(users[0]!.failedLogins).toBe(1);
     expect(users[0]!.lockedUntil).toBeNull();
+  });
+
+  it('does not count, or extend the lock for, an attempt made while locked', async () => {
+    const lockedUntil = new Date(Date.now() + 60 * 60_000);
+    users[0]!.failedLogins = 5;
+    users[0]!.lockedUntil = lockedUntil;
+
+    await expect(auth.login({ ...attempt, password: 'wrong' })).rejects.toThrow();
+
+    expect(users[0]!.failedLogins).toBe(5);
+    expect(users[0]!.lockedUntil).toBe(lockedUntil);
   });
 
   it('rejects a locked account even when the password is right, and issues no session', async () => {

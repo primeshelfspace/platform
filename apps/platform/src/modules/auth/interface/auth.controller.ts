@@ -77,26 +77,43 @@ export class AuthController {
   }
 
   /**
-   * FR-ONB: self-serve signup. Public, and the only write in this API that
-   * creates a tenant.
-   *
-   * Answers with nothing but an acknowledgement: the account is not usable
-   * until the emailed link is followed, so there is no session to hand back
-   * and nothing about the new account worth returning.
+   * Sign Up. Public, and the only write in this API that creates a tenant.
+   * The person becomes the Company Admin and is signed in, exactly as
+   * POST /auth/login signs someone in; the next step is always Register Your
+   * Company.
    */
   @Post('register')
   @RateLimit({ name: 'register', limit: 300, windowSeconds: 3600, perEmailLimit: 5 })
   @Public()
-  @HttpCode(202)
+  @HttpCode(201)
   async register(
     @Body(zodPipe(registerSchema)) body: RegisterInput,
     @Req() request: Request,
-  ): Promise<{ ok: true }> {
-    await this.auth.register(body, {
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<{
+    token: string;
+    expiresAt: string;
+    user: AuthenticatedUser;
+    nextStep: 'REGISTER_COMPANY';
+  }> {
+    const result = await this.auth.register(body, {
       sourceIp: request.ip ?? null,
       userAgent: request.headers['user-agent'] ?? null,
     });
-    return { ok: true };
+    // Same cookie as login, for a client on this API's own address.
+    response.cookie(SESSION_COOKIE, result.token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: request.secure,
+      expires: result.expiresAt,
+      path: '/',
+    });
+    return {
+      token: result.token,
+      expiresAt: result.expiresAt.toISOString(),
+      user: result.user,
+      nextStep: 'REGISTER_COMPANY',
+    };
   }
 
   /**

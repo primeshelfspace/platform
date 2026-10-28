@@ -27,6 +27,21 @@ export const updateSubscriptionSchema = z.object({
 });
 export type UpdateSubscriptionInput = z.infer<typeof updateSubscriptionSchema>;
 
+/** Select Your Products: the products to enable, at least one, no repeats. */
+export const enableProductsSchema = z.object({
+  products: z
+    .array(productSchema, { required_error: 'select at least one product' })
+    .min(1, 'select at least one product')
+    .refine((list) => new Set(list).size === list.length, 'a product is listed twice'),
+});
+export type EnableProductsInput = z.infer<typeof enableProductsSchema>;
+
+/** What each product is, on Select Your Products. */
+export const PRODUCT_DESCRIPTIONS: Record<Product, string> = {
+  INVOICING: 'Send invoices, take card, ACH and wallet payments, and sync with Zoho Books.',
+  HQ: 'Run your stores and warehouses: inventory, purchasing and team, in one place.',
+};
+
 // --- Product roles ---------------------------------------------------------
 
 /** Give a user a role in one product, or `null` to take the product away. The
