@@ -50,6 +50,13 @@ connects.
   first time the customer (or one of its invoices) is opened; an invoice's
   line items likewise. The access token from connecting is reused, and only
   one job per brand refreshes it at a time.
+- **No duplicates:** an imported Zoho contact that matches a customer this
+  brand already has (same email, or same name when Zoho has no email) is linked
+  to it, not added again; the customer keeps its details and only empty fields
+  are filled from Zoho. A contact matching two customers is not imported; the
+  log says which. A Zoho invoice with the same number as an unlinked invoice
+  here is linked to it. The push after connecting then sends only what Zoho
+  does not have.
 - **Rate limits:** Zoho's limit is per organisation, shared by every brand
   connected to it. After a 429, every brand on that organisation stops calling
   Zoho until the time Zoho gave (15 minutes if it gave none), and its pulls are

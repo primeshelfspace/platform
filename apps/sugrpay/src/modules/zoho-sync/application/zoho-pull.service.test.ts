@@ -258,6 +258,105 @@ describeWithDb('ZohoPullService', () => {
     };
   }
 
+  describe('records this brand already has', () => {
+    it('links a Zoho contact to the customer with the same email instead of adding a second one', async () => {
+      const run = randomUUID();
+      const local = await owner.customer.create({
+        data: {
+          brandId,
+          type: 'BUSINESS',
+          displayName: `Match Co ${run}`,
+          email: `match-${run}@example.com`,
+        },
+      });
+      const zoho = new FakeZohoBooksAdapter();
+      const contactId = `match-contact-${run}`;
+      zoho.listedContacts = [
+        {
+          contact_id: contactId,
+          contact_name: `Match Company ${run}`,
+          email: `MATCH-${run}@Example.com`,
+          phone: '555-0100',
+          last_modified_time: '2026-09-01T10:00:00+0000',
+        },
+      ];
+
+      await service(zoho, redis).pullAndReconcileCustomers(scope, brandId, connection, null, false);
+
+      const rows = await owner.customer.findMany({
+        where: { brandId, OR: [{ id: local.id }, { zohoContactId: contactId }] },
+      });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.id).toBe(local.id);
+      expect(rows[0]!.zohoContactId).toBe(contactId);
+      // The customer keeps its own name; an empty field is filled from Zoho.
+      expect(rows[0]!.displayName).toBe(`Match Co ${run}`);
+      expect(rows[0]!.phone).toBe('555-0100');
+    });
+
+    it('imports nothing, and says why, when a contact matches two customers', async () => {
+      const run = randomUUID();
+      const name = `Twin Co ${run}`;
+      for (let n = 0; n < 2; n++) {
+        await owner.customer.create({ data: { brandId, type: 'BUSINESS', displayName: name } });
+      }
+      const zoho = new FakeZohoBooksAdapter();
+      const contactId = `twin-contact-${run}`;
+      zoho.listedContacts = [{ contact_id: contactId, contact_name: name }];
+
+      await service(zoho, redis).pullAndReconcileCustomers(scope, brandId, connection, null, false);
+
+      expect(await owner.customer.count({ where: { brandId, displayName: name } })).toBe(2);
+      expect(await owner.customer.count({ where: { brandId, zohoContactId: contactId } })).toBe(0);
+      const failed = await owner.syncJob.findFirstOrThrow({
+        where: { brandId, objectId: contactId, status: 'FAILED' },
+      });
+      expect(failed.lastError).toMatch(/matches 2 customers already on this brand/);
+      expect(failed.summary).toBe(name);
+    });
+
+    it('links a Zoho invoice to the invoice with the same number instead of refusing it', async () => {
+      const run = randomUUID().slice(0, 8);
+      const customer = await owner.customer.create({
+        data: {
+          brandId,
+          type: 'BUSINESS',
+          displayName: `Numbered Co ${run}`,
+          zohoContactId: `numbered-contact-${run}`,
+        },
+      });
+      const number = `SAME-${run}`;
+      const local = await owner.invoice.create({
+        data: {
+          brandId,
+          customerId: customer.id,
+          number,
+          status: 'SENT',
+          invoiceDate: new Date('2026-08-01'),
+          dueDate: new Date('2026-08-31'),
+          currency: 'USD',
+          subtotalMinor: 5000n,
+          taxRateBpApplied: 0,
+          taxMinor: 0n,
+          totalMinor: 5000n,
+          balanceMinor: 5000n,
+          publicToken: randomUUID().replace(/-/g, ''),
+        },
+      });
+      const zoho = new FakeZohoBooksAdapter();
+      const zohoInvoiceId = `same-number-invoice-${run}`;
+      zoho.listedInvoices = [fakeInvoiceListItem(zohoInvoiceId, number, `numbered-contact-${run}`)];
+
+      expect(await service(zoho, redis).pullInvoices(scope, brandId, connection, null)).toBe(1);
+
+      const rows = await owner.invoice.findMany({ where: { brandId, number } });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.id).toBe(local.id);
+      expect(rows[0]!.zohoInvoiceId).toBe(zohoInvoiceId);
+      expect(rows[0]!.totalMinor).toBe(5000n);
+    });
+  });
+
   describe('pullBrand', () => {
     /** A pullBrand that reaches a connection, with list calls counted. */
     function brandPull(zoho: FakeZohoBooksAdapter) {

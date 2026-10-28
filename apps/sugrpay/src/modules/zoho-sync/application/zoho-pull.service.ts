@@ -646,6 +646,7 @@ export class ZohoPullService {
           }),
         );
         if (this.isOwnPushEcho(item.last_modified_time, existing?.zohoSyncedVersion)) return false;
+        if (!existing && (await this.linkMatchingCustomer(scope, brandId, item))) return true;
 
         const type = item.customer_sub_type
           ? ((item.customer_sub_type === 'individual' ? 'INDIVIDUAL' : 'BUSINESS') as
@@ -675,6 +676,110 @@ export class ZohoPullService {
       // No Zoho call of its own: the list scan's row already covers it.
       { onlyIfFailed: true, summary: () => item.contact_name },
     );
+  }
+
+  /**
+   * A Zoho contact this brand already has as a customer — created here and
+   * never linked, or added on both sides before connecting — is linked to that
+   * customer, not imported as a second one. Matched among this brand's
+   * customers with no Zoho contact yet: by email (any case) when Zoho has one,
+   * otherwise by exact name (any case). The customer keeps its own details;
+   * only fields it has empty are filled from Zoho. Two or more equally good
+   * matches are not guessed between: the contact fails with a message naming
+   * them, and nothing is created.
+   */
+  private async linkMatchingCustomer(
+    scope: Scope,
+    brandId: string,
+    contact: ZohoContactListItem,
+  ): Promise<boolean> {
+    const email = contact.email?.trim();
+    const name = contact.contact_name?.trim();
+    if (!email && !name) return false;
+    const candidates = await this.prisma.withScope(scope, (tx) =>
+      tx.customer.findMany({
+        where: {
+          brandId,
+          zohoContactId: null,
+          ...(email
+            ? { email: { equals: email, mode: 'insensitive' as const } }
+            : { displayName: { equals: name!, mode: 'insensitive' as const } }),
+        },
+        select: {
+          id: true,
+          displayName: true,
+          companyName: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+        },
+        take: 3,
+      }),
+    );
+    if (candidates.length === 0) return false;
+    if (candidates.length > 1) {
+      throw new IntegrationError({
+        message:
+          `Zoho contact "${name ?? email}" matches ${candidates.length} customers already on this ` +
+          `brand (${candidates.map((c) => c.displayName).join(', ')}) — not imported, to avoid a ` +
+          `duplicate. Merge or rename them here, then sync again.`,
+        errorClass: 'VALIDATION',
+        provider: 'zoho-books',
+      });
+    }
+    const local = candidates[0]!;
+    await this.prisma.withScope(scope, (tx) =>
+      tx.customer.update({
+        where: { id: local.id },
+        data: {
+          zohoContactId: contact.contact_id,
+          zohoSyncedVersion: this.parseZohoTimestamp(contact.last_modified_time),
+          companyName: local.companyName ?? contact.company_name ?? null,
+          firstName: local.firstName ?? contact.first_name ?? null,
+          lastName: local.lastName ?? contact.last_name ?? null,
+          email: local.email ?? contact.email ?? null,
+          phone: local.phone ?? contact.phone ?? null,
+        },
+      }),
+    );
+    this.logger.log(
+      `brand ${brandId}: Zoho contact ${contact.contact_id} linked to existing customer ${local.id}`,
+    );
+    return true;
+  }
+
+  /**
+   * A Zoho invoice whose number an invoice on this brand already has, with no
+   * Zoho id yet, is the same invoice: link it rather than refuse the import
+   * as a number collision or create a second one. The invoice keeps its own
+   * lines and amounts; from then on edits sync both ways as usual.
+   */
+  private async linkMatchingInvoice(
+    scope: Scope,
+    brandId: string,
+    item: ZohoInvoiceListItem,
+  ): Promise<boolean> {
+    const local = await this.prisma.withScope(scope, (tx) =>
+      tx.invoice.findFirst({
+        where: { brandId, number: item.invoice_number, zohoInvoiceId: null },
+        select: { id: true },
+      }),
+    );
+    if (!local) return false;
+    await this.prisma.withScope(scope, (tx) =>
+      tx.invoice.update({
+        where: { id: local.id },
+        data: {
+          zohoInvoiceId: item.invoice_id,
+          zohoSyncedVersion: this.parseZohoTimestamp(item.last_modified_time),
+        },
+      }),
+    );
+    this.logger.log(
+      `brand ${brandId}: Zoho invoice ${item.invoice_id} linked to existing invoice ${item.invoice_number}`,
+    );
+    return true;
   }
 
   /**
@@ -734,6 +839,9 @@ export class ZohoPullService {
             select: { zohoSyncedVersion: true, billingAddress: true, shippingAddress: true },
           }),
         );
+        // A customer already here under this contact's email or name is
+        // linked first; the upsert below then updates it, not a new row.
+        if (!existing) await this.linkMatchingCustomer(scope, brandId, contact);
         if (
           !opts?.evenIfUnchanged &&
           this.isOwnPushEcho(contact.last_modified_time, existing?.zohoSyncedVersion)
@@ -1172,6 +1280,7 @@ export class ZohoPullService {
           );
           return false;
         }
+        if (!existing && (await this.linkMatchingInvoice(scope, brandId, item))) return true;
 
         let customerId = await this.localCustomerId(scope, brandId, item.customer_id);
         if (!customerId) {
