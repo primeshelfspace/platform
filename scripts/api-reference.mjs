@@ -9,9 +9,13 @@
  *
  *   node scripts/api-reference.mjs           # rewrite docs/api/endpoints.md
  *   node scripts/api-reference.mjs --check   # fail if it is out of date
+ *
+ * scripts/openapi.mts builds the Swagger (OpenAPI) document from the same
+ * route list and descriptions, so the two cannot disagree.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { ROOT } from './lib/env.mjs';
 
 /** Where controllers live, and which API serves them. */
@@ -25,7 +29,7 @@ const SOURCES = [
 const OUT = path.join(ROOT, 'docs/api/endpoints.md');
 
 /** One line per route, keyed "METHOD /path". */
-const DESCRIPTIONS = {
+export const DESCRIPTIONS = {
   'POST /public/webhooks/mail':
     'Mail delivery events (delivered, bounced, spam complaint) for invoice emails, signed with MAIL_WEBHOOK_SECRET. A bounce or complaint is added to the invoice timeline. See docs/integrations/mail-delivery.md.',
   'POST /internal/sessions/resolve':
@@ -236,7 +240,7 @@ const DESCRIPTIONS = {
   'GET /health/queues': 'Job queue sizes and states.',
 };
 
-const AREAS = [
+export const AREAS = [
   ['Internal (API to API)', (p) => p.startsWith('/internal')],
   ['Sign-in', (p) => p.startsWith('/auth')],
   ['Company and onboarding', (p) => p.startsWith('/merchant') || p.startsWith('/company')],
@@ -273,7 +277,7 @@ function controllers() {
   return files;
 }
 
-function routes() {
+export function routes() {
   const out = [];
   for (const { file: f, api } of controllers()) {
     const s = fs.readFileSync(f, 'utf8');
@@ -297,6 +301,13 @@ function routes() {
       let k = i + 1;
       const below = [];
       while (k < lines.length && !/^ {2}(async )?[a-z]\w*\(/.test(lines[k])) below.push(lines[k++]);
+      const handler = (lines[k]?.match(/^ {2}(?:async )?(\w+)\(/) || [])[1];
+      const className = [
+        ...lines
+          .slice(0, i)
+          .join('\n')
+          .matchAll(/export class (\w+)/g),
+      ].pop()?.[1];
       // The method signature: from its name to the parenthesis that closes
       // the parameter list, plus the return type up to the body's `{` at the
       // end of that line. Matching parentheses (not looking for `{`) because
@@ -334,6 +345,13 @@ function routes() {
       const body = (sig.match(/@Body\(\s*zodPipe\((\w+)\)/) || [])[1];
       const query = (sig.match(/@Query\(\s*zodPipe\((\w+)\)/) || [])[1];
       const upload = /FileInterceptor|FileFieldsInterceptor|@UploadedFile/.test(decos + sig);
+      // The multipart fields the files arrive in.
+      const uploadFields = upload
+        ? [
+            ...(decos.match(/FileInterceptor\(\s*['"`](\w+)/) || []).slice(1),
+            ...[...decos.matchAll(/name:\s*['"`](\w+)['"`]/g)].map((x) => x[1]),
+          ]
+        : [];
       ret = ret.replace(/^Promise<([\s\S]*)>$/, '$1');
       const code = (decos.match(/@HttpCode\((\d+)/) || [])[1];
       const p = ('/' + [base, m[2] || ''].filter(Boolean).join('/')).replace(/\/+/g, '/');
@@ -346,6 +364,12 @@ function routes() {
         body,
         query,
         upload,
+        uploadFields,
+        rateLimited: /@RateLimit\(/.test(decos),
+        // Writes the response itself (a redirect or a file), not a return value.
+        raw: /@Res\(\)/.test(sig) && !/passthrough/.test(sig),
+        handler,
+        className,
         ret: ret.replace(/\s+/g, ' '),
         code,
         file: path.relative(ROOT, f).split(path.sep).join('/'),
@@ -357,7 +381,7 @@ function routes() {
   return out.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 }
 
-function access(r) {
+export function access(r) {
   if (r.internal) return 'internal key only';
   if (r.isPublic) return 'public';
   const [resource, action] = (r.perm || '').split(',').map((x) => x.trim().replace(/['"]/g, ''));
@@ -439,22 +463,27 @@ function render(all) {
   return lines.join('\n');
 }
 
-// Formatted with the repository's own Prettier settings, so `pnpm format:check`
-// and `--check` agree on what the file should look like.
-const prettier = await import('prettier');
-const md = await prettier.format(render(routes()), {
-  ...(await prettier.resolveConfig(OUT)),
-  parser: 'markdown',
-});
-if (process.argv.includes('--check')) {
-  const current = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
-  if (current !== md) {
-    console.error('docs/api/endpoints.md is out of date: run `pnpm docs:api`.');
-    process.exit(1);
+// Run directly, not when scripts/openapi.mts imports the route list.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) await main();
+
+async function main() {
+  // Formatted with the repository's own Prettier settings, so `pnpm format:check`
+  // and `--check` agree on what the file should look like.
+  const prettier = await import('prettier');
+  const md = await prettier.format(render(routes()), {
+    ...(await prettier.resolveConfig(OUT)),
+    parser: 'markdown',
+  });
+  if (process.argv.includes('--check')) {
+    const current = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
+    if (current !== md) {
+      console.error('docs/api/endpoints.md is out of date: run `pnpm docs:api`.');
+      process.exit(1);
+    }
+    console.log('docs/api/endpoints.md is up to date.');
+  } else {
+    fs.mkdirSync(path.dirname(OUT), { recursive: true });
+    fs.writeFileSync(OUT, md);
+    console.log(`wrote ${path.relative(ROOT, OUT)}`);
   }
-  console.log('docs/api/endpoints.md is up to date.');
-} else {
-  fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  fs.writeFileSync(OUT, md);
-  console.log(`wrote ${path.relative(ROOT, OUT)}`);
 }

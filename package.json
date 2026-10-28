@@ -21,8 +21,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
     "check:deps": "node scripts/check-deps.mjs",
-    "docs:api": "node scripts/api-reference.mjs",
-    "check:docs": "node scripts/api-reference.mjs --check",
+    "docs:api": "node scripts/api-reference.mjs && tsx scripts/openapi.mts",
+    "check:docs": "node scripts/api-reference.mjs --check && tsx scripts/openapi.mts --check",
     "check": "pnpm format:check && pnpm lint && pnpm check:deps && pnpm check:docs && pnpm typecheck && pnpm test",
     "boot-check": "pnpm build && node scripts/boot-check.mjs platform && node scripts/boot-check.mjs sugrpay && node scripts/boot-check.mjs hq",
     "db:bootstrap": "node scripts/with-env.mjs tsx scripts/db/bootstrap.ts",
@@ -38,18 +38,19 @@
     "stripe:register-payment-domains": "node scripts/with-env.mjs tsx scripts/stripe/register-payment-domains.ts"
   },
   "devDependencies": {
+    "@platform/invoicing-contracts": "workspace:*",
+    "@platform/kernel": "workspace:*",
+    "@platform/platform-contracts": "workspace:*",
     "@types/node": "^22.10.2",
     "eslint": "9.17.0",
     "eslint-import-resolver-typescript": "3.7.0",
     "eslint-plugin-import": "2.31.0",
     "prettier": "^3.4.2",
+    "stripe": "^17.5.0",
+    "tsx": "^4.19.2",
     "turbo": "2.3.3",
     "typescript": "^5.7.2",
     "typescript-eslint": "8.18.1",
-    "tsx": "^4.19.2",
-    "@platform/kernel": "workspace:*",
-    "@platform/platform-contracts": "workspace:*",
-    "@platform/invoicing-contracts": "workspace:*",
-    "stripe": "^17.5.0"
+    "zod-to-json-schema": "3.24.1"
   }
 }
