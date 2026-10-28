@@ -295,6 +295,40 @@ describeWithDb('DashboardService', () => {
       await owner.syncJob.delete({ where: { id: job.id } });
     });
 
+    it('still answers when failed pull jobs carry Zoho ids or a whole-scan marker, not our uuids', async () => {
+      // A failed contact-list scan is recorded with objectId 'list', and a
+      // failed record pull with Zoho's own numeric id. Looking those up as
+      // local uuids used to fail the whole query.
+      const jobs = await Promise.all(
+        [
+          { objectType: 'CUSTOMER' as const, objectId: 'list' },
+          { objectType: 'INVOICE' as const, objectId: 'reconcile' },
+          { objectType: 'INVOICE' as const, objectId: '6011483000000123456' },
+        ].map((job) =>
+          owner.syncJob.create({
+            data: {
+              brandId,
+              provider: 'ZOHO_BOOKS',
+              direction: 'PULL',
+              ...job,
+              status: 'FAILED',
+              errorClass: 'TRANSIENT',
+              lastError: 'Zoho Books: GET /books/v3/contacts failed with 429',
+            },
+          }),
+        ),
+      );
+
+      const result = await dashboard.getNeedsAttention(ownerScope, brandId);
+      for (const job of jobs) {
+        const item = result.items.find((i) => i.syncJobId === job.id);
+        expect(item?.kind).toBe('SYNC_FAILED');
+        expect(item?.invoiceNumber).toBeNull();
+      }
+
+      await owner.syncJob.deleteMany({ where: { id: { in: jobs.map((j) => j.id) } } });
+    });
+
     it('falls back to the generic stand-in when a VALIDATION failure has no lastError', async () => {
       const job = await owner.syncJob.create({
         data: {
