@@ -7,6 +7,7 @@ import {
   idSchema,
   paginationSchema,
   phoneSchema,
+  SUPPORTED_CURRENCIES,
   timezoneSchema,
   usPhoneSchema,
 } from '@platform/kernel';
@@ -137,7 +138,13 @@ export const firstBrandSchema = z.object({
     .trim()
     .min(1, 'currency is required')
     .toUpperCase()
-    .pipe(currencySchema),
+    .pipe(
+      z.enum(SUPPORTED_CURRENCIES, {
+        errorMap: () => ({
+          message: `choose one of the supported currencies: ${SUPPORTED_CURRENCIES.join(', ')}`,
+        }),
+      }),
+    ),
   timezone: z.string({ required_error: 'time zone is required' }).pipe(timezoneSchema),
   themeColor: hexColourSchema.nullish(),
 });
