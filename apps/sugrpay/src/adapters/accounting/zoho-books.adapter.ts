@@ -27,6 +27,9 @@ import { RedisService } from '@platform/server';
  */
 const ZOHO_BOOKS_RATE_LIMIT_PER_MINUTE = 90;
 const RATE_LIMIT_WINDOW_SECONDS = 60;
+/** How long every brand on an organisation stops calling Zoho after a 429
+ * that names no Retry-After (Zoho's daily limit names none). */
+const RATE_LIMITED_PAUSE_MS = 15 * 60 * 1000;
 /** How long request() will wait for a slot to free up before giving up and
  * surfacing a TRANSIENT error for the job's own retry/backoff to handle —
  * long enough to ride out one full window, never indefinite. */
@@ -292,6 +295,17 @@ export class ZohoBooksAdapter implements AccountingPort {
     path: string,
     options: { query?: Record<string, string>; body?: unknown } = {},
   ): Promise<T> {
+    // Zoho already said "too many requests" for this organisation: asking
+    // again before it said to only extends the limit. Fail fast, no call.
+    const pausedUntil = await this.rateLimitedUntil(connection.organisationId);
+    if (pausedUntil) {
+      throw new IntegrationError({
+        message: `Zoho Books rate limit: paused until ${pausedUntil.toISOString()} (no call made)`,
+        errorClass: 'TRANSIENT',
+        provider: this.providerName,
+        retryAfterMs: pausedUntil.getTime() - Date.now(),
+      });
+    }
     await this.waitForRateSlot(connection.brandId, `${method} ${path}`);
 
     const url = new URL(path, this.env.ZOHO_API_DOMAIN);
@@ -310,9 +324,53 @@ export class ZohoBooksAdapter implements AccountingPort {
     });
 
     if (!response.ok) {
-      throw await this.toIntegrationError(response, `${method} ${path}`);
+      const error = await this.toIntegrationError(response, `${method} ${path}`);
+      if (response.status === 429) {
+        await this.pauseOrganisation(connection.organisationId, error.retryAfterMs);
+      }
+      throw error;
     }
     return (await response.json()) as T;
+  }
+
+  /**
+   * When Zoho has rate-limited this organisation, and until when. Every brand
+   * connected to the organisation shares Zoho's limit, so the pause is per
+   * organisation, not per brand: one brand's 429 stops the others too, instead
+   * of each one finding out with a call of its own.
+   */
+  async rateLimitedUntil(organisationId: string): Promise<Date | null> {
+    // A Redis hiccup must not stop sync: no answer reads as "not paused".
+    let until: string | null = null;
+    try {
+      until = await this.redis.getJson<string>(this.pauseKey(organisationId));
+    } catch {
+      return null;
+    }
+    if (!until) return null;
+    const at = new Date(until);
+    return at.getTime() > Date.now() ? at : null;
+  }
+
+  private async pauseOrganisation(organisationId: string, retryAfterMs?: number): Promise<void> {
+    const ms = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : RATE_LIMITED_PAUSE_MS;
+    const until = new Date(Date.now() + ms);
+    try {
+      await this.redis.setJson(
+        this.pauseKey(organisationId),
+        until.toISOString(),
+        Math.ceil(ms / 1000),
+      );
+    } catch {
+      // Not fatal: without the pause the next call simply asks Zoho again.
+    }
+    this.logger.warn(
+      `Zoho rate-limited organisation ${organisationId}: no calls until ${until.toISOString()}`,
+    );
+  }
+
+  private pauseKey(organisationId: string): string {
+    return `zoho:rate-limited:${organisationId}`;
   }
 
   /**

@@ -28,7 +28,15 @@ import { ZohoConnectionService } from './zoho-connection.service.js';
 export interface PullCounts {
   readonly customers: number;
   readonly invoices: number;
+  /** Why nothing ran: another pull of this brand is in progress, or Zoho
+   * has rate-limited its organisation. Neither makes a call or a log row. */
+  readonly skipped?: 'already-running' | 'rate-limited';
+  /** This was the brand's first pull (nothing pulled before it). */
+  readonly firstImport?: boolean;
 }
+
+/** Longest a pull may hold its brand's lock; a crashed worker frees it then. */
+const PULL_LOCK_SECONDS = 15 * 60;
 
 /** Whether a Zoho line item is one pushInvoice added for tax or the card fee,
  * rather than a real product line. Matched on name and description together
@@ -302,6 +310,31 @@ export class ZohoPullService {
     }
     if (!connection) return { customers: 0, invoices: 0 };
 
+    // Zoho has rate-limited this organisation: skip quietly. Pulling anyway
+    // failed every minute for every brand on it, each failure retried, which
+    // kept the organisation over its limit indefinitely.
+    if (await this.zoho.rateLimitedUntil(connection.organisationId)) {
+      return { customers: 0, invoices: 0, skipped: 'rate-limited' };
+    }
+
+    // One pull per brand at a time. Connecting queues one and the scheduler
+    // can queue another for the same brand; two at once read every list twice.
+    const lockKey = `zoho:pull:${brandId}`;
+    const lockToken = await this.redis.acquireLock(lockKey, PULL_LOCK_SECONDS);
+    if (!lockToken) return { customers: 0, invoices: 0, skipped: 'already-running' };
+    try {
+      return await this.pullBrandLocked(scope, brandId, connection, forceFullScan);
+    } finally {
+      await this.redis.releaseLock(lockKey, lockToken).catch(() => undefined);
+    }
+  }
+
+  private async pullBrandLocked(
+    scope: Scope,
+    brandId: string,
+    connection: AccountingConnection,
+    forceFullScan: boolean,
+  ): Promise<PullCounts> {
     const pullStartedAt = new Date();
     const cursor = await this.connections.getLastPulledAt(scope, brandId);
 
@@ -339,11 +372,10 @@ export class ZohoPullService {
 
     await this.connections.recordPullRun(scope, brandId, pullStartedAt);
 
-    const counts = { customers, invoices };
     this.logger.log(
-      `pull complete for brand ${brandId}: ${counts.customers} customers, ${counts.invoices} invoices`,
+      `pull complete for brand ${brandId}: ${customers} customers, ${invoices} invoices`,
     );
-    return counts;
+    return { customers, invoices, firstImport: cursor === null };
   }
 
   /**

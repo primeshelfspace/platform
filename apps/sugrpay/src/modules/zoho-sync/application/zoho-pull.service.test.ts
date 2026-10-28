@@ -258,6 +258,56 @@ describeWithDb('ZohoPullService', () => {
     };
   }
 
+  describe('pullBrand', () => {
+    /** A pullBrand that reaches a connection, with list calls counted. */
+    function brandPull(zoho: FakeZohoBooksAdapter) {
+      let listCalls = 0;
+      const list = zoho.listContactsPage.bind(zoho);
+      zoho.listContactsPage = async (...args: Parameters<typeof list>) => {
+        listCalls++;
+        return list(...args);
+      };
+      const svc = new ZohoPullService(
+        prisma,
+        zoho,
+        {
+          buildAccountingConnection: async () => connection,
+          getLastPulledAt: async () => null,
+          recordPullRun: async () => undefined,
+        } as unknown as ZohoConnectionService,
+        { forBrand: async () => scope } as unknown as SystemScopeResolver,
+        redis,
+      );
+      return { svc, calls: () => listCalls };
+    }
+
+    it('makes no call while Zoho has rate-limited the organisation', async () => {
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.rateLimitedUntil = async () => new Date(Date.now() + 60_000);
+      const { svc, calls } = brandPull(zoho);
+
+      expect(await svc.pullBrand(brandId)).toMatchObject({ skipped: 'rate-limited' });
+      expect(calls()).toBe(0);
+    });
+
+    it('skips a second pull of the same brand while one is running', async () => {
+      const zoho = new FakeZohoBooksAdapter();
+      zoho.rateLimitedUntil = async () => null;
+      const { svc, calls } = brandPull(zoho);
+      const held = await redis.acquireLock(`zoho:pull:${brandId}`, 30);
+      try {
+        expect(await svc.pullBrand(brandId)).toMatchObject({ skipped: 'already-running' });
+        expect(calls()).toBe(0);
+      } finally {
+        await redis.releaseLock(`zoho:pull:${brandId}`, held!);
+      }
+
+      // Free again: the next pull runs, and says it was the first import.
+      expect(await svc.pullBrand(brandId)).toMatchObject({ firstImport: true });
+      expect(calls()).toBe(1);
+    });
+  });
+
   it('imports a first scan of contacts and invoices from the two lists alone, with no per-record call', async () => {
     const zoho = new FakeZohoBooksAdapter();
     const run = randomUUID();

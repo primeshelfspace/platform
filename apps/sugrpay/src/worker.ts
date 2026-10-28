@@ -56,10 +56,16 @@ async function bootstrap(): Promise<void> {
       // full-scan floor, which the scheduled tick below must never do.
       // backfillAfter is set by the Zoho connect callback: the first import,
       // then everything that existed here before the connection is pushed.
-      // skipPayments: payments sync normally from then on.
+      // skipPayments: payments sync normally from then on. If this job's pull
+      // was skipped (another pull of the brand is running, or Zoho is
+      // rate-limiting it), throwing lets the queue retry it later, so the
+      // push never starts before the import has actually run.
       'zoho-pull-brand': async (job) => {
         const counts = await zohoPull.pullBrand(job.data.brandId, job.data.force === true);
         if (job.data.backfillAfter === true) {
+          if (counts.skipped) {
+            throw new Error(`first import not run yet (${counts.skipped}); retrying`);
+          }
           await zohoSync.enqueueBackfill(job.data.brandId, { skipPayments: true });
         }
         return counts;
