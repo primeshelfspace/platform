@@ -1,6 +1,7 @@
 import type { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { Env } from './config/env.js';
+import { mountApiDocs } from './api-docs.js';
 import { corsOrigins, securityHeaders } from './common/http-security.js';
 
 // Prisma's BigInt columns (every *Minor money field) come back from the
@@ -50,4 +51,7 @@ export function configureApp(app: NestExpressApplication, env: Env, logger?: Log
   // Do not advertise the framework.
   http.disable('x-powered-by');
   http.use(securityHeaders);
+
+  // The Swagger page, /docs (API_DOCS_ENABLED).
+  mountApiDocs(http, env, logger);
 }

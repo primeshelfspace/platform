@@ -13,10 +13,27 @@ dashboard, Zoho Books) and the **HQ** API (a skeleton: `/health` only).
 | ------------------------------------------------------ | ------------------------------------------------------------- |
 | This page                                              | How to call it: addresses, sign-in, errors, pagination, money |
 | [endpoints.md](endpoints.md)                           | Every endpoint: which API, access rule, request, response     |
+| `/docs` on any API ([openapi.json](openapi.json))      | Swagger: every endpoint's fields, and **Try it out**          |
 | [test-report-2026-10-22.md](test-report-2026-10-22.md) | The last full check of every endpoint (before the split)      |
 
 `endpoints.md` is generated from the controllers (`pnpm docs:api`), and
 `pnpm check` fails when it is out of date — so it always matches the code.
+
+## Swagger
+
+Every API serves a Swagger page at **`/docs`**
+(production: `https://api.sugrpay.com/docs`; locally:
+`http://localhost:4001/docs`), over [openapi.json](openapi.json). It lists all
+three APIs' endpoints with every request field (from the Zod schema the route
+validates against: lengths, formats, enums), every response field (from the
+handler's TypeScript return type) and the access each needs. **Try it out**
+sends each request to the API that owns it; sign in with `POST /auth/login`,
+then paste the `token` into **Authorize**.
+
+`pnpm docs:api` writes `openapi.json` along with `endpoints.md`
+(`scripts/openapi.mts`), and `pnpm check` fails when it is out of date. The
+page's introduction is [swagger-intro.md](swagger-intro.md). Set
+`API_DOCS_ENABLED=false` to turn the page off.
 
 ## Addresses
 

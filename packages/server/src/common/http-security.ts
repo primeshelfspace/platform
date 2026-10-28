@@ -7,12 +7,21 @@ import type { Env } from '../config/env.js';
  * e.g. the Amplify default domain during a migration.
  */
 export function corsOrigins(env: Env): Set<string> {
+  // Locally there is no front door: the Swagger page (/docs) on one API's
+  // port calls the others' ports directly.
+  const localApis =
+    env.APP_ENV === 'local'
+      ? [env.PLATFORM_API_PORT, env.SUGRPAY_API_PORT, env.HQ_API_PORT].map(
+          (port) => `http://localhost:${port}`,
+        )
+      : [];
   return new Set(
     [
       env.ADMIN_PUBLIC_URL,
       env.ACCOUNTS_PUBLIC_URL,
       env.PAYMENT_PUBLIC_URL,
       ...env.CORS_EXTRA_ORIGINS,
+      ...localApis,
     ].map((url) => new URL(url).origin),
   );
 }
