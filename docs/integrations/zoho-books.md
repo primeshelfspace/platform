@@ -50,6 +50,10 @@ connects.
   first time the customer (or one of its invoices) is opened; an invoice's
   line items likewise. The access token from connecting is reused, and only
   one job per brand refreshes it at a time.
+- **Rate limits:** Zoho's limit is per organisation, shared by every brand
+  connected to it. After a 429, every brand on that organisation stops calling
+  Zoho until the time Zoho gave (15 minutes if it gave none), and its pulls are
+  skipped without a call or a log row. A brand never has two pulls at once.
 - The worker must be running for push and pull jobs:
   `pnpm --filter @platform/sugrpay-api dev:worker`.
 

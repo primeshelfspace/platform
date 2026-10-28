@@ -156,3 +156,62 @@ describe('ZohoBooksAdapter.listContactsPage', () => {
     },
   );
 });
+
+describe('ZohoBooksAdapter rate-limit pause', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Redis's getJson/setJson, in memory. */
+  function memoryRedis(): RedisService {
+    const store = new Map<string, string>();
+    return {
+      acquireRateToken: vi.fn().mockResolvedValue(true),
+      getJson: vi.fn(async (key: string) => {
+        const raw = store.get(key);
+        return raw === undefined ? null : JSON.parse(raw);
+      }),
+      setJson: vi.fn(async (key: string, value: unknown) => {
+        store.set(key, JSON.stringify(value));
+      }),
+    } as unknown as RedisService;
+  }
+
+  const connection = (brandId: string): AccountingConnection => ({
+    brandId,
+    organisationId: 'shared-org',
+    accessToken: 'tok',
+    refreshToken: 'refresh',
+    expiresAt: null,
+  });
+
+  it('after a 429, stops every brand on that organisation calling Zoho until it said', async () => {
+    const adapter = new ZohoBooksAdapter(
+      { ZOHO_API_DOMAIN: 'https://www.zohoapis.com' } as Env,
+      memoryRedis(),
+    );
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ code: 44, message: 'too many requests' }), {
+          status: 429,
+          headers: { 'retry-after': '120' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(adapter.listContactsPage(connection('brand-a'), 1)).rejects.toMatchObject({
+      errorClass: 'TRANSIENT',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Another brand on the same organisation: refused without a call.
+    await expect(adapter.listContactsPage(connection('brand-b'), 1)).rejects.toThrow(
+      /paused until .* \(no call made\)/,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const until = await adapter.rateLimitedUntil('shared-org');
+    expect(until!.getTime() - Date.now()).toBeGreaterThan(100_000);
+    expect(await adapter.rateLimitedUntil('another-org')).toBeNull();
+  });
+});
