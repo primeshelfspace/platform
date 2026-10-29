@@ -400,6 +400,88 @@ export class InvoicesService {
   }
 
   /**
+   * The invoice as a PDF, for a signed-in user: the Download PDF button on
+   * the Invoice Details panel, for every status. A draft is not issued yet
+   * (its payment link is off, so the public PDF route refuses it), and its
+   * PDF is marked as a draft so it cannot pass for an issued invoice.
+   */
+  async pdf(scope: Scope, brandId: string, id: string): Promise<{ number: string; pdf: Buffer }> {
+    const invoice = await this.prisma.withScope(scope, (tx) =>
+      tx.invoice.findFirst({
+        where: { id, brandId },
+        include: {
+          customer: true,
+          brand: { include: { settings: true } },
+          lineItems: { orderBy: { position: 'asc' } },
+        },
+      }),
+    );
+    if (!invoice) throw new NotFoundException('invoice not found');
+    // Outside the transaction: storage is a network call.
+    const logo = await brandLogoAttachment(this.storage, invoice.brand.logoKey);
+    const logoUrl = logo?.content
+      ? `data:${logo.contentType};base64,${logo.content.toString('base64')}`
+      : null;
+    return { number: invoice.number, pdf: await this.renderPdf(invoice, logoUrl) };
+  }
+
+  /** One invoice laid out with its brand's Invoice PDF settings and printed by
+   * InvoicePdfService: what Download PDF gives and what Send attaches. */
+  private async renderPdf(
+    invoice: Prisma.InvoiceGetPayload<{
+      include: {
+        customer: true;
+        brand: { include: { settings: true } };
+        lineItems: true;
+      };
+    }>,
+    logoUrl: string | null,
+  ): Promise<Buffer> {
+    const branding = invoice.brand.settings;
+    const accentColor = branding?.accentColor ?? '#171717';
+    const currency = toCurrencyCode(invoice.currency);
+    const invoicePdfSettings = branding
+      ? toInvoicePdfSettings(branding, invoice.brand)
+      : {
+          themeColor: invoice.brand.themeColor,
+          accentColor,
+          invoicePdfLayout: 'CLASSIC' as const,
+          showCompanyAddress: true,
+          showPaymentTerms: true,
+          showTaxBreakdown: true,
+          showNotes: true,
+          companyName: invoice.brand.displayName,
+          companyAddress: formatBrandAddress(invoice.brand.mailingAddress),
+          paymentTerms: 'DUE_ON_RECEIPT' as const,
+          notes: 'Thank you for your business. Please contact us with any questions.',
+        };
+
+    const html = renderInvoicePdfHtml({
+      number: invoice.status === 'DRAFT' ? `${invoice.number} (Draft)` : invoice.number,
+      invoiceDate: formatDateForDisplay(invoice.invoiceDate),
+      dueDate: formatDateForDisplay(invoice.dueDate),
+      brand: {
+        displayName: invoice.brand.displayName,
+        themeColor: invoice.brand.themeColor,
+        logoUrl,
+      },
+      customerName: invoice.customer.displayName,
+      customerAddress: formatBrandAddress(invoice.customer.billingAddress),
+      settings: invoicePdfSettings,
+      lines: invoice.lineItems.map((line) => ({
+        itemName: line.itemName,
+        quantityLabel: formatQuantity(line.quantity),
+        rateLabel: formatMinorForDisplay(Number(line.unitPriceMinor), currency),
+        amountLabel: formatMinorForDisplay(Number(line.lineTotalMinor), currency),
+      })),
+      subtotalLabel: formatMinorForDisplay(Number(invoice.subtotalMinor), currency),
+      totalLabel: formatMinorForDisplay(Number(invoice.totalMinor), currency),
+      balanceDueLabel: formatMinorForDisplay(Number(invoice.balanceMinor), currency),
+    });
+    return this.invoicePdf.render(html);
+  }
+
+  /**
    * The Invoice Details drawer's "Send"/"Resend" — one real send either way,
    * to whatever the compose modal actually shows on screen (see
    * prepareEmail above for how that got pre-filled; the caller may have
@@ -475,45 +557,7 @@ export class InvoicesService {
     // merchant would get downloading it separately.
     let pdfAttachment: { filename: string; contentType: string; content: Buffer } | undefined;
     if (input.attachPdf) {
-      const invoicePdfSettings = branding
-        ? toInvoicePdfSettings(branding, invoice.brand)
-        : {
-            themeColor: invoice.brand.themeColor,
-            accentColor,
-            invoicePdfLayout: 'CLASSIC' as const,
-            showCompanyAddress: true,
-            showPaymentTerms: true,
-            showTaxBreakdown: true,
-            showNotes: true,
-            companyName: invoice.brand.displayName,
-            companyAddress: formatBrandAddress(invoice.brand.mailingAddress),
-            paymentTerms: 'DUE_ON_RECEIPT' as const,
-            notes: 'Thank you for your business. Please contact us with any questions.',
-          };
-
-      const html = renderInvoicePdfHtml({
-        number: invoice.number,
-        invoiceDate: formatDateForDisplay(invoice.invoiceDate),
-        dueDate: formatDateForDisplay(invoice.dueDate),
-        brand: {
-          displayName: invoice.brand.displayName,
-          themeColor: invoice.brand.themeColor,
-          logoUrl: logo ? `cid:${LOGO_CID}` : null,
-        },
-        customerName: invoice.customer.displayName,
-        customerAddress: formatBrandAddress(invoice.customer.billingAddress),
-        settings: invoicePdfSettings,
-        lines: invoice.lineItems.map((line) => ({
-          itemName: line.itemName,
-          quantityLabel: formatQuantity(line.quantity),
-          rateLabel: formatMinorForDisplay(Number(line.unitPriceMinor), currency),
-          amountLabel: formatMinorForDisplay(Number(line.lineTotalMinor), currency),
-        })),
-        subtotalLabel: formatMinorForDisplay(Number(invoice.subtotalMinor), currency),
-        totalLabel: formatMinorForDisplay(Number(invoice.totalMinor), currency),
-        balanceDueLabel: formatMinorForDisplay(Number(invoice.balanceMinor), currency),
-      });
-      const pdf = await this.invoicePdf.render(html);
+      const pdf = await this.renderPdf(invoice, logo ? `cid:${LOGO_CID}` : null);
       pdfAttachment = {
         filename: `invoice-${invoice.number}.pdf`,
         contentType: 'application/pdf',

@@ -5703,6 +5703,89 @@
         "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
       }
     },
+    "/brands/{brandId}/invoices/{id}/pdf": {
+      "get": {
+        "tags": ["Invoices"],
+        "operationId": "InvoicesController_pdf",
+        "summary": "The invoice as a PDF, for a signed-in user (Download PDF on the Invoice Details panel)",
+        "description": "The invoice as a PDF, for a signed-in user (Download PDF on the Invoice Details panel). Any status, including a draft, whose PDF is marked \"(Draft)\"; the public PDF route needs a live payment link, which a draft has not.\n\n**Access:** INVOICES:READ\n**Served by:** the sugrpay API — `apps/sugrpay/src/modules/invoices/interface/invoices.controller.ts` (`InvoicesController.pdf`)",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The invoice PDF, as an attachment.",
+            "content": { "application/pdf": { "schema": { "type": "string", "format": "binary" } } }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
     "/brands/{brandId}/invoices/{id}/send-email": {
       "post": {
         "tags": ["Invoices"],

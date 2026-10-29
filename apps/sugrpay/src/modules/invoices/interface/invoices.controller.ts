@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   bulkSendInvoicesSchema,
   invoiceDraftSchema,
@@ -77,6 +78,23 @@ export class InvoicesController {
     @Param('id', zodPipe(idSchema)) id: string,
   ): Promise<InvoiceDetail> {
     return this.invoices.findOne(scope, brandId, id);
+  }
+
+  /** Download PDF on the Invoice Details panel, for any status, drafts too
+   * (the public PDF route needs a live payment link, which a draft has not). */
+  @Get(':id/pdf')
+  @RequirePermission('INVOICES', 'READ')
+  async pdf(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Param('id', zodPipe(idSchema)) id: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const { number, pdf } = await this.invoices.pdf(scope, brandId, id);
+    response.setHeader('content-type', 'application/pdf');
+    response.setHeader('content-disposition', `attachment; filename="invoice-${number}.pdf"`);
+    response.setHeader('cache-control', 'no-store');
+    response.send(pdf);
   }
 
   /** The Invoice Details screen's "Activity" tab. */
