@@ -40,9 +40,12 @@ connects.
 
 - **Push** (Sugrpay → Zoho): queued on every relevant change, run by Sugrpay's
   worker.
-- **Pull** (Zoho → Sugrpay): driven by Zoho webhooks, plus the **Sync now**
-  button; a timed pull every N minutes is off unless
-  `ZOHO_SCHEDULED_PULL_ENABLED=true`.
+- **Pull** (Zoho → Sugrpay): Zoho webhooks bring changes within seconds, the
+  **Sync now** button does a full sync, and a timed full sync runs at each
+  brand's **Sync Frequency** (Brand Settings → Integrations): Real-time (the
+  default) every 5 minutes, or every 15 or 30 minutes, hourly, daily or
+  monthly. Each timed sync is about 2 Zoho calls per brand.
+  `ZOHO_SCHEDULED_PULL_ENABLED=false` stops every timed sync at once.
 - **On connect**, one job imports what Zoho already has, then pushes what
   existed here before. The import reads only Zoho's two lists, contacts then
   invoices (one call per 200 records), with no call per record. A contact's

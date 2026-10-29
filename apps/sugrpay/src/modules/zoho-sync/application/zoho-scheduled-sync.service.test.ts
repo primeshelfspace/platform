@@ -1,7 +1,7 @@
 /**
  * Sync Frequency (FR-ZHO-030): the every-minute tick pulls a brand only when
- * it chose an interval and that interval has passed. Real-time brands (0, the
- * default) are never pulled on a timer: Zoho's webhooks bring their changes.
+ * its interval has passed. Real-time (0, the default) is every 5 minutes, on
+ * top of the changes Zoho's webhooks bring within seconds.
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { Env } from '@platform/server';
@@ -64,15 +64,25 @@ describe('scheduled Zoho pull', () => {
     expect(result.brandsEnqueued).toBe(3);
   });
 
-  it('never pulls a Real-time brand on a timer', async () => {
+  it('pulls a Real-time brand every 5 minutes', async () => {
+    const now = Date.now();
     const { service, enqueued } = scheduler([
-      { brandId: 'real-time', lastPulledAt: null, pullFrequencyMinutes: 0 },
-      { brandId: 'real-time-old', lastPulledAt: new Date(0), pullFrequencyMinutes: 0 },
+      {
+        brandId: 'real-time-due',
+        lastPulledAt: new Date(now - 6 * MINUTE),
+        pullFrequencyMinutes: 0,
+      },
+      {
+        brandId: 'real-time-not-yet',
+        lastPulledAt: new Date(now - 3 * MINUTE),
+        pullFrequencyMinutes: 0,
+      },
+      { brandId: 'real-time-never', lastPulledAt: null, pullFrequencyMinutes: 0 },
     ]);
 
     await service.tick();
 
-    expect(enqueued()).toEqual([]);
+    expect(enqueued().sort()).toEqual(['real-time-due', 'real-time-never']);
   });
 
   it('pulls nothing while timed pulls are switched off on the server', async () => {

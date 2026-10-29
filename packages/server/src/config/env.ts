@@ -157,10 +157,9 @@ const envSchema = z
 
     /**
      * Whether the every-minute 'scheduled-sync' tick may pull from Zoho at
-     * all. Each brand chooses its own Sync Frequency, Real-time (no timed
-     * pull, webhooks only) by default, so this stays on and only brands that
-     * chose an interval are pulled. Set it false to stop every timed pull at
-     * once (e.g. while Zoho is rate-limiting an organisation).
+     * all, at each brand's own Sync Frequency (Real-time, the default, is
+     * every 5 minutes on top of webhooks). Set it false to stop every timed
+     * pull at once (e.g. while Zoho is rate-limiting an organisation).
      */
     ZOHO_SCHEDULED_PULL_ENABLED: booleanish.default(true),
 
