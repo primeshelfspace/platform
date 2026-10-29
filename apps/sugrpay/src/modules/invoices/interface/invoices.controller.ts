@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import {
   bulkSendInvoicesSchema,
@@ -116,6 +116,19 @@ export class InvoicesController {
     @Body(zodPipe(invoiceDraftSchema)) body: InvoiceDraftInput,
   ): Promise<InvoiceWithLines> {
     return this.invoices.create(scope, brandId, body);
+  }
+
+  /** Edit a draft (the Invoice Details panel's Edit). The whole draft is
+   * replaced and recalculated; issued invoices are refused. */
+  @Put(':id')
+  @RequirePermission('INVOICES', 'WRITE')
+  update(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Param('id', zodPipe(idSchema)) id: string,
+    @Body(zodPipe(invoiceDraftSchema)) body: InvoiceDraftInput,
+  ): Promise<InvoiceWithLines> {
+    return this.invoices.updateDraft(scope, brandId, id, body);
   }
 
   /** The Invoices list's "Bulk Send Invoices" — sends (or resends) each

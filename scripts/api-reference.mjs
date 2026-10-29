@@ -107,6 +107,8 @@ export const DESCRIPTIONS = {
   'GET /brands/:brandId/invoices/tab-counts':
     'Counts for the All / Draft / Unpaid / Partial / Paid / Overdue tabs.',
   'GET /brands/:brandId/invoices/:id': 'One invoice with its lines and public payment token.',
+  'PUT /brands/:brandId/invoices/:id':
+    'Edits a draft: customer, dates, lines, tax and card fee rates and notes are replaced and the totals recalculated, as on create. The number and payment link stay. 409 NOT_A_DRAFT once the invoice is issued.',
   'GET /brands/:brandId/invoices/:id/pdf':
     'The invoice as a PDF, for a signed-in user (Download PDF on the Invoice Details panel). Any status, including a draft, whose PDF is marked "(Draft)"; the public PDF route needs a live payment link, which a draft has not.',
   'GET /brands/:brandId/invoices/:id/events':

@@ -201,6 +201,69 @@ describeWithDb('InvoicesService', () => {
     }
   });
 
+  describe('editing a draft', () => {
+    it('replaces the lines and dates, recalculates, and keeps the number and link', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+
+      const edited = await invoices.updateDraft(
+        ownerScope,
+        solsticeId,
+        created.id,
+        draft({
+          dueDate: new Date('2026-02-15'),
+          lines: [
+            {
+              itemName: 'Dutch oven',
+              description: 'Enamelled',
+              quantity: '2',
+              unitPrice: '150.00',
+              taxExempt: false,
+            },
+          ],
+          taxRateBp: 1000,
+          notes: 'Thanks!',
+        }),
+      );
+
+      expect(edited.number).toBe(created.number);
+      expect(edited.publicToken).toBe(created.publicToken);
+      expect(edited.status).toBe('DRAFT');
+      expect(edited.lineItems.map((l) => [l.itemName, Number(l.lineTotalMinor)])).toEqual([
+        ['Dutch oven', 30_000],
+      ]);
+      // 300.00 + 10% tax.
+      expect(Number(edited.subtotalMinor)).toBe(30_000);
+      expect(Number(edited.taxMinor)).toBe(3_000);
+      expect(Number(edited.totalMinor)).toBe(33_000);
+      expect(Number(edited.balanceMinor)).toBe(33_000);
+      expect(edited.dueDate.toISOString().slice(0, 10)).toBe('2026-02-15');
+      expect(edited.notes).toBe('Thanks!');
+    });
+
+    it('refuses to edit an invoice once it is issued', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await invoices.issue(ownerScope, solsticeId, created.id);
+
+      const error = (await invoices.updateDraft(ownerScope, solsticeId, created.id, draft()).then(
+        () => null,
+        (e: unknown) => e,
+      )) as { getResponse?: () => { code?: string } } | null;
+
+      expect(error?.getResponse?.().code).toBe('NOT_A_DRAFT');
+    });
+
+    it('refuses a body for another brand, and an unknown invoice', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+
+      await expect(
+        invoices.updateDraft(ownerScope, solsticeId, created.id, draft({ brandId: randomUUID() })),
+      ).rejects.toThrow('the invoice belongs to the brand in the address');
+      await expect(
+        invoices.updateDraft(ownerScope, solsticeId, randomUUID(), draft()),
+      ).rejects.toThrow('invoice not found');
+    });
+  });
+
   it('refuses a PDF for an invoice of another brand or that does not exist', async () => {
     await expect(invoices.pdf(ownerScope, solsticeId, randomUUID())).rejects.toThrow(
       'invoice not found',
