@@ -47,8 +47,9 @@ export interface ZohoConnectionStatus {
   readonly lastPulledAt: Date | null;
   readonly health: string | null;
   readonly pullFrequencyMinutes: number;
-  /** Whether the timed pull runs at all (ZOHO_SCHEDULED_PULL_ENABLED) —
-   * off means pullFrequencyMinutes has no effect and sync is webhook-driven. */
+  /** Whether timed pulls may run on this server at all
+   * (ZOHO_SCHEDULED_PULL_ENABLED, an emergency switch, on by default). Off,
+   * every brand is Real-time whatever pullFrequencyMinutes says. */
   readonly scheduledPullEnabled: boolean;
   readonly customerSyncEnabled: boolean;
   readonly invoiceSyncEnabled: boolean;
@@ -62,7 +63,7 @@ export interface ZohoSyncFlags {
 /** Matches the column defaults exactly — what a brand that has never
  * configured these settings is actually running under. */
 const DEFAULT_SYNC_SETTINGS = {
-  pullFrequencyMinutes: 15,
+  pullFrequencyMinutes: 0,
   customerSyncEnabled: true,
   invoiceSyncEnabled: true,
 } as const;
@@ -355,6 +356,8 @@ export class ZohoConnectionService {
           where: {
             status: 'CONNECTED',
             encryptedCredentials: { not: null },
+            // Real-time (0) brands are never pulled on a timer.
+            pullFrequencyMinutes: { gt: 0 },
           },
           select: { brandId: true, lastPulledAt: true, pullFrequencyMinutes: true },
         }),
