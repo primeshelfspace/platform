@@ -4612,7 +4612,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "pullFrequencyMinutes": { "type": "number", "enum": [1, 15, 60, 1440] },
+                  "pullFrequencyMinutes": { "type": "integer" },
                   "customerSyncEnabled": { "type": "boolean" },
                   "invoiceSyncEnabled": { "type": "boolean" }
                 },
@@ -14097,7 +14097,7 @@
           "pullFrequencyMinutes": { "type": "number" },
           "scheduledPullEnabled": {
             "type": "boolean",
-            "description": "Whether the timed pull runs at all (ZOHO_SCHEDULED_PULL_ENABLED) — off means pullFrequencyMinutes has no effect and sync is webhook-driven."
+            "description": "Whether timed pulls may run on this server at all (ZOHO_SCHEDULED_PULL_ENABLED, an emergency switch, on by default). Off, every brand is Real-time whatever pullFrequencyMinutes says."
           },
           "customerSyncEnabled": { "type": "boolean" },
           "invoiceSyncEnabled": { "type": "boolean" }

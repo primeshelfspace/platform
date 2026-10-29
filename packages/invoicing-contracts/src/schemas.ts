@@ -169,16 +169,22 @@ export type InvoicePdfSettingsInput = z.infer<typeof invoicePdfSettingsSchema>;
 // no request body to validate. The resulting account id is read from Stripe's
 // OAuth response, never from a client.
 
-/** FR-ZHO-030: the only frequencies the 'scheduled-sync' cron actually
- * understands. Minutes, so the worker's due-check (`now - lastPulledAt >=
- * frequency * 60_000`) needs no unit conversion at the call site. */
-export const ZOHO_SYNC_FREQUENCIES = [1, 15, 60, 1440] as const;
-export const zohoSyncFrequencySchema = z.union([
-  z.literal(1),
-  z.literal(15),
-  z.literal(60),
-  z.literal(1440),
-]);
+/** FR-ZHO-030: a brand's Sync Frequency, in minutes between timed pulls
+ * from Zoho (the 'scheduled-sync' cron's due-check is `now - lastPulledAt >=
+ * frequency * 60_000`). 0 is Real-time: no timed pull at all, changes arrive
+ * through Zoho's webhooks within seconds. Monthly is 30 days. */
+export const ZOHO_SYNC_FREQUENCIES = [0, 15, 30, 60, 1440, 43200] as const;
+export const zohoSyncFrequencySchema = z
+  .number()
+  .int()
+  .refine(
+    (v): v is (typeof ZOHO_SYNC_FREQUENCIES)[number] =>
+      (ZOHO_SYNC_FREQUENCIES as readonly number[]).includes(v),
+    {
+      message:
+        'choose Real-time (0), or every 15, 30 or 60 minutes, daily (1440) or monthly (43200)',
+    },
+  ) as unknown as z.ZodType<(typeof ZOHO_SYNC_FREQUENCIES)[number]>;
 export type ZohoSyncFrequency = z.infer<typeof zohoSyncFrequencySchema>;
 
 /** Every field optional and a live PATCH, not a form submit — the settings

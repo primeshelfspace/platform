@@ -83,9 +83,11 @@ export class ZohoScheduledSyncService {
       );
     }
 
-    // Zoho → platform sync is webhook-driven; the timed pull only runs when
-    // explicitly re-enabled (ZOHO_SCHEDULED_PULL_ENABLED). The tick itself
-    // stays, for the reaping above — that makes no Zoho calls.
+    // Each brand chooses its own Sync Frequency; Real-time brands (the
+    // default) are never pulled on a timer, so only brands that picked an
+    // interval cost Zoho calls here. ZOHO_SCHEDULED_PULL_ENABLED=false stops
+    // every timed pull at once (an emergency switch); the tick itself stays,
+    // for the reaping above, which makes no Zoho calls.
     if (!this.env.ZOHO_SCHEDULED_PULL_ENABLED) {
       return { brandsConnected: 0, brandsEnqueued: 0, staleJobsReaped };
     }
@@ -93,7 +95,9 @@ export class ZohoScheduledSyncService {
     const live = await this.connections.listLiveZohoConnections();
     const now = Date.now();
     const due = live.filter(
-      (c) => !c.lastPulledAt || now - c.lastPulledAt.getTime() >= c.pullFrequencyMinutes * 60_000,
+      (c) =>
+        c.pullFrequencyMinutes > 0 &&
+        (!c.lastPulledAt || now - c.lastPulledAt.getTime() >= c.pullFrequencyMinutes * 60_000),
     );
     await Promise.all(
       due.map(({ brandId }) => this.queue.enqueue('sync', 'zoho-pull-brand', { brandId })),

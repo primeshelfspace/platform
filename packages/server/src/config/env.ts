@@ -156,13 +156,13 @@ const envSchema = z
     ZOHO_WEBHOOK_SECRET: z.string().optional(),
 
     /**
-     * Whether the every-minute 'scheduled-sync' tick pulls from Zoho at each
-     * brand's own frequency. Off by default: Zoho → platform sync is
-     * webhook-driven (ZohoWebhookController), plus the manual "Sync now"
-     * button. Turning this on restores the timed pull as a safety net for
-     * webhooks Zoho fails to deliver.
+     * Whether the every-minute 'scheduled-sync' tick may pull from Zoho at
+     * all. Each brand chooses its own Sync Frequency, Real-time (no timed
+     * pull, webhooks only) by default, so this stays on and only brands that
+     * chose an interval are pulled. Set it false to stop every timed pull at
+     * once (e.g. while Zoho is rate-limiting an organisation).
      */
-    ZOHO_SCHEDULED_PULL_ENABLED: booleanish.default(false),
+    ZOHO_SCHEDULED_PULL_ENABLED: booleanish.default(true),
 
     API_PUBLIC_URL: z.string().url().default('http://localhost:4001'),
     /** Signs the JWT a user carries into a product from Select Your Products
