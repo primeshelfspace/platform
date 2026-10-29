@@ -27,10 +27,9 @@ import { AuthMailService } from './auth-mail.service.js';
  * email, returning nothing to the caller that a generic failure would not.
  */
 
-/** FR-AUTH-002: 5 consecutive failures within 15 minutes locks for 30. */
-const FAILURE_WINDOW_MINUTES = 15;
-const MAX_FAILURES_IN_WINDOW = 5;
-const LOCKOUT_MINUTES = 30;
+/** Sign In: 5 failed attempts in a row lock the account for 2 hours. */
+export const MAX_CONSECUTIVE_FAILURES = 5;
+export const LOCKOUT_HOURS = 2;
 
 /** FR-AUTH-005: at most 3 forgot-password requests per address per hour. Keyed
  * by address rather than source IP — see requestPasswordReset. */
@@ -195,159 +194,87 @@ export class AuthService {
   }
 
   /**
-   * FR-ONB: self-serve signup. Creates the tenant and its first owner, then
-   * emails a set-password link.
+   * Sign Up: a company email and a password. Creates the company and its
+   * first user, the Company Admin (MERCHANT_OWNER), active with that password,
+   * and signs them in. No product is enabled yet; that is Select Your Products.
+   * The company is registered next (Register Your Company).
    *
-   * No session is issued here and no password is chosen yet: proving control
-   * of the address is what the emailed link is for. Until it is followed the
-   * account exists but is unreachable — its password hash is random and nobody
-   * holds the input to it.
+   * One account per email across every company: an address with any account,
+   * in any company and any status, is refused (409), so a person cannot end up
+   * with two companies behind one sign-in. Checked under a transaction-scoped
+   * advisory lock on the address, so two sign-ups with the same email at the
+   * same moment cannot both pass the check.
    *
    * Unscoped for the same reason login is: there is no tenant yet to scope to
    * — this call is what creates one.
-   *
-   * The email is part of the outcome, not a side effect:
-   * - If it cannot be sent, the new company and owner are deleted again and the
-   *   caller gets 503 with a message to retry. Otherwise the account would be
-   *   left behind, unreachable (nobody holds its password), and every retry
-   *   would answer "already exists".
-   * - Signing up again with an address whose accounts are all still INVITED —
-   *   a link that never arrived, expired, or was lost — sends a fresh link to
-   *   that address's own earlier signup instead of refusing (rate-limited).
-   *   Only the address's owner receives it, so this reveals nothing the 409
-   *   below does not. Pending invitations from other companies do not count:
-   *   the signup then creates the person's own company as usual.
-   * - An address that has finished signing up (or is suspended) still gets 409.
    */
-  async register(input: RegisterInput, context: AttemptContext): Promise<void> {
-    const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
+  async register(input: RegisterInput, context: AttemptContext): Promise<LoginResult> {
+    const passwordHash = await hashPassword(input.password);
+    // Not asked on Sign Up; the part before the @ until the person sets a name.
+    const name = input.email.split('@')[0] ?? input.email;
 
-    const outcome = await this.prisma.withoutScope(
-      'creating a merchant and its first owner during signup (no tenant exists yet)',
-      async (client) => {
-        // Signup refuses an address already in use anywhere. The schema allows
-        // the same address under two merchants — the same person may hold
-        // accounts at two client organisations — but that is for an
-        // administrator inviting them, not for self-serve, where it would
-        // silently create a second tenant the user cannot tell apart from the
-        // first at the sign-in prompt.
-        const existing = await client.user.findMany({
-          where: { email: input.email },
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            merchantId: true,
-            status: true,
-            role: true,
-            merchant: { select: { _count: { select: { users: true } } } },
-          },
-          orderBy: { createdAt: 'asc' },
-        });
-        if (existing.some((u) => u.status !== 'INVITED')) {
-          return { kind: 'taken' } as const;
-        }
-        // Resend only to an earlier self-signup: an owner alone in a company of
-        // their own. An invitation another company sent to this address is
-        // theirs to manage — resending it would let anyone who invites an
-        // address first capture that person's signup into their company.
-        const ownSignups = existing.filter(
-          (u) => u.role === 'MERCHANT_OWNER' && u.merchant._count.users === 1,
-        );
-        if (ownSignups.length > 0) {
-          return { kind: 'resend', users: ownSignups } as const;
-        }
-
-        const user = await client.user.create({
-          data: {
-            email: input.email,
-            name: input.fullName,
-            passwordHash,
-            role: 'MERCHANT_OWNER',
-            status: 'INVITED',
-            merchant: {
-              create: {
-                // A placeholder until the company-details step collects the
-                // real legal name; Merchant.name is NOT NULL and something has
-                // to identify the tenant in the interim.
-                name: input.fullName,
-                contactEmail: input.email,
-                // Signing up today means signing up for invoicing (Sugrpay).
-                // Other products are switched on later from Accounts → Billing.
-                subscriptions: { create: { product: 'INVOICING' } },
+    const created = await this.prisma.withoutScope(
+      'creating a company and its Company Admin during sign-up (no tenant exists yet)',
+      (client) =>
+        client.$transaction(async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'signup:' + input.email}))`;
+          const taken = await tx.user.findFirst({
+            where: { email: { equals: input.email, mode: 'insensitive' } },
+            select: { id: true },
+          });
+          if (taken) return null;
+          return tx.user.create({
+            data: {
+              email: input.email,
+              name,
+              passwordHash,
+              role: 'MERCHANT_OWNER',
+              status: 'ACTIVE',
+              merchant: {
+                create: {
+                  // Until Register Your Company names it.
+                  name: input.email.split('@')[1] ?? input.email,
+                  contactEmail: input.email,
+                  companyEmail: input.email,
+                },
               },
             },
-            productRoles: { create: { product: 'INVOICING', role: 'MERCHANT_OWNER' } },
-          },
-        });
-        return { kind: 'created', user } as const;
-      },
+          });
+        }),
     );
 
-    if (outcome.kind === 'taken') {
-      throw new ConflictException('an account with this email address already exists');
-    }
-
-    if (outcome.kind === 'resend') {
-      // Same budget as forgot-password, so repeated signups cannot be used to
-      // flood someone's inbox. Over the limit, nothing is sent and nothing is
-      // said — the caller sees the same outcome either way.
-      const allowed = await this.redis.acquireGenericRateToken(
-        `ratelimit:signup-resend:${input.email}`,
-        FORGOT_PASSWORD_LIMIT,
-        FORGOT_PASSWORD_WINDOW_SECONDS,
-      );
-      if (!allowed) return;
-      for (const user of outcome.users) {
-        const { token } = await this.passwordResets.issue(user.id);
-        try {
-          await this.mail.sendSetPasswordLink({
-            to: user.email,
-            name: user.name,
-            token,
-            isNewAccount: true,
-          });
-        } catch (error) {
-          this.logger.error(
-            `signup: could not re-send the set-password link to ${user.email}`,
-            error,
-          );
-          throw new ServiceUnavailableException(MAIL_UNAVAILABLE_MESSAGE);
-        }
-        await this.record(
-          user.merchantId,
-          user.id,
-          'SUCCESS',
-          'LINK_RESENT',
-          context,
-          AUDIT_REGISTER,
-        );
-      }
-      return;
-    }
-
-    const created = outcome.user;
-    const { token } = await this.passwordResets.issue(created.id);
-    // Awaited, not queued: this message is the flow. See AuthMailService.
-    try {
-      await this.mail.sendSetPasswordLink({
-        to: created.email,
-        name: created.name,
-        token,
-        isNewAccount: true,
+    if (!created) {
+      throw new ConflictException({
+        message: 'an account with this email address already exists',
+        code: 'EMAIL_TAKEN',
+        issues: [
+          { path: 'email', message: 'an account with this email already exists', code: 'taken' },
+        ],
       });
-    } catch (error) {
-      this.logger.error(`signup: could not send the set-password link to ${created.email}`, error);
-      // Undo the signup so a retry starts clean. Deleting the merchant
-      // cascades to its owner, subscription, product role and the link.
-      await this.prisma.withoutScope(
-        'removing a signup whose set-password email could not be sent',
-        (client) => client.merchant.delete({ where: { id: created.merchantId } }),
-      );
-      throw new ServiceUnavailableException(MAIL_UNAVAILABLE_MESSAGE);
     }
 
     await this.record(created.merchantId, created.id, 'SUCCESS', null, context, AUDIT_REGISTER);
+
+    const { token, expiresAt } = await this.sessions.issue(created.id, {
+      sourceIp: context.sourceIp,
+      userAgent: context.userAgent,
+    });
+    await this.prisma.withoutScope('recording the first sign-in after sign-up', (c) =>
+      c.user.update({ where: { id: created.id }, data: { lastLoginAt: new Date() } }),
+    );
+
+    return {
+      token,
+      expiresAt,
+      user: {
+        id: created.id,
+        merchantId: created.merchantId,
+        email: created.email,
+        name: created.name,
+        role: created.role,
+        mustResetPassword: false,
+      },
+    };
   }
 
   /**
@@ -561,11 +488,15 @@ export class AuthService {
   }
 
   /**
-   * FR-AUTH-002. The 15-minute window is counted from the audit trail rather
-   * than from a column on `user`, because FR-AUTH-004 already requires every
-   * attempt to be written there — a `failed_logins` integer alone cannot say
-   * *when* those failures happened, and adding a timestamp column would be a
-   * second, redundant record of the same events.
+   * Sign In lockout: 5 failed attempts in a row lock the account for 2 hours.
+   * "In a row" is user.failed_logins: a successful sign-in sets it back to 0,
+   * and so does the end of a lock, so the first failure after a lock counts as
+   * the first again. While locked this is never reached: login refuses before
+   * checking the password, so a locked account cannot be probed and the lock
+   * is not extended.
+   *
+   * One statement, under a row lock, so two wrong passwords at the same
+   * moment both count.
    */
   private async registerFailure(
     merchantId: string,
@@ -574,56 +505,31 @@ export class AuthService {
   ): Promise<void> {
     await this.record(merchantId, userId, 'FAILURE', 'BAD_PASSWORD', context);
 
-    const windowStart = new Date(Date.now() - FAILURE_WINDOW_MINUTES * 60_000);
+    const [counted] = await this.prisma.withoutScope(
+      'counting consecutive sign-in failures for lockout',
+      (c) => c.$queryRaw<Array<{ failed_logins: number; locked: boolean }>>`
+        UPDATE "user" AS u
+        SET failed_logins = n.count,
+            locked_until = CASE
+              WHEN n.count >= ${MAX_CONSECUTIVE_FAILURES}::int
+                THEN timezone('UTC', now()) + make_interval(hours => ${LOCKOUT_HOURS}::int)
+              ELSE NULL
+            END
+        FROM (
+          SELECT id,
+                 CASE WHEN locked_until IS NOT NULL AND locked_until <= timezone('UTC', now())
+                      THEN 1 ELSE failed_logins + 1 END AS count
+          FROM "user" WHERE id = ${userId}::uuid FOR UPDATE
+        ) AS n
+        WHERE u.id = n.id
+        RETURNING u.failed_logins, u.locked_until IS NOT NULL AS locked`,
+    );
 
-    await this.prisma.withoutScope('counting recent sign-in failures for lockout', async (c) => {
-      // "Consecutive" is the whole of FR-AUTH-002, so the count has to start
-      // after the last successful sign-in, not merely at the window edge. A
-      // successful login already clears the failedLogins column, but that
-      // column is not what this decision reads — without this the audit trail
-      // still holds the earlier failures, and a user who mistyped four times,
-      // signed in fine, then fumbled once would be locked out on that single
-      // failure.
-      const lastSuccess = await c.auditLog.findFirst({
-        where: {
-          merchantId,
-          actorId: userId,
-          action: AUDIT_LOGIN,
-          outcome: 'SUCCESS',
-          occurredAt: { gte: windowStart },
-        },
-        orderBy: { occurredAt: 'desc' },
-        select: { occurredAt: true },
-      });
-      const countFrom =
-        lastSuccess && lastSuccess.occurredAt > windowStart ? lastSuccess.occurredAt : windowStart;
-
-      const failures = await c.auditLog.count({
-        where: {
-          merchantId,
-          actorId: userId,
-          action: AUDIT_LOGIN,
-          outcome: 'FAILURE',
-          occurredAt: { gt: countFrom },
-        },
-      });
-
-      await c.user.update({
-        where: { id: userId },
-        data: {
-          failedLogins: failures,
-          ...(failures >= MAX_FAILURES_IN_WINDOW
-            ? { lockedUntil: new Date(Date.now() + LOCKOUT_MINUTES * 60_000) }
-            : {}),
-        },
-      });
-
-      if (failures >= MAX_FAILURES_IN_WINDOW) {
-        this.logger.warn(
-          `locked user ${userId} for ${LOCKOUT_MINUTES}m after ${failures} failures`,
-        );
-      }
-    });
+    if (counted?.locked) {
+      this.logger.warn(
+        `locked user ${userId} for ${LOCKOUT_HOURS}h after ${counted.failed_logins} failures in a row`,
+      );
+    }
   }
 
   /**

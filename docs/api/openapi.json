@@ -256,8 +256,8 @@
       "post": {
         "tags": ["Sign-in"],
         "operationId": "AuthController_register",
-        "summary": "Self-serve sign-up",
-        "description": "Self-serve sign-up: creates the company, its owner (invited) and the Sugrpay subscription, and emails a set-password link. Signing up again before the password is set re-sends the link; 409 once sign-up is finished; 503 (and nothing kept) if the email cannot be sent.\n\n**Access:** public\n**Served by:** the platform API — `apps/platform/src/modules/auth/interface/auth.controller.ts` (`AuthController.register`)",
+        "summary": "Sign Up with a company email and a password (12+ characters)",
+        "description": "Sign Up with a company email and a password (12+ characters). Free email providers are refused; one account per email across every company (409 EMAIL_TAKEN). Creates the company with the person as its Company Admin, signs them in (token, as login) and returns nextStep REGISTER_COMPANY. No product is enabled yet.\n\n**Access:** public\n**Served by:** the platform API — `apps/platform/src/modules/auth/interface/auth.controller.ts` (`AuthController.register`)",
         "requestBody": {
           "required": true,
           "content": {
@@ -265,24 +265,29 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "fullName": { "type": "string", "minLength": 1, "maxLength": 120 },
-                  "email": { "type": "string", "format": "email", "maxLength": 320 }
+                  "email": { "type": "string", "minLength": 1 },
+                  "password": { "type": "string", "minLength": 1 }
                 },
-                "required": ["fullName", "email"],
+                "required": ["email", "password"],
                 "additionalProperties": true
               }
             }
           }
         },
         "responses": {
-          "202": {
+          "201": {
             "description": "Success.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "ok": { "type": "boolean", "const": true } },
-                  "required": ["ok"]
+                  "properties": {
+                    "token": { "type": "string" },
+                    "expiresAt": { "type": "string" },
+                    "user": { "$ref": "#/components/schemas/AuthenticatedUser" },
+                    "nextStep": { "type": "string", "const": "REGISTER_COMPANY" }
+                  },
+                  "required": ["token", "expiresAt", "user", "nextStep"]
                 }
               }
             }
@@ -543,7 +548,11 @@
                 "properties": {
                   "email": { "type": ["string", "null"] },
                   "legalName": { "type": "string" },
+                  "taxId": { "type": ["string", "null"] },
                   "displayName": { "type": "string" },
+                  "currency": { "type": "string", "enum": ["USD", "CAD", "EUR", "GBP", "PKR"] },
+                  "timezone": { "type": "string" },
+                  "themeColor": { "type": "string" },
                   "businessType": {
                     "type": "string",
                     "enum": [
@@ -579,25 +588,21 @@
                     },
                     "required": ["line1", "line2", "city", "region", "postalCode", "country"],
                     "type": ["object", "null"]
-                  },
-                  "taxId": { "type": ["string", "null"] },
-                  "currency": { "type": "string", "enum": ["USD", "CAD", "EUR", "GBP", "PKR"] },
-                  "timezone": { "type": "string" },
-                  "themeColor": { "type": "string" }
+                  }
                 },
                 "required": [
                   "email",
                   "legalName",
+                  "taxId",
                   "displayName",
+                  "currency",
+                  "timezone",
+                  "themeColor",
                   "businessType",
                   "salesPersonName",
                   "phone",
                   "mailingAddress",
-                  "billingAddress",
-                  "taxId",
-                  "currency",
-                  "timezone",
-                  "themeColor"
+                  "billingAddress"
                 ]
               }
             }
@@ -7410,6 +7415,207 @@
         "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
       }
     },
+    "/company/products": {
+      "get": {
+        "tags": ["Company and onboarding"],
+        "operationId": "ProductsController_list",
+        "summary": "Select Your Products",
+        "description": "Select Your Products: the fixed list (Sugrpay, HQ) with name, description, whether each is enabled and whether this user may enable it; and whether onboarding is complete.\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/subscriptions/interface/products.controller.ts` (`ProductsController.list`)",
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProductsView" } }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      },
+      "post": {
+        "tags": ["Company and onboarding"],
+        "operationId": "ProductsController_enable",
+        "summary": "Enables the selected products (Company Admin; at least one, no repeats)",
+        "description": "Enables the selected products (Company Admin; at least one, no repeats). 409 COMPANY_NOT_REGISTERED / ADD_BRAND_FIRST before those steps. Completes onboarding. continueWith names the product to open straight away when exactly one is enabled.\n\n**Access:** PLAN_AND_BILLING:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/subscriptions/interface/products.controller.ts` (`ProductsController.enable`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "products": {
+                    "type": "array",
+                    "items": { "type": "string", "enum": ["INVOICING", "HQ"] },
+                    "minItems": 1
+                  }
+                },
+                "required": ["products"],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/EnabledProducts" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/company/products/{product}/continue": {
+      "post": {
+        "tags": ["Company and onboarding"],
+        "operationId": "ProductsController_continueInto",
+        "summary": "Continue into a product",
+        "description": "Continue into a product: returns its URL and a 15-minute JWT (HS256; sub user, mid company, aud product). Only for a product enabled for the company (409 PRODUCT_NOT_ENABLED); 409 PRODUCT_NOT_AVAILABLE when the product has no web address yet (HQ until HQ_PUBLIC_URL is set).\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/subscriptions/interface/products.controller.ts` (`ProductsController.continueInto`)",
+        "parameters": [
+          {
+            "name": "product",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["INVOICING", "HQ"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProductLaunch" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
     "/company/subscriptions": {
       "get": {
         "tags": ["Company and onboarding"],
@@ -7463,7 +7669,7 @@
         "tags": ["Company and onboarding"],
         "operationId": "SubscriptionsController_update",
         "summary": "Switches a product on or off for the company (no billing provider yet)",
-        "description": "Switches a product on or off for the company (no billing provider yet).\n\n**Access:** PLAN_AND_BILLING:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/subscriptions/interface/subscriptions.controller.ts` (`SubscriptionsController.update`)",
+        "description": "Switches a product on or off for the company (no billing provider yet). Switching one on needs a registered company with a brand, and completes onboarding.\n\n**Access:** PLAN_AND_BILLING:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/subscriptions/interface/subscriptions.controller.ts` (`SubscriptionsController.update`)",
         "parameters": [
           {
             "name": "product",
@@ -9775,20 +9981,31 @@
         "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
       }
     },
-    "/merchant/brand-structure": {
+    "/merchant/first-brand": {
       "post": {
         "tags": ["Company and onboarding"],
-        "operationId": "MerchantController_chooseBrandStructure",
-        "summary": "Chooses single-brand or multi-brand",
-        "description": "Chooses single-brand or multi-brand.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.chooseBrandStructure`)",
+        "operationId": "MerchantController_addFirstBrand",
+        "summary": "Add Your Brand (Company Admin)",
+        "description": "Add Your Brand (Company Admin): the company's first brand, active. Legal Name, Display Name, Currency and a valid IANA Timezone are required; Theme Color optional. 409 COMPANY_NOT_REGISTERED before Register Your Company; 409 BRAND_ALREADY_ADDED if a brand exists. Returns nextStep SELECT_PRODUCTS.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.addFirstBrand`)",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": { "structure": { "type": "string", "enum": ["SINGLE", "MULTI"] } },
-                "required": ["structure"],
+                "properties": {
+                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "currency": { "type": "string", "minLength": 1 },
+                  "timezone": { "type": "string" },
+                  "themeColor": {
+                    "anyOf": [
+                      { "type": "string", "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                      { "type": "null" }
+                    ]
+                  }
+                },
+                "required": ["legalName", "displayName", "currency", "timezone"],
                 "additionalProperties": true
               }
             }
@@ -9802,324 +10019,13 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "brand": {
-                      "anyOf": [
-                        { "$ref": "#/components/schemas/CreatedBrandSummary" },
-                        { "type": "null" }
-                      ]
+                    "brand": { "$ref": "#/components/schemas/CreatedBrandSummary" },
+                    "nextStep": {
+                      "type": "string",
+                      "enum": ["REGISTER_COMPANY", "ADD_BRAND", "SELECT_PRODUCTS"]
                     }
                   },
-                  "required": ["brand"]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid. Validation failures list every field problem.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    { "$ref": "#/components/schemas/ValidationError" },
-                    { "$ref": "#/components/schemas/Error" }
-                  ]
-                },
-                "example": {
-                  "message": "validation failed",
-                  "issues": [
-                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No session, or it expired or was ended.",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": {
-                  "statusCode": 401,
-                  "error": "Unauthorized",
-                  "message": "authentication required"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Signed in, but not allowed (role, product or brand).",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": {
-                  "statusCode": 403,
-                  "error": "Forbidden",
-                  "message": "insufficient permissions"
-                }
-              }
-            }
-          }
-        },
-        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
-      }
-    },
-    "/merchant/company-details": {
-      "patch": {
-        "tags": ["Company and onboarding"],
-        "operationId": "MerchantController_setCompanyDetails",
-        "summary": "Saves the company details step of onboarding",
-        "description": "Saves the company details step of onboarding.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.setCompanyDetails`)",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
-                  "dba": { "anyOf": [{ "type": "string", "maxLength": 200 }, { "type": "null" }] },
-                  "businessType": {
-                    "type": "string",
-                    "enum": [
-                      "SOLE_PROPRIETORSHIP",
-                      "LLC",
-                      "CORPORATION",
-                      "PARTNERSHIP",
-                      "NONPROFIT"
-                    ]
-                  },
-                  "phone": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
-                  "email": {
-                    "anyOf": [
-                      { "type": "string", "format": "email", "maxLength": 320 },
-                      { "type": "null" }
-                    ]
-                  },
-                  "website": {
-                    "anyOf": [{ "type": "string", "maxLength": 253 }, { "type": "null" }]
-                  },
-                  "mailingAddress": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "line1": {
-                            "anyOf": [{ "type": "string", "maxLength": 200 }, { "type": "null" }]
-                          },
-                          "line2": {
-                            "anyOf": [{ "type": "string", "maxLength": 200 }, { "type": "null" }]
-                          },
-                          "city": {
-                            "anyOf": [{ "type": "string", "maxLength": 120 }, { "type": "null" }]
-                          },
-                          "region": {
-                            "anyOf": [{ "type": "string", "maxLength": 120 }, { "type": "null" }]
-                          },
-                          "postalCode": {
-                            "anyOf": [{ "type": "string", "maxLength": 32 }, { "type": "null" }]
-                          },
-                          "country": {
-                            "anyOf": [
-                              { "type": "string", "minLength": 2, "maxLength": 2 },
-                              { "type": "null" }
-                            ]
-                          }
-                        },
-                        "required": ["line1", "line2", "city", "region", "postalCode", "country"],
-                        "additionalProperties": true
-                      },
-                      { "type": "null" }
-                    ]
-                  },
-                  "billingAddress": {
-                    "anyOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "line1": {
-                            "anyOf": [{ "type": "string", "maxLength": 200 }, { "type": "null" }]
-                          },
-                          "line2": {
-                            "anyOf": [{ "type": "string", "maxLength": 200 }, { "type": "null" }]
-                          },
-                          "city": {
-                            "anyOf": [{ "type": "string", "maxLength": 120 }, { "type": "null" }]
-                          },
-                          "region": {
-                            "anyOf": [{ "type": "string", "maxLength": 120 }, { "type": "null" }]
-                          },
-                          "postalCode": {
-                            "anyOf": [{ "type": "string", "maxLength": 32 }, { "type": "null" }]
-                          },
-                          "country": {
-                            "anyOf": [
-                              { "type": "string", "minLength": 2, "maxLength": 2 },
-                              { "type": "null" }
-                            ]
-                          }
-                        },
-                        "required": ["line1", "line2", "city", "region", "postalCode", "country"],
-                        "additionalProperties": true
-                      },
-                      { "type": "null" }
-                    ]
-                  },
-                  "taxId": { "anyOf": [{ "type": "string", "maxLength": 64 }, { "type": "null" }] }
-                },
-                "required": [
-                  "legalName",
-                  "dba",
-                  "businessType",
-                  "phone",
-                  "email",
-                  "website",
-                  "mailingAddress",
-                  "billingAddress",
-                  "taxId"
-                ],
-                "additionalProperties": true
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "ok": { "type": "boolean", "const": true } },
-                  "required": ["ok"]
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid. Validation failures list every field problem.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    { "$ref": "#/components/schemas/ValidationError" },
-                    { "$ref": "#/components/schemas/Error" }
-                  ]
-                },
-                "example": {
-                  "message": "validation failed",
-                  "issues": [
-                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No session, or it expired or was ended.",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": {
-                  "statusCode": 401,
-                  "error": "Unauthorized",
-                  "message": "authentication required"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Signed in, but not allowed (role, product or brand).",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": {
-                  "statusCode": 403,
-                  "error": "Forbidden",
-                  "message": "insufficient permissions"
-                }
-              }
-            }
-          }
-        },
-        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
-      }
-    },
-    "/merchant/complete-onboarding": {
-      "post": {
-        "tags": ["Company and onboarding"],
-        "operationId": "MerchantController_completeOnboarding",
-        "summary": "Marks onboarding complete",
-        "description": "Marks onboarding complete.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.completeOnboarding`)",
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "ok": { "type": "boolean", "const": true } },
-                  "required": ["ok"]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "No session, or it expired or was ended.",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": {
-                  "statusCode": 401,
-                  "error": "Unauthorized",
-                  "message": "authentication required"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Signed in, but not allowed (role, product or brand).",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Error" },
-                "example": {
-                  "statusCode": 403,
-                  "error": "Forbidden",
-                  "message": "insufficient permissions"
-                }
-              }
-            }
-          }
-        },
-        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
-      }
-    },
-    "/merchant/logo": {
-      "post": {
-        "tags": ["Company and onboarding"],
-        "operationId": "MerchantController_uploadLogo",
-        "summary": "Uploads the company logo (multipart field `file`, up to 5 MB)",
-        "description": "Uploads the company logo (multipart field `file`, up to 5 MB).\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.uploadLogo`)",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "properties": { "file": { "type": "string", "format": "binary" } },
-                "required": ["file"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": { "logoUrl": { "type": "string" } },
-                  "required": ["logoUrl"]
+                  "required": ["brand", "nextStep"]
                 }
               }
             }
@@ -10177,14 +10083,110 @@
       "get": {
         "tags": ["Company and onboarding"],
         "operationId": "MerchantController_getOnboardingState",
-        "summary": "Onboarding state",
-        "description": "Onboarding state: company details, brand structure, whether brands exist and whether onboarding is complete.\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.getOnboardingState`)",
+        "summary": "Where onboarding stands",
+        "description": "Where onboarding stands: nextStep (REGISTER_COMPANY, ADD_BRAND or SELECT_PRODUCTS), worked out from the data; the registered company; whether it has brands and has completed onboarding. Signing in goes to nextStep.\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.getOnboardingState`)",
         "responses": {
           "200": {
             "description": "Success.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/MerchantOnboardingState" }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/merchant/register-company": {
+      "post": {
+        "tags": ["Company and onboarding"],
+        "operationId": "MerchantController_registerCompany",
+        "summary": "Register Your Company (Company Admin)",
+        "description": "Register Your Company (Company Admin): Company Name (unique across companies, ignoring case and spacing; 409 COMPANY_NAME_TAKEN), Legal Name, Tax ID and Brand Structure, all required. Once per company (409 COMPANY_ALREADY_REGISTERED). The contact email is the sign-up email. Returns nextStep ADD_BRAND.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.registerCompany`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "companyName": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "taxId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9 ./-]*$"
+                  },
+                  "brandStructure": { "type": "string", "enum": ["SINGLE", "MULTI"] }
+                },
+                "required": ["companyName", "legalName", "taxId", "brandStructure"],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nextStep": {
+                      "type": "string",
+                      "enum": ["REGISTER_COMPANY", "ADD_BRAND", "SELECT_PRODUCTS"]
+                    }
+                  },
+                  "required": ["nextStep"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
               }
             }
           },
@@ -12005,33 +12007,6 @@
           "createdAt"
         ]
       },
-      "CompanyDetailsView": {
-        "type": "object",
-        "properties": {
-          "legalName": { "type": "string" },
-          "dba": { "type": ["string", "null"] },
-          "businessType": { "type": "string" },
-          "phone": { "type": ["string", "null"] },
-          "email": { "type": ["string", "null"] },
-          "website": { "type": ["string", "null"] },
-          "mailingAddress": {},
-          "billingAddress": {},
-          "taxId": { "type": ["string", "null"] },
-          "hasLogo": { "type": "boolean" }
-        },
-        "required": [
-          "legalName",
-          "dba",
-          "businessType",
-          "phone",
-          "email",
-          "website",
-          "mailingAddress",
-          "billingAddress",
-          "taxId",
-          "hasLogo"
-        ]
-      },
       "CreatedBrandSummary": {
         "type": "object",
         "properties": { "id": { "type": "string" }, "displayName": { "type": "string" } },
@@ -12483,6 +12458,19 @@
           "themeColor",
           "accentColor"
         ]
+      },
+      "EnabledProducts": {
+        "type": "object",
+        "properties": {
+          "continueWith": {
+            "enum": ["INVOICING", "HQ", null],
+            "type": ["string", "null"],
+            "description": "Open this product straight away: exactly one is enabled. Otherwise the user picks with Continue."
+          },
+          "products": { "type": "array", "items": { "$ref": "#/components/schemas/ProductCard" } },
+          "onboardingComplete": { "type": "boolean" }
+        },
+        "required": ["continueWith", "products", "onboardingComplete"]
       },
       "Error": {
         "type": "object",
@@ -13518,14 +13506,35 @@
       "MerchantOnboardingState": {
         "type": "object",
         "properties": {
-          "companyDetails": {
-            "anyOf": [{ "$ref": "#/components/schemas/CompanyDetailsView" }, { "type": "null" }]
+          "nextStep": {
+            "type": "string",
+            "enum": ["REGISTER_COMPANY", "ADD_BRAND", "SELECT_PRODUCTS"],
+            "description": "Where onboarding stands; the web app opens this step's screen."
           },
-          "brandStructure": { "enum": ["SINGLE", "MULTI", null], "type": ["string", "null"] },
-          "hasBrands": { "type": "boolean" },
-          "onboardingComplete": { "type": "boolean" }
+          "onboardingComplete": { "type": "boolean" },
+          "company": {
+            "type": "object",
+            "properties": {
+              "companyName": { "type": ["string", "null"] },
+              "legalName": { "type": ["string", "null"] },
+              "taxId": { "type": ["string", "null"] },
+              "contactEmail": { "type": "string" },
+              "brandStructure": { "enum": ["SINGLE", "MULTI", null], "type": ["string", "null"] },
+              "registeredAt": { "format": "date-time", "type": ["string", "null"] }
+            },
+            "required": [
+              "companyName",
+              "legalName",
+              "taxId",
+              "contactEmail",
+              "brandStructure",
+              "registeredAt"
+            ],
+            "description": "Register Your Company, once done."
+          },
+          "hasBrands": { "type": "boolean" }
         },
-        "required": ["companyDetails", "brandStructure", "hasBrands", "onboardingComplete"]
+        "required": ["nextStep", "onboardingComplete", "company", "hasBrands"]
       },
       "NeedsAttentionItem": {
         "type": "object",
@@ -13738,6 +13747,33 @@
           "createdAt"
         ]
       },
+      "ProductCard": {
+        "type": "object",
+        "properties": {
+          "product": { "type": "string", "enum": ["INVOICING", "HQ"] },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "canEnable": {
+            "type": "boolean",
+            "description": "The Company Admin may enable it (it is not enabled yet)."
+          }
+        },
+        "required": ["product", "name", "description", "enabled", "canEnable"]
+      },
+      "ProductLaunch": {
+        "type": "object",
+        "properties": {
+          "product": { "type": "string", "enum": ["INVOICING", "HQ"] },
+          "url": {
+            "type": "string",
+            "description": "Where to send the user; the token goes in the URL fragment."
+          },
+          "token": { "type": "string" },
+          "expiresAt": { "type": "string" }
+        },
+        "required": ["product", "url", "token", "expiresAt"]
+      },
       "ProductSubscription": {
         "type": "object",
         "properties": {
@@ -13748,6 +13784,14 @@
           "endedAt": { "format": "date-time", "type": ["string", "null"] }
         },
         "required": ["product", "status", "plan", "startedAt", "endedAt"]
+      },
+      "ProductsView": {
+        "type": "object",
+        "properties": {
+          "products": { "type": "array", "items": { "$ref": "#/components/schemas/ProductCard" } },
+          "onboardingComplete": { "type": "boolean" }
+        },
+        "required": ["products", "onboardingComplete"]
       },
       "PublicInvoiceView": {
         "type": "object",

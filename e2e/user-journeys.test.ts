@@ -101,44 +101,48 @@ describeWithStack('user journeys (end to end)', () => {
     return token;
   }
 
-  /** Sign up and finish through the emailed link; returns a session token. */
-  async function signUp(name: string, address: string): Promise<string> {
-    expect(
-      (await call('POST', '/auth/register', { body: { fullName: name, email: address } })).status,
-    ).toBe(202);
-    const set = await call('POST', '/auth/set-password/token', {
-      body: { token: linkTokenFor(address), newPassword: PASSWORD },
+  /** Sign Up with a company email and a password; returns the session token. */
+  async function signUp(address: string): Promise<string> {
+    const reply = await call('POST', '/auth/register', {
+      body: { email: address, password: PASSWORD },
     });
-    expect(set.status).toBe(200);
-    return set.body.token as string;
+    expect(reply.status, JSON.stringify(reply.body)).toBe(201);
+    expect(reply.body.nextStep).toBe('REGISTER_COMPANY');
+    return reply.body.token as string;
   }
 
-  /** Company details → single brand. Returns the brand id. */
+  /** Register Your Company → Add Your Brand → Select Your Products (Sugrpay).
+   * Returns the brand id. */
   async function onboard(token: string, company: string): Promise<string> {
-    const domain = `${company}-${run}.com`;
-    const details = await call('PATCH', '/merchant/company-details', {
+    const registered = await call('POST', '/merchant/register-company', {
+      token,
+      body: {
+        companyName: `${company} ${run}`,
+        legalName: `${company} LLC`,
+        taxId: '12-3456789',
+        brandStructure: 'SINGLE',
+      },
+    });
+    expect(registered.status, JSON.stringify(registered.body)).toBe(200);
+    expect(registered.body.nextStep).toBe('ADD_BRAND');
+    const added = await call('POST', '/merchant/first-brand', {
       token,
       body: {
         legalName: `${company} LLC`,
-        dba: null,
-        businessType: 'LLC',
-        phone: null,
-        email: `billing@${domain}`,
-        website: domain,
-        mailingAddress: null,
-        billingAddress: null,
-        taxId: null,
+        displayName: company,
+        currency: 'USD',
+        timezone: 'America/New_York',
       },
     });
-    expect(details.status, JSON.stringify(details.body)).toBe(200);
-    const structure = await call('POST', '/merchant/brand-structure', {
+    expect(added.status, JSON.stringify(added.body)).toBe(201);
+    expect(added.body.nextStep).toBe('SELECT_PRODUCTS');
+    const enabled = await call('POST', '/company/products', {
       token,
-      body: { structure: 'SINGLE' },
+      body: { products: ['INVOICING'] },
     });
-    expect(structure.status, JSON.stringify(structure.body)).toBeLessThan(300);
-    const brands = await call('GET', '/brands', { token });
-    expect(brands.body).toHaveLength(1);
-    return brands.body[0].id as string;
+    expect(enabled.status, JSON.stringify(enabled.body)).toBe(200);
+    expect(enabled.body.continueWith).toBe('INVOICING');
+    return added.body.brand.id as string;
   }
 
   // State shared along the journeys, in order.
@@ -180,6 +184,7 @@ describeWithStack('user journeys (end to end)', () => {
     process.env['PLATFORM_INTERNAL_URL'] = `http://127.0.0.1:${platformPort}`;
     process.env['SUGRPAY_INTERNAL_URL'] = `http://127.0.0.1:${sugrpayPort}`;
     process.env['INTERNAL_API_KEY'] = randomBytes(32).toString('hex');
+    process.env['PRODUCT_JWT_SECRET'] = randomBytes(32).toString('hex');
     resetEnvCache();
     env = getEnv();
 
@@ -214,9 +219,9 @@ describeWithStack('user journeys (end to end)', () => {
 
   // --- Sign-up and sign-in ---------------------------------------------------
 
-  it('1. signs up, sets a password from the emailed link, and is signed in', async () => {
+  it('1. signs up with a company email and a password, and is signed in', async () => {
     ownerEmail = email('owner');
-    owner = await signUp('Olivia Owner', ownerEmail);
+    owner = await signUp(ownerEmail);
 
     const me = await call('GET', '/auth/me', { token: owner });
     expect(me.status).toBe(200);
@@ -225,9 +230,16 @@ describeWithStack('user journeys (end to end)', () => {
 
   it('2. refuses to sign up an address that already has an account', async () => {
     const again = await call('POST', '/auth/register', {
-      body: { fullName: 'Olivia Owner', email: ownerEmail },
+      body: { email: ownerEmail, password: PASSWORD },
     });
     expect(again.status).toBe(409);
+    expect(again.body.code).toBe('EMAIL_TAKEN');
+
+    const personal = await call('POST', '/auth/register', {
+      body: { email: `someone-${run}@gmail.com`, password: PASSWORD },
+    });
+    expect(personal.status).toBe(400);
+    expect(personal.body.issues[0].path).toBe('email');
   });
 
   it('3. signs in with the right password; the wrong one and an unknown email get the same 401', async () => {
@@ -251,10 +263,26 @@ describeWithStack('user journeys (end to end)', () => {
 
   // --- Onboarding and settings -------------------------------------------------
 
-  it('4. completes onboarding: company details, then a single brand', async () => {
+  it('4. completes onboarding: registers the company, adds its brand, enables Sugrpay', async () => {
+    const before = await call('GET', '/merchant/onboarding', { token: owner });
+    expect(before.body.nextStep).toBe('REGISTER_COMPANY');
+    // A step cannot be skipped over the API.
+    const skip = await call('POST', '/company/products', {
+      token: owner,
+      body: { products: ['INVOICING'] },
+    });
+    expect(skip.status).toBe(409);
+    expect(skip.body.code).toBe('COMPANY_NOT_REGISTERED');
+
     brandId = await onboard(owner, 'acme');
+
     const state = await call('GET', '/merchant/onboarding', { token: owner });
-    expect(state.status).toBe(200);
+    expect(state.body).toMatchObject({ nextStep: 'SELECT_PRODUCTS', onboardingComplete: true });
+    const launch = await call('POST', '/company/products/INVOICING/continue', { token: owner });
+    expect(launch.status, JSON.stringify(launch.body)).toBe(200);
+    expect(launch.body.token.split('.')).toHaveLength(3);
+    const notEnabled = await call('POST', '/company/products/HQ/continue', { token: owner });
+    expect(notEnabled.body.code).toBe('PRODUCT_NOT_ENABLED');
   });
 
   it('5. turns on ACH and check payments for the brand', async () => {
@@ -559,7 +587,7 @@ describeWithStack('user journeys (end to end)', () => {
   // --- Boundaries between companies, and the anonymous ------------------------
 
   it("20. another company's owner cannot see or touch this company's brand", async () => {
-    const rival = await signUp('Rex Rival', email('rival'));
+    const rival = await signUp(email('rival'));
     await onboard(rival, 'rival');
 
     for (const [method, path] of [

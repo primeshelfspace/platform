@@ -26,12 +26,16 @@ if (!fs.existsSync(envPath)) {
   const example = fs.readFileSync(path.join(ROOT, '.env.example'), 'utf8');
   fs.writeFileSync(
     envPath,
-    example.replace(
-      /^CREDENTIAL_ENCRYPTION_KEY=.*$/m,
-      `CREDENTIAL_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}`,
-    ),
+    example
+      .replace(
+        /^CREDENTIAL_ENCRYPTION_KEY=.*$/m,
+        `CREDENTIAL_ENCRYPTION_KEY=${randomBytes(32).toString('base64')}`,
+      )
+      .replace(/^PRODUCT_JWT_SECRET=.*$/m, `PRODUCT_JWT_SECRET=${randomBytes(32).toString('hex')}`),
   );
-  ok('.env created from .env.example, with a fresh CREDENTIAL_ENCRYPTION_KEY');
+  ok(
+    '.env created from .env.example, with a fresh CREDENTIAL_ENCRYPTION_KEY and PRODUCT_JWT_SECRET',
+  );
 } else {
   ok('.env already present, left untouched');
 }

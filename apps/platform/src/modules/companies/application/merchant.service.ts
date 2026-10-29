@@ -1,29 +1,30 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import type { Scope, StoragePort } from '@platform/kernel';
-import type { CompanyDetailsInput } from '@platform/platform-contracts';
-import { storageKeys, STORAGE_PORT } from '@platform/kernel';
-import { logoExtensionFor, storeLogo, type LogoUpload } from '@platform/server';
-import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import type { RequestScope } from '@platform/kernel';
+import type {
+  FirstBrandInput,
+  OnboardingStep,
+  RegisterCompanyInput,
+} from '@platform/platform-contracts';
+import {
+  PlatformPrismaService,
+  type ScopedClient,
+} from '../../database/platform-prisma.service.js';
 import { PlatformOutbox } from '../../events/platform-outbox.js';
 
-export interface CompanyDetailsView {
-  readonly legalName: string;
-  readonly dba: string | null;
-  readonly businessType: string;
-  readonly phone: string | null;
-  readonly email: string | null;
-  readonly website: string | null;
-  readonly mailingAddress: unknown;
-  readonly billingAddress: unknown;
-  readonly taxId: string | null;
-  readonly hasLogo: boolean;
-}
-
 export interface MerchantOnboardingState {
-  readonly companyDetails: CompanyDetailsView | null;
-  readonly brandStructure: 'SINGLE' | 'MULTI' | null;
-  readonly hasBrands: boolean;
+  /** Where onboarding stands; the web app opens this step's screen. */
+  readonly nextStep: OnboardingStep;
   readonly onboardingComplete: boolean;
+  /** Register Your Company, once done. */
+  readonly company: {
+    readonly companyName: string | null;
+    readonly legalName: string | null;
+    readonly taxId: string | null;
+    readonly contactEmail: string;
+    readonly brandStructure: 'SINGLE' | 'MULTI' | null;
+    readonly registeredAt: Date | null;
+  };
+  readonly hasBrands: boolean;
 }
 
 export interface CreatedBrandSummary {
@@ -31,207 +32,204 @@ export interface CreatedBrandSummary {
   readonly displayName: string;
 }
 
+/** A 409 a client can act on: `code` says which rule, `issues` which field. */
+function conflict(code: string, message: string, path?: string): ConflictException {
+  return new ConflictException({
+    message,
+    code,
+    ...(path ? { issues: [{ path, message, code }] } : {}),
+  });
+}
+
+/** The Company Name compared for uniqueness: lower-cased, single spaces. */
+export function companyNameKey(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 /**
- * Onboarding, FR-ONB (TDD-001 §onboarding — company details precede any
- * Brand). A merchant has no Brand at all until "brand structure" resolves,
- * so its company details are staged directly on the Merchant row rather than
- * invented as a placeholder Brand. Single-brand-structure copies them into
- * one real Brand at that point; multi-brand-structure carries them forward
- * as prefill for the first brand-by-brand setup screen instead.
+ * Where a company's onboarding stands, from its data alone (never stored, so
+ * it cannot drift): Register Your Company, then Add Your Brand, then Select
+ * Your Products. A company that has completed onboarding stays on Select Your
+ * Products, the screen every user sees after signing in.
+ */
+export async function onboardingStepFor(
+  tx: ScopedClient,
+  merchantId: string,
+): Promise<OnboardingStep> {
+  const [merchant, activeBrands] = await Promise.all([
+    tx.merchant.findUniqueOrThrow({
+      where: { id: merchantId },
+      select: { registeredAt: true, onboardingComplete: true },
+    }),
+    tx.brand.count({ where: { merchantId, status: 'ACTIVE' } }),
+  ]);
+  if (merchant.onboardingComplete) return 'SELECT_PRODUCTS';
+  if (!merchant.registeredAt) return 'REGISTER_COMPANY';
+  if (activeBrands === 0) return 'ADD_BRAND';
+  return 'SELECT_PRODUCTS';
+}
+
+/** Products are enabled only after Register Your Company and Add Your Brand.
+ * Also guards the plan-and-billing toggle, so neither route skips a step. */
+export async function requireReadyForProducts(tx: ScopedClient, merchantId: string): Promise<void> {
+  const step = await onboardingStepFor(tx, merchantId);
+  if (step === 'REGISTER_COMPANY') {
+    throw conflict('COMPANY_NOT_REGISTERED', 'register the company before enabling products');
+  }
+  if (step === 'ADD_BRAND') {
+    throw conflict('ADD_BRAND_FIRST', 'add a brand before enabling products');
+  }
+}
+
+/** Only the Company Admin (the person who signed up: MERCHANT_OWNER) runs
+ * onboarding. Checked here as well as by the route's permission, because
+ * the story's rule is narrower than the BRANDS permission. */
+export function requireCompanyAdmin(scope: RequestScope): void {
+  if (scope.role !== 'MERCHANT_OWNER') {
+    throw new ForbiddenException('only the Company Admin can do this');
+  }
+}
+
+/**
+ * Company onboarding, the platform side of Register Your Company and Add Your
+ * Brand (docs/product/stories/company-onboarding.md). Select Your Products is
+ * ProductsService. Every step checks the ones before it here, on the server,
+ * so a step cannot be skipped by calling the API directly.
  */
 @Injectable()
 export class MerchantService {
   constructor(
     private readonly prisma: PlatformPrismaService,
-    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly outbox: PlatformOutbox,
   ) {}
 
-  async getOnboardingState(scope: Scope): Promise<MerchantOnboardingState> {
-    const [merchant, brandCount] = await this.prisma.withScope(scope, (tx) =>
-      Promise.all([
+  async getOnboardingState(scope: RequestScope): Promise<MerchantOnboardingState> {
+    return this.prisma.withScope(scope, async (tx) => {
+      const [merchant, brandCount, nextStep] = await Promise.all([
         tx.merchant.findUniqueOrThrow({ where: { id: scope.merchantId } }),
-        tx.brand.count(),
-      ]),
-    );
-
-    return {
-      companyDetails: merchant.companyLegalName
-        ? {
-            legalName: merchant.companyLegalName,
-            dba: merchant.companyDba,
-            businessType: merchant.companyBusinessType ?? '',
-            phone: merchant.companyPhone,
-            email: merchant.companyEmail,
-            website: merchant.companyWebsite,
-            mailingAddress: merchant.companyMailingAddress,
-            billingAddress: merchant.companyBillingAddress,
-            taxId: merchant.companyTaxId,
-            hasLogo: merchant.companyLogoKey != null,
-          }
-        : null,
-      brandStructure: merchant.brandStructure,
-      hasBrands: brandCount > 0,
-      onboardingComplete: merchant.onboardingComplete,
-    };
-  }
-
-  async setCompanyDetails(scope: Scope, input: CompanyDetailsInput): Promise<void> {
-    await this.prisma.withScope(scope, (tx) =>
-      tx.merchant.update({
-        where: { id: scope.merchantId },
-        data: {
-          companyLegalName: input.legalName,
-          companyDba: input.dba,
-          companyBusinessType: input.businessType,
-          companyPhone: input.phone,
-          companyEmail: input.email,
-          companyWebsite: input.website,
-          companyMailingAddress: input.mailingAddress ?? undefined,
-          companyBillingAddress: input.billingAddress ?? undefined,
-          companyTaxId: input.taxId,
+        tx.brand.count({ where: { merchantId: scope.merchantId } }),
+        onboardingStepFor(tx, scope.merchantId),
+      ]);
+      return {
+        nextStep,
+        onboardingComplete: merchant.onboardingComplete,
+        company: {
+          companyName: merchant.companyName,
+          legalName: merchant.companyLegalName,
+          taxId: merchant.companyTaxId,
+          contactEmail: merchant.companyEmail ?? merchant.contactEmail,
+          brandStructure: merchant.brandStructure,
+          registeredAt: merchant.registeredAt,
         },
-      }),
-    );
-  }
-
-  /** Validation, storage and signing all live in common/logo-upload.ts, shared
-   * with BrandsService — see the note there on why that duplication mattered. */
-  async setLogo(scope: Scope, file: LogoUpload): Promise<{ logoUrl: string }> {
-    const extension = logoExtensionFor(file);
-
-    const key = storageKeys.merchantLogo(scope.merchantId, `logo.${extension}`);
-    const logoUrl = await storeLogo(this.storage, key, file);
-
-    await this.prisma.withScope(scope, (tx) =>
-      tx.merchant.update({ where: { id: scope.merchantId }, data: { companyLogoKey: key } }),
-    );
-
-    return { logoUrl };
+        hasBrands: brandCount > 0,
+      };
+    });
   }
 
   /**
-   * SINGLE copies the staged company details straight into one new Brand —
-   * the whole reason those details were staged on Merchant in the first
-   * place rather than requiring the same form twice. MULTI just records the
-   * choice; brand-by-brand setup happens on its own screen from here.
-   *
-   * Idempotent by construction: a repeat call — a double-click before the
-   * button's disabled state lands, a browser retry on a slow connection, a
-   * replayed request — must not create a second brand or re-derive a
-   * decision that has already happened. The page guard (requireOnboardingStep)
-   * keeps the form itself from being resubmitted through the UI, but this is
-   * the layer that actually holds if that guard is ever bypassed.
+   * Register Your Company. Once per company: a registered company is left
+   * exactly as it is. The Company Name is unique across every company,
+   * ignoring case and repeated spaces; the unique index on company_name_key
+   * is what decides, so two registrations racing for one name cannot both
+   * win. The contact email is the sign-up email, set at sign-up.
    */
-  async chooseBrandStructure(
-    scope: Scope,
-    structure: 'SINGLE' | 'MULTI',
-  ): Promise<CreatedBrandSummary | null> {
-    const result = await this.prisma.withScope(scope, async (tx) => {
-      const merchant = await tx.merchant.findUniqueOrThrow({ where: { id: scope.merchantId } });
-
-      if (merchant.brandStructure === 'SINGLE') {
-        const brand = await tx.brand.findFirst({
-          where: { merchantId: scope.merchantId },
-          orderBy: { createdAt: 'asc' },
+  async registerCompany(
+    scope: RequestScope,
+    input: RegisterCompanyInput,
+  ): Promise<{ nextStep: OnboardingStep }> {
+    requireCompanyAdmin(scope);
+    try {
+      await this.prisma.withScope(scope, async (tx) => {
+        const merchant = await tx.merchant.findUniqueOrThrow({
+          where: { id: scope.merchantId },
+          select: { registeredAt: true },
         });
-        return brand ? { id: brand.id, displayName: brand.displayName } : null;
-      }
-      if (merchant.brandStructure === 'MULTI') {
-        return null;
-      }
-
-      if (structure === 'MULTI') {
+        if (merchant.registeredAt) {
+          throw conflict('COMPANY_ALREADY_REGISTERED', 'this company is already registered');
+        }
         await tx.merchant.update({
           where: { id: scope.merchantId },
-          data: { brandStructure: 'MULTI' },
+          data: {
+            name: input.companyName,
+            companyName: input.companyName,
+            companyNameKey: companyNameKey(input.companyName),
+            companyLegalName: input.legalName,
+            companyTaxId: input.taxId,
+            brandStructure: input.brandStructure,
+            registeredAt: new Date(),
+          },
         });
-        return null;
-      }
-
-      // A merchant that already has a brand is choosing how it is organised,
-      // not creating its first one — minting a second brand from the staged
-      // company details here would duplicate what it already has. Adopt the
-      // existing one instead. (Reachable whenever brands exist before the
-      // structure decision does: a merchant provisioned outside this flow, or
-      // one that added brands and only later completed onboarding.)
-      const existingBrand = await tx.brand.findFirst({
-        where: { merchantId: scope.merchantId },
-        orderBy: { createdAt: 'asc' },
       });
-      if (existingBrand) {
-        await tx.merchant.update({
-          where: { id: scope.merchantId },
-          data: { brandStructure: 'SINGLE', onboardingComplete: true },
-        });
-        return { id: existingBrand.id, displayName: existingBrand.displayName };
-      }
-
-      if (!merchant.companyLegalName || !merchant.companyBusinessType) {
-        throw new BadRequestException(
-          'company details must be completed before choosing single brand',
+    } catch (error) {
+      // company_name_key is the only unique column this update writes, and
+      // Prisma reports the target differently by version, so any unique
+      // violation here is the name.
+      if (PlatformPrismaService.isUniqueViolation(error)) {
+        throw conflict(
+          'COMPANY_NAME_TAKEN',
+          'a company with this name is already registered',
+          'companyName',
         );
       }
-
-      const brand = await tx.brand.create({
-        data: {
-          merchantId: scope.merchantId,
-          legalName: merchant.companyLegalName,
-          displayName: merchant.companyLegalName,
-          businessType: merchant.companyBusinessType,
-          phone: merchant.companyPhone,
-          email: merchant.companyEmail,
-          mailingAddress: merchant.companyMailingAddress ?? undefined,
-          billingAddress: merchant.companyBillingAddress ?? undefined,
-          taxId: merchant.companyTaxId,
-          logoKey: merchant.companyLogoKey,
-          currency: 'USD',
-          timezone: 'America/New_York',
-          themeColor: '#2D6A6A',
-        },
-      });
-      // Products set up their own per-brand defaults (invoicing: an INV
-      // prefix and its settings row) when they receive this event.
-      await this.outbox.recordBrand(tx, 'created', brand);
-
-      // Nothing else to configure for a single-brand merchant — the
-      // structure choice and the brand it produces are the whole of
-      // onboarding, so completion is immediate, not a separate step.
-      await tx.merchant.update({
-        where: { id: scope.merchantId },
-        data: { brandStructure: 'SINGLE', onboardingComplete: true },
-      });
-
-      return { id: brand.id, displayName: brand.displayName };
-    });
-    // Deliver brand.created now, so the brand is ready in every product by
-    // the time onboarding hands the merchant over to it.
-    await this.outbox.flush();
-    return result;
+      throw error;
+    }
+    return { nextStep: 'ADD_BRAND' };
   }
 
   /**
-   * MULTI's own "I'm done adding brands" action — the one onboarding fact
-   * that genuinely cannot be derived from data, since nothing implies how
-   * many brands a merchant intended to add.
+   * Add Your Brand: the company's first brand, active. Only after Register
+   * Your Company, and only one in this step whichever brand structure was
+   * chosen — more brands come later from Brand Management. The brand's email
+   * and tax ID are the company's. Every product hears about the brand
+   * (brand.created) before this returns, so it is ready wherever the user
+   * goes next.
    */
-  async completeOnboarding(scope: Scope): Promise<void> {
-    await this.prisma.withScope(scope, async (tx) => {
-      const [merchant, brandCount] = await Promise.all([
-        tx.merchant.findUniqueOrThrow({ where: { id: scope.merchantId } }),
-        tx.brand.count(),
-      ]);
-      if (merchant.brandStructure !== 'MULTI') {
-        throw new BadRequestException('onboarding is not in multi-brand setup');
+  async addFirstBrand(
+    scope: RequestScope,
+    input: FirstBrandInput,
+  ): Promise<{ brand: CreatedBrandSummary; nextStep: OnboardingStep }> {
+    requireCompanyAdmin(scope);
+    const brand = await this.prisma.withScope(scope, async (tx) => {
+      // Locks the company row: two submits at once cannot both see "no brand".
+      const [merchant] = await tx.$queryRaw<
+        Array<{
+          registered_at: Date | null;
+          company_email: string | null;
+          company_tax_id: string | null;
+        }>
+      >`SELECT registered_at, company_email, company_tax_id FROM merchant
+        WHERE id = ${scope.merchantId}::uuid FOR UPDATE`;
+      if (!merchant?.registered_at) {
+        throw conflict('COMPANY_NOT_REGISTERED', 'register the company before adding a brand');
       }
-      if (brandCount < 1) {
-        throw new BadRequestException('add at least one brand before finishing setup');
+      const existing = await tx.brand.count({ where: { merchantId: scope.merchantId } });
+      if (existing > 0) {
+        throw conflict(
+          'BRAND_ALREADY_ADDED',
+          'this company already has a brand; add more from Brand Management',
+        );
       }
-
-      await tx.merchant.update({
-        where: { id: scope.merchantId },
-        data: { onboardingComplete: true },
+      const created = await tx.brand.create({
+        data: {
+          merchantId: scope.merchantId,
+          legalName: input.legalName,
+          displayName: input.displayName,
+          currency: input.currency,
+          timezone: input.timezone,
+          // Left out: the column's default colour.
+          ...(input.themeColor ? { themeColor: input.themeColor } : {}),
+          email: merchant.company_email,
+          taxId: merchant.company_tax_id,
+          status: 'ACTIVE',
+        },
       });
+      await this.outbox.recordBrand(tx, 'created', created);
+      return created;
     });
+    await this.outbox.flush();
+    return {
+      brand: { id: brand.id, displayName: brand.displayName },
+      nextStep: 'SELECT_PRODUCTS',
+    };
   }
 }

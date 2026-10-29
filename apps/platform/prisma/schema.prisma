@@ -121,15 +121,18 @@ model Merchant {
   plan         String         @default("standard")
   status       MerchantStatus @default(ACTIVE)
 
-  /// Onboarding, FR-ONB. Staged company details, collected once before any
-  /// Brand exists and copied from here into the first Brand — see
-  /// MerchantService.setCompanyDetails / chooseBrandStructure. Everything
-  /// up to and including brandStructure is derived, never stored as its own
-  /// step, so it can never drift out of sync with what actually happened.
-  /// onboardingComplete is the one fact that genuinely cannot be derived —
-  /// SINGLE sets it the instant its one brand is created, but a MULTI
-  /// merchant decides for itself when it is done adding brands, which
-  /// nothing in the data implies on its own.
+  /// Company onboarding (docs/product/stories/company-onboarding.md): Register
+  /// Your Company, Add Your Brand, Select Your Products. The step is worked
+  /// out from this data (MerchantService.nextStep), never stored, so it cannot
+  /// drift. onboardingComplete is set when the first product is enabled.
+  ///
+  /// Register Your Company. Unique across companies: company_name_key is the
+  /// name lower-cased with single spaces, under a unique index.
+  companyName           String?         @map("company_name")
+  companyNameKey        String?         @unique @map("company_name_key")
+  /// When Register Your Company was completed. Null: onboarding's first step
+  /// is still owed, and it can be done only once.
+  registeredAt          DateTime?       @map("registered_at")
   companyLegalName      String?         @map("company_legal_name")
   /// "Doing business as" — the trading name, where it differs from the legal
   /// one. Optional because most businesses trade under their legal name.

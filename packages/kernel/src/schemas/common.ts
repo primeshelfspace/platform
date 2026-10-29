@@ -74,8 +74,25 @@ export const addressSchema = z
   });
 export type AddressInput = z.infer<typeof addressSchema>;
 
-/** IANA zone. Explicit everywhere; never inferred from the browser (NFR-LOC-002). */
-export const timezoneSchema = z.string().trim().min(1).max(64);
+/** Whether the runtime's time zone database knows this IANA zone. */
+export function isValidTimezone(zone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** IANA zone, e.g. America/New_York. Explicit everywhere; never inferred from
+ * the browser (NFR-LOC-002). Checked against the runtime's time zone database,
+ * so a typo is refused rather than stored and failing on every date shown. */
+export const timezoneSchema = z
+  .string()
+  .trim()
+  .min(1, 'time zone is required')
+  .max(64)
+  .refine(isValidTimezone, 'enter a valid time zone, e.g. America/New_York');
 
 export const hexColourSchema = z
   .string()

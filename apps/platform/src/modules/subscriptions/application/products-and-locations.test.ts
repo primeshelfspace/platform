@@ -95,6 +95,8 @@ describeWithDb('subscriptions, product roles and locations', () => {
       data: {
         name: `Phase 2 Fixture ${randomUUID().slice(0, 8)}`,
         contactEmail: 'ops@phase2.test',
+        // Registered (Register Your Company): products can be switched on.
+        registeredAt: new Date(),
         subscriptions: { create: { product: 'INVOICING' } },
       },
     });

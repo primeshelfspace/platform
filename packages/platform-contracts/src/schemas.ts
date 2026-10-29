@@ -7,6 +7,7 @@ import {
   idSchema,
   paginationSchema,
   phoneSchema,
+  SUPPORTED_CURRENCIES,
   timezoneSchema,
   usPhoneSchema,
 } from '@platform/kernel';
@@ -27,26 +28,11 @@ export const loginSchema = z.object({
 export type LoginInput = z.infer<typeof loginSchema>;
 
 /** FR-AUTH-005: "I forgot my password." Only an address — proving control of
- * it is what the emailed link is for, same as registerSchema. */
+ * it is what the emailed link is for. */
 export const forgotPasswordSchema = z.object({
   email: emailSchema,
 });
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
-
-/**
- * Self-serve signup. Deliberately only a name and an email — no password.
- *
- * The account is created in the INVITED state with an unusable password hash,
- * and registration issues a session directly, so the very next thing the new
- * owner does is choose their own password through the existing forced-reset
- * step (FR-AUTH-007/021). That means no temporary password is ever minted,
- * transmitted, or left sitting in an inbox.
- */
-export const registerSchema = z.object({
-  fullName: z.string().trim().min(1, 'your name is required').max(120),
-  email: emailSchema,
-});
-export type RegisterInput = z.infer<typeof registerSchema>;
 
 /** NFR-SEC: length over composition rules. */
 export const passwordSchema = z
@@ -73,6 +59,96 @@ export const setPasswordWithTokenSchema = z.object({
   newPassword: passwordSchema,
 });
 export type SetPasswordWithTokenInput = z.infer<typeof setPasswordWithTokenSchema>;
+
+/** A company email: a valid address that is not from a free email provider
+ * (gmail.com, outlook.com, ...). */
+export const companyEmailSchema = z
+  .string({ required_error: 'email is required' })
+  .trim()
+  .min(1, 'email is required')
+  .pipe(emailSchema)
+  .refine((email) => checkBusinessEmail(email, null).reason !== 'FREE_PROVIDER', {
+    message: 'use your company email address, not a personal email provider',
+  });
+
+/**
+ * Sign Up: a company email and a password. The person becomes the Company
+ * Admin of a new company and is signed in; the company is registered next.
+ */
+export const registerSchema = z.object({
+  email: companyEmailSchema,
+  password: z
+    .string({ required_error: 'password is required' })
+    .min(1, 'password is required')
+    .pipe(passwordSchema),
+});
+export type RegisterInput = z.infer<typeof registerSchema>;
+
+// --- Company onboarding ------------------------------------------------------
+
+/** Where a company's onboarding stands, worked out from its data on every
+ * request (MerchantService.nextStep). */
+export const ONBOARDING_STEPS = ['REGISTER_COMPANY', 'ADD_BRAND', 'SELECT_PRODUCTS'] as const;
+export type OnboardingStep = (typeof ONBOARDING_STEPS)[number];
+
+/** Letters, digits, spaces and - . / only: an EIN (12-3456789), a VAT or NTN
+ * number, with or without separators. */
+const TAX_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ./-]*$/;
+
+/** Register Your Company. Every field is required. */
+export const registerCompanySchema = z.object({
+  companyName: z
+    .string({ required_error: 'company name is required' })
+    .trim()
+    .min(1, 'company name is required')
+    .max(120)
+    // One space between words: "Acme  Ltd" and "Acme Ltd" are one name.
+    .transform((v) => v.replace(/\s+/g, ' ')),
+  legalName: z
+    .string({ required_error: 'legal name is required' })
+    .trim()
+    .min(1, 'legal name is required')
+    .max(200),
+  taxId: z
+    .string({ required_error: 'tax ID is required' })
+    .trim()
+    .min(1, 'tax ID is required')
+    .max(64)
+    .regex(TAX_ID_PATTERN, 'a tax ID may contain only letters, digits, spaces and - . /'),
+  brandStructure: z.enum(['SINGLE', 'MULTI'], {
+    errorMap: () => ({ message: 'choose single brand or multiple brands' }),
+  }),
+});
+export type RegisterCompanyInput = z.infer<typeof registerCompanySchema>;
+
+/** Add Your Brand: the company's first brand. Theme colour is optional. */
+export const firstBrandSchema = z.object({
+  legalName: z
+    .string({ required_error: 'legal name is required' })
+    .trim()
+    .min(1, 'legal name is required')
+    .max(200),
+  displayName: z
+    .string({ required_error: 'display name is required' })
+    .trim()
+    .min(1, 'display name is required')
+    .max(120),
+  currency: z
+    .string({ required_error: 'currency is required' })
+    .trim()
+    .min(1, 'currency is required')
+    .toUpperCase()
+    .pipe(
+      z.enum(SUPPORTED_CURRENCIES, {
+        errorMap: () => ({
+          message: `choose one of the supported currencies: ${SUPPORTED_CURRENCIES.join(', ')}`,
+        }),
+      }),
+    ),
+  timezone: z.string({ required_error: 'time zone is required' }).pipe(timezoneSchema),
+  themeColor: hexColourSchema.nullish(),
+});
+export type FirstBrandInput = z.infer<typeof firstBrandSchema>;
 
 // --- Brand -----------------------------------------------------------------
 

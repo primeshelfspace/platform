@@ -45,7 +45,7 @@ export const DESCRIPTIONS = {
     'Sugrpay: receives a platform event (brand created/updated, …) from the platform outbox; a failure makes the platform retry.',
   // Sign-in
   'POST /auth/register':
-    'Self-serve sign-up: creates the company, its owner (invited) and the Sugrpay subscription, and emails a set-password link. Signing up again before the password is set re-sends the link; 409 once sign-up is finished; 503 (and nothing kept) if the email cannot be sent.',
+    'Sign Up with a company email and a password (12+ characters). Free email providers are refused; one account per email across every company (409 EMAIL_TAKEN). Creates the company with the person as its Company Admin, signs them in (token, as login) and returns nextStep REGISTER_COMPANY. No product is enabled yet.',
   'POST /auth/login':
     'Signs in with email and password. Returns the session token (also set as a cookie) and its expiry. Locks the account after 5 failures in 15 minutes.',
   'POST /auth/logout': 'Ends the current session.',
@@ -58,14 +58,20 @@ export const DESCRIPTIONS = {
     'Emails a password-reset link. Always answers the same way, so it does not reveal which emails exist.',
   // Company
   'GET /merchant/onboarding':
-    'Onboarding state: company details, brand structure, whether brands exist and whether onboarding is complete.',
-  'PATCH /merchant/company-details': 'Saves the company details step of onboarding.',
-  'POST /merchant/logo': 'Uploads the company logo (multipart field `file`, up to 5 MB).',
-  'POST /merchant/brand-structure': 'Chooses single-brand or multi-brand.',
-  'POST /merchant/complete-onboarding': 'Marks onboarding complete.',
+    'Where onboarding stands: nextStep (REGISTER_COMPANY, ADD_BRAND or SELECT_PRODUCTS), worked out from the data; the registered company; whether it has brands and has completed onboarding. Signing in goes to nextStep.',
+  'POST /merchant/register-company':
+    'Register Your Company (Company Admin): Company Name (unique across companies, ignoring case and spacing; 409 COMPANY_NAME_TAKEN), Legal Name, Tax ID and Brand Structure, all required. Once per company (409 COMPANY_ALREADY_REGISTERED). The contact email is the sign-up email. Returns nextStep ADD_BRAND.',
+  'POST /merchant/first-brand':
+    "Add Your Brand (Company Admin): the company's first brand, active. Legal Name, Display Name, Currency and a valid IANA Timezone are required; Theme Color optional. 409 COMPANY_NOT_REGISTERED before Register Your Company; 409 BRAND_ALREADY_ADDED if a brand exists. Returns nextStep SELECT_PRODUCTS.",
+  'GET /company/products':
+    'Select Your Products: the fixed list (Sugrpay, HQ) with name, description, whether each is enabled and whether this user may enable it; and whether onboarding is complete.',
+  'POST /company/products':
+    'Enables the selected products (Company Admin; at least one, no repeats). 409 COMPANY_NOT_REGISTERED / ADD_BRAND_FIRST before those steps. Completes onboarding. continueWith names the product to open straight away when exactly one is enabled.',
+  'POST /company/products/:product/continue':
+    'Continue into a product: returns its URL and a 15-minute JWT (HS256; sub user, mid company, aud product). Only for a product enabled for the company (409 PRODUCT_NOT_ENABLED); 409 PRODUCT_NOT_AVAILABLE when the product has no web address yet (HQ until HQ_PUBLIC_URL is set).',
   'GET /company/subscriptions': "The company's products and whether each is switched on.",
   'PUT /company/subscriptions/:product':
-    'Switches a product on or off for the company (no billing provider yet).',
+    'Switches a product on or off for the company (no billing provider yet). Switching one on needs a registered company with a brand, and completes onboarding.',
   // Brands
   'GET /brands': 'Brands the user can reach (all of them for Owner and Admin).',
   'POST /brands': 'Creates a brand with its invoice numbering prefix.',
