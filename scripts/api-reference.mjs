@@ -107,6 +107,8 @@ export const DESCRIPTIONS = {
   'GET /brands/:brandId/invoices/tab-counts':
     'Counts for the All / Draft / Unpaid / Partial / Paid / Overdue tabs.',
   'GET /brands/:brandId/invoices/:id': 'One invoice with its lines and public payment token.',
+  'GET /brands/:brandId/invoices/:id/pdf':
+    'The invoice as a PDF, for a signed-in user (Download PDF on the Invoice Details panel). Any status, including a draft, whose PDF is marked "(Draft)"; the public PDF route needs a live payment link, which a draft has not.',
   'GET /brands/:brandId/invoices/:id/events':
     "The invoice's history: issued, viewed, paid, cancelled and so on.",
   'GET /brands/:brandId/invoices/:id/email-preview':

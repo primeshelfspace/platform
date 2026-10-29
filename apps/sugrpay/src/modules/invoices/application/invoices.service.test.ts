@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 /**
  * InvoicesService against a real database (TDD-001 §9.4, §5.3). Needs a
  * migrated, seeded database:
@@ -33,13 +34,14 @@ describeWithDb('InvoicesService', () => {
   const mail = createFakeMailPort();
   // No onModuleInit call — fine as long as no test here exercises
   // attachPdf: true, which is the only path that touches the browser.
+  const pdfPrinter = new InvoicePdfService();
   const invoices = new InvoicesService(
     prisma,
     queue,
     mail,
     env!,
     new LocalDiskAdapter(env!),
-    new InvoicePdfService(),
+    pdfPrinter,
     // No test here creates a Zoho-sourced invoice, so findOne's on-demand
     // enrichment branch never fires — a real ZohoPullService (OAuth
     // connection, rate limiting, ...) would be pure overhead.
@@ -173,6 +175,36 @@ describeWithDb('InvoicesService', () => {
     // Prefix is whatever this brand's seed data set it to — the property
     // under test is uniqueness and sequencing, not which brand it is.
     for (const number of numbers) expect(number).toMatch(/^[A-Z]+-\d{4}$/);
+  });
+
+  it('gives a PDF for a draft, marked as a draft, and for an issued invoice, not marked', async () => {
+    // Printing needs headless Chromium; what matters here is what is printed.
+    const printed: string[] = [];
+    const render = vi.spyOn(pdfPrinter, 'render').mockImplementation(async (html: string) => {
+      printed.push(html);
+      return Buffer.from('%PDF-1.7 test');
+    });
+    try {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+
+      const draftPdf = await invoices.pdf(ownerScope, solsticeId, created.id);
+      expect(draftPdf.pdf.toString()).toContain('%PDF');
+      expect(printed.at(-1)).toContain(`${created.number} (Draft)`);
+
+      const issued = await invoices.issue(ownerScope, solsticeId, created.id);
+      const issuedPdf = await invoices.pdf(ownerScope, solsticeId, created.id);
+      expect(issuedPdf.number).toBe(issued.number);
+      expect(printed.at(-1)).toContain(issued.number);
+      expect(printed.at(-1)).not.toContain('(Draft)');
+    } finally {
+      render.mockRestore();
+    }
+  });
+
+  it('refuses a PDF for an invoice of another brand or that does not exist', async () => {
+    await expect(invoices.pdf(ownerScope, solsticeId, randomUUID())).rejects.toThrow(
+      'invoice not found',
+    );
   });
 
   it('issues a valid draft: status becomes SENT and issuedAt is stamped', async () => {
