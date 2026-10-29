@@ -61,7 +61,7 @@ export class DashboardController {
     @CurrentScope() scope: Scope,
     @Query(zodPipe(dashboardQuerySchema)) query: DashboardQuery,
   ): Promise<DashboardStatusBucket[]> {
-    return this.dashboard.getStatusBreakdown(scope, query.brandId ?? null);
+    return this.dashboard.getStatusBreakdown(scope, query.brandId ?? null, rangeFrom(query));
   }
 
   @Get('top-overdue-customers')

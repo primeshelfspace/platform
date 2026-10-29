@@ -223,6 +223,29 @@ function daysBetween(from: Date, to: Date): number {
  * restricts the result to exactly the brands the caller's role can read.
  * There is deliberately no separate "loop over every brand" code path here.
  */
+/**
+ * Collected over invoiced for a period, 0..1. Money received in a period
+ * often pays invoices dated before it, so the plain ratio can pass 100%; the
+ * rate is capped there, while Collected itself shows every payment received.
+ */
+function collectionRate(collectedMinor: number, invoicedMinor: number): number {
+  return invoicedMinor > 0 ? Math.min(1, collectedMinor / invoicedMinor) : 0;
+}
+
+/**
+ * "Invoiced in a period": invoices whose own invoice date falls in it, drafts
+ * and cancelled ones aside. By the invoice date, not when it was issued in
+ * this app: invoices imported from Zoho never were (issuedAt stays null) and
+ * keep their real dates, and counting by issue date put every invoice in the
+ * month the platform went live, so every other period read zero.
+ */
+function invoicedIn(start: Date, end?: Date): Prisma.InvoiceWhereInput {
+  return {
+    invoiceDate: end ? { gte: start, lt: end } : { gte: start },
+    status: { notIn: ['DRAFT', 'CANCELLED'] },
+  };
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
@@ -243,8 +266,7 @@ export class DashboardService {
         tx.invoice.groupBy({
           by: ['currency'],
           where: {
-            issuedAt: { gte: start, lt: end },
-            status: { not: 'CANCELLED' },
+            ...invoicedIn(start, end),
             ...(brandId ? { brandId } : {}),
           },
           _sum: { totalMinor: true },
@@ -311,7 +333,7 @@ export class DashboardService {
         currency: toCurrencyCode(dominant),
         invoicedMinor,
         collectedMinor,
-        collectionRate: invoicedMinor > 0 ? collectedMinor / invoicedMinor : 0,
+        collectionRate: collectionRate(collectedMinor, invoicedMinor),
         overdueMinor,
         otherCurrencyBrandCount,
       };
@@ -326,11 +348,10 @@ export class DashboardService {
       const [invoiceRows, paymentRows] = await Promise.all([
         tx.invoice.findMany({
           where: {
-            issuedAt: { gte: earliest },
-            status: { not: 'CANCELLED' },
+            ...invoicedIn(earliest),
             ...(brandId ? { brandId } : {}),
           },
-          select: { issuedAt: true, totalMinor: true },
+          select: { invoiceDate: true, totalMinor: true },
         }),
         tx.payment.findMany({
           where: {
@@ -344,7 +365,7 @@ export class DashboardService {
 
       return months.map(({ start, end, key, label }) => {
         const invoicedMinor = invoiceRows
-          .filter((r) => r.issuedAt && r.issuedAt >= start && r.issuedAt < end)
+          .filter((r) => r.invoiceDate >= start && r.invoiceDate < end)
           .reduce((sum, r) => sum + Number(r.totalMinor), 0);
         const collectedMinor = paymentRows
           .filter((r) => r.settledAt && r.settledAt >= start && r.settledAt < end)
@@ -354,17 +375,27 @@ export class DashboardService {
           label,
           invoicedMinor,
           collectedMinor,
-          collectionRate: invoicedMinor > 0 ? collectedMinor / invoicedMinor : 0,
+          collectionRate: collectionRate(collectedMinor, invoicedMinor),
         };
       });
     });
   }
 
-  async getStatusBreakdown(scope: Scope, brandId: string | null): Promise<DashboardStatusBucket[]> {
+  /** Invoices dated in the period (every invoice when none is given), by
+   * status. Drafts are a bucket of their own here, unlike the KPI cards. */
+  async getStatusBreakdown(
+    scope: Scope,
+    brandId: string | null,
+    range?: DateRange,
+  ): Promise<DashboardStatusBucket[]> {
     return this.prisma.withScope(scope, async (tx) => {
       const rows = await tx.invoice.groupBy({
         by: ['status', 'overdue'],
-        where: { status: { not: 'CANCELLED' }, ...(brandId ? { brandId } : {}) },
+        where: {
+          status: { not: 'CANCELLED' },
+          ...(range ? { invoiceDate: { gte: range.start, lt: range.end } } : {}),
+          ...(brandId ? { brandId } : {}),
+        },
         _sum: { totalMinor: true },
       });
 
@@ -729,7 +760,7 @@ export class DashboardService {
         tx.brand.findMany({ orderBy: { createdAt: 'asc' } }),
         tx.invoice.groupBy({
           by: ['brandId'],
-          where: { issuedAt: { gte: start, lt: end }, status: { not: 'CANCELLED' } },
+          where: invoicedIn(start, end),
           _sum: { totalMinor: true },
         }),
         tx.payment.groupBy({
@@ -764,7 +795,7 @@ export class DashboardService {
           currency: toCurrencyCode(brand.currency),
           invoicedMinor,
           collectedMinor,
-          collectionRate: invoicedMinor > 0 ? collectedMinor / invoicedMinor : 0,
+          collectionRate: collectionRate(collectedMinor, invoicedMinor),
           overdueMinor: overdueMap.get(brand.id) ?? 0,
         };
       });

@@ -163,6 +163,72 @@ describeWithDb('DashboardService', () => {
     expect(summary.collectionRate).toBeLessThanOrEqual(1);
   });
 
+  describe('a chosen period (Last Month, This Quarter, ...)', () => {
+    // A month of its own, far from every other test's invoices.
+    const january2020 = {
+      start: new Date('2020-01-01T00:00:00Z'),
+      end: new Date('2020-02-01T00:00:00Z'),
+    };
+    const february2020 = {
+      start: new Date('2020-02-01T00:00:00Z'),
+      end: new Date('2020-03-01T00:00:00Z'),
+    };
+    const dated = (status: 'SENT' | 'DRAFT' | 'CANCELLED' | 'PAID', totalMinor: bigint) =>
+      owner.invoice.create({
+        data: {
+          ...invoiceDefaults(),
+          invoiceDate: new Date('2020-01-15T00:00:00Z'),
+          dueDate: new Date('2020-02-14T00:00:00Z'),
+          status,
+          // Imported from Zoho: never issued in this app.
+          issuedAt: null,
+          totalMinor,
+          balanceMinor: status === 'PAID' ? 0n : totalMinor,
+        },
+      });
+
+    // The test brand outlives a run: start from an empty month, and leave one.
+    const clear = () =>
+      owner.invoice.deleteMany({
+        where: { brandId, invoiceDate: { gte: january2020.start, lt: february2020.end } },
+      });
+
+    afterAll(clear);
+
+    beforeAll(async () => {
+      await clear();
+      await dated('SENT', 70_000n);
+      await dated('PAID', 30_000n);
+      await dated('DRAFT', 5_000n);
+      await dated('CANCELLED', 9_000n);
+    });
+
+    it('counts invoices by their invoice date, including ones imported from Zoho', async () => {
+      const summary = await dashboard.getSummary(ownerScope, brandId, january2020);
+      // SENT + PAID; the draft and the cancelled one are not invoiced.
+      expect(summary.invoicedMinor).toBe(100_000);
+
+      const empty = await dashboard.getSummary(ownerScope, brandId, february2020);
+      expect(empty.invoicedMinor).toBe(0);
+    });
+
+    it('gives the by-brand roll-up the same period', async () => {
+      const rollup = await dashboard.getByBrand(ownerScope, january2020);
+      expect(rollup.find((r) => r.brandId === brandId)?.invoicedMinor).toBe(100_000);
+    });
+
+    it('limits the status breakdown to invoices dated in the period', async () => {
+      const breakdown = await dashboard.getStatusBreakdown(ownerScope, brandId, january2020);
+      expect(Object.fromEntries(breakdown.map((b) => [b.bucket, b.amountMinor]))).toEqual({
+        Paid: 30_000,
+        Unpaid: 70_000,
+        Draft: 5_000,
+      });
+
+      expect(await dashboard.getStatusBreakdown(ownerScope, brandId, february2020)).toEqual([]);
+    });
+  });
+
   it('buckets an overdue partially-paid invoice as Overdue, not Partially Paid', async () => {
     await owner.invoice.create({
       data: {
