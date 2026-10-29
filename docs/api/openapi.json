@@ -5241,6 +5241,146 @@
           }
         },
         "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      },
+      "put": {
+        "tags": ["Invoices"],
+        "operationId": "InvoicesController_update",
+        "summary": "Edits a draft",
+        "description": "Edits a draft: customer, dates, lines, tax and card fee rates and notes are replaced and the totals recalculated, as on create. The number and payment link stay. 409 NOT_A_DRAFT once the invoice is issued.\n\n**Access:** INVOICES:WRITE\n**Served by:** the sugrpay API — `apps/sugrpay/src/modules/invoices/interface/invoices.controller.ts` (`InvoicesController.update`)",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": { "type": "string", "format": "uuid" },
+                  "customerId": { "type": "string", "format": "uuid" },
+                  "invoiceDate": { "type": "string", "format": "date-time" },
+                  "dueDate": { "type": "string", "format": "date-time" },
+                  "currency": { "type": "string", "enum": ["USD", "CAD", "EUR", "GBP", "PKR"] },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "itemName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                        "description": {
+                          "anyOf": [{ "type": "string", "maxLength": 2000 }, { "type": "null" }]
+                        },
+                        "quantity": { "type": "string", "pattern": "^\\d+(\\.\\d{1,4})?$" },
+                        "unitPrice": { "type": "string", "pattern": "^-?\\d+(\\.\\d{1,2})?$" },
+                        "taxExempt": { "type": "boolean", "default": false }
+                      },
+                      "required": ["itemName", "description", "quantity", "unitPrice"],
+                      "additionalProperties": true
+                    },
+                    "minItems": 1,
+                    "maxItems": 500
+                  },
+                  "taxRateBp": { "type": "integer", "minimum": 0, "maximum": 100000 },
+                  "cardFeeRateBp": { "type": "integer", "minimum": 0, "maximum": 100000 },
+                  "notes": {
+                    "anyOf": [{ "type": "string", "maxLength": 4000 }, { "type": "null" }]
+                  },
+                  "internalNotes": {
+                    "anyOf": [{ "type": "string", "maxLength": 4000 }, { "type": "null" }]
+                  }
+                },
+                "required": [
+                  "brandId",
+                  "customerId",
+                  "invoiceDate",
+                  "dueDate",
+                  "currency",
+                  "lines",
+                  "taxRateBp",
+                  "cardFeeRateBp",
+                  "notes",
+                  "internalNotes"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/InvoiceWithLines" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
       }
     },
     "/brands/{brandId}/invoices/{id}/cancel": {

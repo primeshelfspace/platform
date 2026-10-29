@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   BadGatewayException,
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -111,6 +112,47 @@ export interface InvoiceActivityEntry {
  * once this slice is proven end to end. CalculationService (TDD-001 §9.4) is
  * the only place the totals are computed; this service never re-derives them.
  */
+/**
+ * A draft's amounts, for create() and updateDraft() alike. Computed with
+ * paymentMethod: 'MANUAL', the fee-exempt baseline that is "the amount due"
+ * until a payment method is chosen (FRS-001 §28.3; see create()).
+ */
+function draftAmounts(input: InvoiceDraftInput) {
+  const calcLines = input.lines.map((line) => ({
+    quantity: quantityFrom(line.quantity),
+    unitPriceMinor: parseMinor(line.unitPrice, input.currency),
+    taxExempt: line.taxExempt,
+  }));
+  const result = calculate({
+    lines: calcLines,
+    taxRateBp: input.taxRateBp,
+    cardFeeRateBp: input.cardFeeRateBp,
+    paymentMethod: 'MANUAL',
+  });
+  // Zipped by index: calculate() maps over these same lines in the same
+  // order, so a missing entry means its contract broke — a hard failure, not
+  // a silently substituted default.
+  const lineItems = calcLines.map((line, position) => {
+    const source = input.lines[position];
+    const computed = result.lines[position];
+    if (!source || !computed) {
+      throw new Error(
+        `line ${position} missing after calculation — calculate() invariant violated`,
+      );
+    }
+    return {
+      position,
+      itemName: source.itemName,
+      description: source.description,
+      quantity: line.quantity,
+      unitPriceMinor: line.unitPriceMinor,
+      lineTotalMinor: computed.lineTotalMinor,
+      taxExempt: line.taxExempt,
+    };
+  });
+  return { result, lineItems };
+}
+
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
@@ -687,18 +729,7 @@ export class InvoicesService {
       const customer = await tx.customer.findFirst({ where: { id: input.customerId, brandId } });
       if (!customer) throw new NotFoundException('customer not found for this brand');
 
-      const calcLines = input.lines.map((line) => ({
-        quantity: quantityFrom(line.quantity),
-        unitPriceMinor: parseMinor(line.unitPrice, input.currency),
-        taxExempt: line.taxExempt,
-      }));
-
-      const result = calculate({
-        lines: calcLines,
-        taxRateBp: input.taxRateBp,
-        cardFeeRateBp: input.cardFeeRateBp,
-        paymentMethod: 'MANUAL',
-      });
+      const { result, lineItems } = draftAmounts(input);
 
       // Allocates the number under the brand_settings row lock: concurrent
       // creates for the same brand serialise on this UPDATE, which is what
@@ -731,32 +762,7 @@ export class InvoicesService {
             publicToken: randomBytes(16).toString('hex'),
             notes: input.notes,
             internalNotes: input.internalNotes,
-            // Zipped by index rather than a second lookup keyed by position:
-            // result.lines and input.lines are guaranteed the same length and
-            // order as calcLines (calculate() runs the identical .map over
-            // these same lines), so an out-of-range read here would mean
-            // calculate()'s own contract broke — worth a hard failure, not a
-            // silently substituted default.
-            lineItems: {
-              create: calcLines.map((line, position) => {
-                const source = input.lines[position];
-                const computed = result.lines[position];
-                if (!source || !computed) {
-                  throw new Error(
-                    `line ${position} missing after calculation — calculate() invariant violated`,
-                  );
-                }
-                return {
-                  position,
-                  itemName: source.itemName,
-                  description: source.description,
-                  quantity: line.quantity,
-                  unitPriceMinor: line.unitPriceMinor,
-                  lineTotalMinor: computed.lineTotalMinor,
-                  taxExempt: line.taxExempt,
-                };
-              }),
-            },
+            lineItems: { create: lineItems },
           },
           include: { lineItems: { orderBy: { position: 'asc' } } },
         });
@@ -768,6 +774,61 @@ export class InvoicesService {
         }
         throw error;
       }
+    });
+  }
+
+  /**
+   * Edit a draft: the whole invoice is replaced by `input` (customer, dates,
+   * lines, rates, notes) and recalculated exactly as create() calculates it.
+   * Its number, payment link token and status stay. Only a DRAFT can be
+   * edited: once issued, the customer may have seen it, been emailed it or
+   * paid towards it (409 NOT_A_DRAFT). The row is locked, so an edit cannot
+   * race an issue of the same invoice.
+   */
+  async updateDraft(
+    scope: Scope,
+    brandId: string,
+    id: string,
+    input: InvoiceDraftInput,
+  ): Promise<InvoiceWithLines> {
+    if (input.brandId !== brandId) {
+      throw new BadRequestException('the invoice belongs to the brand in the address');
+    }
+    return this.prisma.withScope(scope, async (tx) => {
+      const [locked] = await tx.$queryRaw<Array<{ status: string }>>`
+        SELECT status FROM invoice WHERE id = ${id}::uuid AND brand_id = ${brandId}::uuid FOR UPDATE`;
+      if (!locked) throw new NotFoundException('invoice not found');
+      if (locked.status !== 'DRAFT') {
+        throw new ConflictException({
+          message: 'only a draft can be edited',
+          code: 'NOT_A_DRAFT',
+        });
+      }
+      const customer = await tx.customer.findFirst({ where: { id: input.customerId, brandId } });
+      if (!customer) throw new NotFoundException('customer not found for this brand');
+
+      const { result, lineItems } = draftAmounts(input);
+      await tx.lineItem.deleteMany({ where: { invoiceId: id } });
+      return tx.invoice.update({
+        where: { id },
+        data: {
+          customerId: input.customerId,
+          invoiceDate: input.invoiceDate,
+          dueDate: input.dueDate,
+          currency: input.currency,
+          subtotalMinor: result.subtotalMinor,
+          taxRateBpApplied: result.taxRateBpApplied,
+          taxMinor: result.taxMinor,
+          cardFeeRateBpApplied: result.cardFeeRateBpApplied,
+          cardFeeMinor: 0,
+          totalMinor: result.totalMinor,
+          balanceMinor: result.totalMinor,
+          notes: input.notes,
+          internalNotes: input.internalNotes,
+          lineItems: { create: lineItems },
+        },
+        include: { lineItems: { orderBy: { position: 'asc' } } },
+      });
     });
   }
 
