@@ -171,8 +171,9 @@ export type InvoicePdfSettingsInput = z.infer<typeof invoicePdfSettingsSchema>;
 
 /** FR-ZHO-030: a brand's Sync Frequency, in minutes between timed pulls
  * from Zoho (the 'scheduled-sync' cron's due-check is `now - lastPulledAt >=
- * frequency * 60_000`). 0 is Real-time: no timed pull at all, changes arrive
- * through Zoho's webhooks within seconds. Monthly is 30 days. */
+ * frequency * 60_000`). 0 is Real-time: changes arrive through Zoho's
+ * webhooks within seconds, plus a full sync every 5 minutes. Monthly is 30
+ * days. */
 export const ZOHO_SYNC_FREQUENCIES = [0, 15, 30, 60, 1440, 43200] as const;
 export const zohoSyncFrequencySchema = z
   .number()

@@ -11,6 +11,15 @@ import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.
  */
 const STALE_SYNC_JOB_MS = 30 * 60 * 1000;
 
+/** Real-time (Sync Frequency 0): Zoho's webhooks bring changes within
+ * seconds, and a full sync every 5 minutes catches any Zoho fails to send. */
+export const REAL_TIME_PULL_MINUTES = 5;
+
+/** Minutes between timed pulls for a brand's Sync Frequency. */
+export function pullIntervalMinutes(frequency: number): number {
+  return frequency === 0 ? REAL_TIME_PULL_MINUTES : frequency;
+}
+
 export interface ScheduledSyncResult {
   readonly brandsConnected: number;
   readonly brandsEnqueued: number;
@@ -83,11 +92,11 @@ export class ZohoScheduledSyncService {
       );
     }
 
-    // Each brand chooses its own Sync Frequency; Real-time brands (the
-    // default) are never pulled on a timer, so only brands that picked an
-    // interval cost Zoho calls here. ZOHO_SCHEDULED_PULL_ENABLED=false stops
-    // every timed pull at once (an emergency switch); the tick itself stays,
-    // for the reaping above, which makes no Zoho calls.
+    // Each brand chooses its own Sync Frequency; Real-time (the default)
+    // is pulled every REAL_TIME_PULL_MINUTES on top of its webhooks.
+    // ZOHO_SCHEDULED_PULL_ENABLED=false stops every timed pull at once (an
+    // emergency switch); the tick itself stays, for the reaping above, which
+    // makes no Zoho calls.
     if (!this.env.ZOHO_SCHEDULED_PULL_ENABLED) {
       return { brandsConnected: 0, brandsEnqueued: 0, staleJobsReaped };
     }
@@ -96,8 +105,8 @@ export class ZohoScheduledSyncService {
     const now = Date.now();
     const due = live.filter(
       (c) =>
-        c.pullFrequencyMinutes > 0 &&
-        (!c.lastPulledAt || now - c.lastPulledAt.getTime() >= c.pullFrequencyMinutes * 60_000),
+        !c.lastPulledAt ||
+        now - c.lastPulledAt.getTime() >= pullIntervalMinutes(c.pullFrequencyMinutes) * 60_000,
     );
     await Promise.all(
       due.map(({ brandId }) => this.queue.enqueue('sync', 'zoho-pull-brand', { brandId })),

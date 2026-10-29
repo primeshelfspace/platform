@@ -757,7 +757,7 @@ model ZohoConnection {
   lastWebhookDelivery  Json?                @map("last_webhook_delivery")
   health               String?
   /// Sync Frequency (FR-ZHO-030): minutes between timed pulls for this
-  /// brand. 0 is Real-time: no timed pull, Zoho's webhooks bring changes in.
+  /// brand. 0 is Real-time: Zoho's webhooks, plus a full sync every 5 minutes.
   pullFrequencyMinutes Int                  @default(0) @map("pull_frequency_minutes")
   customerSyncEnabled  Boolean              @default(true) @map("customer_sync_enabled")
   invoiceSyncEnabled   Boolean              @default(true) @map("invoice_sync_enabled")

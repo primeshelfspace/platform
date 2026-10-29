@@ -356,8 +356,6 @@ export class ZohoConnectionService {
           where: {
             status: 'CONNECTED',
             encryptedCredentials: { not: null },
-            // Real-time (0) brands are never pulled on a timer.
-            pullFrequencyMinutes: { gt: 0 },
           },
           select: { brandId: true, lastPulledAt: true, pullFrequencyMinutes: true },
         }),
