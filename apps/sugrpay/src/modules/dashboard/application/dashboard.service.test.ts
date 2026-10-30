@@ -333,13 +333,9 @@ describeWithDb('DashboardService', () => {
   });
 
   describe('getNeedsAttention', () => {
-    it('shows the specific VALIDATION error text instead of the generic stand-in', async () => {
-      // zoho-pull.service.ts's invoice-number-collision error, and anything
-      // else that throws a VALIDATION IntegrationError, already writes a
-      // clean, specific message to SyncJob.lastError — syncFailureMessage
-      // must prefer it over the generic "Zoho couldn't accept some of this
-      // record's details" stand-in, which used to flatten the detail away.
-      const specificMessage = `Zoho invoice uses number INV-${randomUUID().slice(0, 8)}, which already belongs to a different invoice on this brand`;
+    it('lists invoices only — no Zoho sync failures or quiet Zoho connections', async () => {
+      // A failed sync job on the shared brand, and a brand connected to Zoho
+      // long ago with no sync since: both used to show here.
       const job = await owner.syncJob.create({
         data: {
           brandId,
@@ -348,125 +344,38 @@ describeWithDb('DashboardService', () => {
           objectType: 'INVOICE',
           objectId: randomUUID(),
           status: 'FAILED',
-          errorClass: 'VALIDATION',
-          lastError: specificMessage,
+          errorClass: 'TRANSIENT',
+          lastError: 'Zoho Books: GET /books/v3/invoices failed with 429',
         },
       });
+      const brand = await createInvoicingBrand(owner, {
+        displayName: `Quiet Zoho Brand ${randomUUID().slice(0, 8)}`,
+      });
+      await owner.zohoConnection.create({
+        data: {
+          brandId: brand.id,
+          status: 'CONNECTED',
+          createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        },
+      });
+      const scope: RequestScope = {
+        merchantId: brand.merchantId,
+        userId: 'test-harness',
+        role: 'MERCHANT_OWNER',
+        assignedBrandIds: [],
+        sessionId: 'test-session',
+        sourceIp: null,
+      };
 
-      const result = await dashboard.getNeedsAttention(ownerScope, brandId);
-      const item = result.items.find((i) => i.syncJobId === job.id);
+      const shared = await dashboard.getNeedsAttention(ownerScope, brandId);
+      const quiet = await dashboard.getNeedsAttention(scope, brand.id);
 
-      expect(item?.detail).toBe(specificMessage);
-
-      await owner.syncJob.delete({ where: { id: job.id } });
-    });
-
-    it('still answers when failed pull jobs carry Zoho ids or a whole-scan marker, not our uuids', async () => {
-      // A failed contact-list scan is recorded with objectId 'list', and a
-      // failed record pull with Zoho's own numeric id. Looking those up as
-      // local uuids used to fail the whole query.
-      const jobs = await Promise.all(
-        [
-          { objectType: 'CUSTOMER' as const, objectId: 'list' },
-          { objectType: 'INVOICE' as const, objectId: 'reconcile' },
-          { objectType: 'INVOICE' as const, objectId: '6011483000000123456' },
-        ].map((job) =>
-          owner.syncJob.create({
-            data: {
-              brandId,
-              provider: 'ZOHO_BOOKS',
-              direction: 'PULL',
-              ...job,
-              status: 'FAILED',
-              errorClass: 'TRANSIENT',
-              lastError: 'Zoho Books: GET /books/v3/contacts failed with 429',
-            },
-          }),
-        ),
-      );
-
-      const result = await dashboard.getNeedsAttention(ownerScope, brandId);
-      for (const job of jobs) {
-        const item = result.items.find((i) => i.syncJobId === job.id);
-        expect(item?.kind).toBe('SYNC_FAILED');
-        expect(item?.invoiceNumber).toBeNull();
+      for (const item of [...shared.items, ...quiet.items]) {
+        expect(['STALE_DRAFT', 'DUE_SOON']).toContain(item.kind);
       }
-
-      await owner.syncJob.deleteMany({ where: { id: { in: jobs.map((j) => j.id) } } });
-    });
-
-    it('falls back to the generic stand-in when a VALIDATION failure has no lastError', async () => {
-      const job = await owner.syncJob.create({
-        data: {
-          brandId,
-          provider: 'ZOHO_BOOKS',
-          direction: 'PULL',
-          objectType: 'INVOICE',
-          objectId: randomUUID(),
-          status: 'FAILED',
-          errorClass: 'VALIDATION',
-        },
-      });
-
-      const result = await dashboard.getNeedsAttention(ownerScope, brandId);
-      const item = result.items.find((i) => i.syncJobId === job.id);
-
-      expect(item?.detail).toBe("Zoho couldn't accept some of this record's details");
+      expect(quiet.totalCount).toBe(0);
 
       await owner.syncJob.delete({ where: { id: job.id } });
-    });
-
-    it('flags a connected brand with zero sync signal ever as ZOHO_SYNC_STALE', async () => {
-      // A fresh, isolated brand — this must not collide with the shared
-      // seeded brand's own (if any) Zoho connection, since zoho_connection
-      // has exactly one row per brand.
-      const brand = await createInvoicingBrand(owner, {
-        displayName: `Stale Zoho Brand ${randomUUID().slice(0, 8)}`,
-      });
-      const longAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
-      await owner.zohoConnection.create({
-        data: { brandId: brand.id, status: 'CONNECTED', createdAt: longAgo },
-      });
-      const scope: RequestScope = {
-        merchantId: brand.merchantId,
-        userId: 'test-harness',
-        role: 'MERCHANT_OWNER',
-        assignedBrandIds: [],
-        sessionId: 'test-session',
-        sourceIp: null,
-      };
-
-      const result = await dashboard.getNeedsAttention(scope, brand.id);
-
-      expect(result.items).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ kind: 'ZOHO_SYNC_STALE', brandId: brand.id }),
-        ]),
-      );
-
-      await deleteInvoicingBrand(owner, brand.id);
-    });
-
-    it('does not flag a freshly connected brand still inside its grace period', async () => {
-      const brand = await createInvoicingBrand(owner, {
-        displayName: `Fresh Zoho Brand ${randomUUID().slice(0, 8)}`,
-      });
-      await owner.zohoConnection.create({
-        data: { brandId: brand.id, status: 'CONNECTED' }, // createdAt defaults to now
-      });
-      const scope: RequestScope = {
-        merchantId: brand.merchantId,
-        userId: 'test-harness',
-        role: 'MERCHANT_OWNER',
-        assignedBrandIds: [],
-        sessionId: 'test-session',
-        sourceIp: null,
-      };
-
-      const result = await dashboard.getNeedsAttention(scope, brand.id);
-
-      expect(result.items.some((i) => i.kind === 'ZOHO_SYNC_STALE')).toBe(false);
-
       await deleteInvoicingBrand(owner, brand.id);
     });
   });
