@@ -8242,8 +8242,8 @@
       "get": {
         "tags": ["Dashboard"],
         "operationId": "DashboardController_needsAttention",
-        "summary": "Items needing action",
-        "description": "Items needing action: overdue invoices, failed syncs, checks to review.\n\n**Access:** REPORTS:READ (brand from ?brandId)\n**Served by:** the sugrpay API — `apps/sugrpay/src/modules/dashboard/interface/dashboard.controller.ts` (`DashboardController.needsAttention`)",
+        "summary": "Invoices needing action",
+        "description": "Invoices needing action: payments due within 24 hours and drafts left unsent.\n\n**Access:** REPORTS:READ (brand from ?brandId)\n**Served by:** the sugrpay API — `apps/sugrpay/src/modules/dashboard/interface/dashboard.controller.ts` (`DashboardController.needsAttention`)",
         "parameters": [
           {
             "name": "brandId",
@@ -13769,7 +13769,6 @@
           "subject": { "type": "string" },
           "detail": { "type": "string" },
           "invoiceId": { "type": ["string", "null"] },
-          "syncJobId": { "type": ["string", "null"] },
           "occurredAt": { "type": "string", "format": "date-time" }
         },
         "required": [
@@ -13780,14 +13779,10 @@
           "subject",
           "detail",
           "invoiceId",
-          "syncJobId",
           "occurredAt"
         ]
       },
-      "NeedsAttentionKind": {
-        "type": "string",
-        "enum": ["STALE_DRAFT", "DUE_SOON", "SYNC_FAILED", "ZOHO_SYNC_STALE"]
-      },
+      "NeedsAttentionKind": { "type": "string", "enum": ["STALE_DRAFT", "DUE_SOON"] },
       "NeedsAttentionResult": {
         "type": "object",
         "properties": {

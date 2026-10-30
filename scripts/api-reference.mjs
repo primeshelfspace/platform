@@ -155,7 +155,7 @@ export const DESCRIPTIONS = {
   'GET /dashboard/status-breakdown': 'Totals by invoice status.',
   'GET /dashboard/top-overdue-customers': 'Customers with the largest overdue balances.',
   'GET /dashboard/needs-attention':
-    'Items needing action: overdue invoices, failed syncs, checks to review.',
+    'Invoices needing action: payments due within 24 hours and drafts left unsent.',
   'GET /dashboard/recent-activity': 'Latest invoice and payment events.',
   'GET /dashboard/by-brand': 'Headline figures for every brand the user can reach.',
   'GET /dashboard/cross-brand-customers': 'Customers who buy from more than one brand.',
