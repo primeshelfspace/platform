@@ -45,7 +45,7 @@ describeWithDb('company onboarding', () => {
   const prisma = new PlatformPrismaService(env);
   const mail = createFakeMailPort();
   const redis = { acquireGenericRateToken: async () => true } as unknown as RedisService;
-  const sessions = new SessionService(prisma);
+  const sessions = new SessionService(prisma, env);
   const auth = new AuthService(
     prisma,
     sessions,
@@ -56,7 +56,7 @@ describeWithDb('company onboarding', () => {
   const outbox = new PlatformOutbox(prisma, new OutboxDispatcher(new EventBus(), env));
   const merchants = new MerchantService(prisma, outbox);
   const subscriptions = new SubscriptionsService(prisma, outbox);
-  const products = new ProductsService(prisma, outbox, subscriptions, env);
+  const products = new ProductsService(prisma, outbox, subscriptions, sessions, env);
   const owner = new PrismaClient({
     datasources: { db: { url: env.PLATFORM_DIRECT_DATABASE_URL ?? env.PLATFORM_DATABASE_URL } },
   });
@@ -559,7 +559,7 @@ describeWithDb('company onboarding', () => {
       });
     });
 
-    it('sends the user into an enabled product with a short-lived JWT for it', async () => {
+    it('sends the user into an enabled product with a 12-hour JWT for it', async () => {
       const scope = await ready();
       await products.enable(scope, ['INVOICING']);
 
@@ -572,7 +572,8 @@ describeWithDb('company onboarding', () => {
       });
       expect(payload.sub).toBe(scope.userId);
       expect(payload['mid']).toBe(scope.merchantId);
-      expect(payload.exp! - payload.iat!).toBe(15 * 60);
+      expect(payload.exp! - payload.iat!).toBe(12 * 60 * 60);
+      expect(launch.refreshToken).toMatch(/^[0-9a-f]{64}$/);
       expect(typeof payload.jti).toBe('string');
     });
 

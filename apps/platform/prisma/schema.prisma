@@ -215,6 +215,9 @@ model Session {
   lastSeenAt DateTime? @map("last_seen_at")
   sourceIp   String?   @map("source_ip")
   userAgent  String?   @map("user_agent")
+  /// Set for a product session (Product Session story): its token is a
+  /// refresh token, never a bearer token, and the product JWT names this row.
+  product    Product?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

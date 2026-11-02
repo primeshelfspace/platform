@@ -27,6 +27,12 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+/** Product Session: a refresh token for a new product JWT. */
+export const refreshProductSessionSchema = z.object({
+  refreshToken: z.string().trim().min(1, 'refreshToken is required').max(200),
+});
+export type RefreshProductSessionInput = z.infer<typeof refreshProductSessionSchema>;
+
 /** FR-AUTH-005: "I forgot my password." Only an address — proving control of
  * it is what the emailed link is for. */
 export const forgotPasswordSchema = z.object({
