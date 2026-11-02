@@ -15,6 +15,7 @@ import {
 import {
   formatBrandAddress,
   toInvoicePdfSettings,
+  withInvoiceNotes,
   type InvoicePdfSettings,
 } from '../../settings/application/brand-settings.service.js';
 import type { CheckImageUpload } from '../../../common/check-upload.js';
@@ -206,7 +207,7 @@ export class PublicInvoicesService {
       // A brand always gets a settings row at creation (see BrandsService) —
       // this null-handling is the same defensive fallback the fields below
       // already used before invoicePdf existed, not a real steady state.
-      const invoicePdf: InvoicePdfSettings = invoice.brand.settings
+      const brandPdfSettings: InvoicePdfSettings = invoice.brand.settings
         ? toInvoicePdfSettings(invoice.brand.settings, invoice.brand)
         : {
             themeColor: invoice.brand.themeColor,
@@ -221,6 +222,8 @@ export class PublicInvoicesService {
             paymentTerms: 'DUE_ON_RECEIPT',
             notes: 'Thank you for your business. Please contact us with any questions.',
           };
+      // The payment page and its PDF show this invoice's own notes.
+      const invoicePdf = withInvoiceNotes(brandPdfSettings, invoice.notes);
 
       return {
         number: invoice.number,

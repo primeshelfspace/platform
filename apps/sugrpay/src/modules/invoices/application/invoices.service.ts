@@ -41,6 +41,7 @@ import {
   formatBrandAddress,
   parseFrom,
   toInvoicePdfSettings,
+  withInvoiceNotes,
 } from '../../settings/application/brand-settings.service.js';
 import { brandLogoAttachment, LOGO_CID } from '@platform/server';
 import { ENV, type Env } from '@platform/server';
@@ -482,7 +483,7 @@ export class InvoicesService {
     const branding = invoice.brand.settings;
     const accentColor = branding?.accentColor ?? '#171717';
     const currency = toCurrencyCode(invoice.currency);
-    const invoicePdfSettings = branding
+    const brandPdfSettings = branding
       ? toInvoicePdfSettings(branding, invoice.brand)
       : {
           themeColor: invoice.brand.themeColor,
@@ -497,6 +498,7 @@ export class InvoicesService {
           paymentTerms: 'DUE_ON_RECEIPT' as const,
           notes: 'Thank you for your business. Please contact us with any questions.',
         };
+    const invoicePdfSettings = withInvoiceNotes(brandPdfSettings, invoice.notes);
 
     const html = renderInvoicePdfHtml({
       number: invoice.status === 'DRAFT' ? `${invoice.number} (Draft)` : invoice.number,
@@ -512,6 +514,7 @@ export class InvoicesService {
       settings: invoicePdfSettings,
       lines: invoice.lineItems.map((line) => ({
         itemName: line.itemName,
+        description: line.description,
         quantityLabel: formatQuantity(line.quantity),
         rateLabel: formatMinorForDisplay(Number(line.unitPriceMinor), currency),
         amountLabel: formatMinorForDisplay(Number(line.lineTotalMinor), currency),
