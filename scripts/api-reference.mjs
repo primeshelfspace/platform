@@ -68,7 +68,12 @@ export const DESCRIPTIONS = {
   'POST /company/products':
     'Enables the selected products (Company Admin; at least one, no repeats). 409 COMPANY_NOT_REGISTERED / ADD_BRAND_FIRST before those steps. Completes onboarding. continueWith names the product to open straight away when exactly one is enabled.',
   'POST /company/products/:product/continue':
-    'Continue into a product: returns its URL and a 15-minute JWT (HS256; sub user, mid company, aud product). Only for a product enabled for the company (409 PRODUCT_NOT_ENABLED); 409 PRODUCT_NOT_AVAILABLE when the product has no web address yet (HQ until HQ_PUBLIC_URL is set).',
+    'Continue into a product: returns its URL, a 12-hour JWT (HS256; sub user, mid company, aud product, sid session) with expiresAt, and a refresh token (30 days) with refreshExpiresAt. The product sends the JWT as a Bearer token on every platform call. Only for a product enabled for the company (409 PRODUCT_NOT_ENABLED); 409 PRODUCT_NOT_AVAILABLE when the product has no web address yet (HQ until HQ_PUBLIC_URL is set).',
+  // Product Session
+  'GET /product-session/me':
+    "Product Session: who is signed in, from the product's JWT alone (no user or Company id). Returns user (id, name, email), companyId, product, role (COMPANY_ADMIN for the Company Admin, otherwise the user's role in the asking product only) and the JWT's expiresAt. Read fresh each call. 401 for an invalid or expired JWT or a product no longer enabled; 403 PRODUCT_TOKEN_REQUIRED for a platform session.",
+  'POST /product-session/refresh':
+    'Product Session: exchanges the refresh token for a new 12-hour JWT and its expiresAt, without signing in again. 401 SIGN_IN_REQUIRED once the refresh token has expired (sign in through the platform); 401 INVALID_REFRESH_TOKEN for any other refused token (unknown, revoked, product no longer enabled, user suspended).',
   'GET /company/subscriptions': "The company's products and whether each is switched on.",
   'PUT /company/subscriptions/:product':
     'Switches a product on or off for the company (no billing provider yet). Switching one on needs a registered company with a brand, and completes onboarding.',
@@ -252,7 +257,7 @@ export const DESCRIPTIONS = {
 
 export const AREAS = [
   ['Internal (API to API)', (p) => p.startsWith('/internal')],
-  ['Sign-in', (p) => p.startsWith('/auth')],
+  ['Sign-in', (p) => p.startsWith('/auth') || p.startsWith('/product-session')],
   ['Company and onboarding', (p) => p.startsWith('/merchant') || p.startsWith('/company')],
   ['Brands', (p) => /^\/brands(\/:brandId)?(\/logo)?$/.test(p)],
   ['Team', (p) => p.startsWith('/users')],

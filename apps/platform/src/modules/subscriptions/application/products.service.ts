@@ -1,6 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import { ConflictException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { SignJWT } from 'jose';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import { PRODUCTS, PRODUCT_NAMES, type Product, type RequestScope } from '@platform/kernel';
 import { PRODUCT_DESCRIPTIONS } from '@platform/platform-contracts';
 import { ENV, type Env } from '@platform/server';
@@ -13,14 +11,8 @@ import {
   requireCompanyAdmin,
   requireReadyForProducts,
 } from '../../companies/application/merchant.service.js';
+import { SessionService } from '../../auth/application/session.service.js';
 import { SubscriptionsService } from './subscriptions.service.js';
-
-/** How long the JWT carried into a product is good for. The product exchanges
- * or refreshes it (Product Session story); this one only has to get there. */
-export const PRODUCT_TOKEN_TTL_SECONDS = 15 * 60;
-
-/** Who issues the product JWT, as its `iss`. */
-export const PRODUCT_TOKEN_ISSUER = 'platform';
 
 export interface ProductCard {
   readonly product: Product;
@@ -46,8 +38,12 @@ export interface ProductLaunch {
   readonly product: Product;
   /** Where to send the user; the token goes in the URL fragment. */
   readonly url: string;
+  /** The 12-hour JWT the product sends with every platform call. */
   readonly token: string;
   readonly expiresAt: string;
+  /** Gets a new JWT when it expires (POST /product-session/refresh). */
+  readonly refreshToken: string;
+  readonly refreshExpiresAt: string;
 }
 
 /** The top role a Company Admin gets in a product they enable. */
@@ -71,6 +67,7 @@ export class ProductsService {
     private readonly prisma: PlatformPrismaService,
     private readonly outbox: PlatformOutbox,
     private readonly subscriptions: SubscriptionsService,
+    private readonly sessions: SessionService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -112,10 +109,16 @@ export class ProductsService {
 
   /**
    * Continue into a product: a JWT for it, only if it is enabled for the
-   * company. Any user of the company may continue. The token is short-lived
-   * and names the user (`sub`), the company (`mid`) and the product (`aud`).
+   * company. Any user of the company may continue. Starts a product session
+   * (Product Session story): a 12-hour JWT naming the user (`sub`), the
+   * company (`mid`), the product (`aud`) and the session (`sid`), and a
+   * refresh token for the next one.
    */
-  async continueInto(scope: RequestScope, product: Product): Promise<ProductLaunch> {
+  async continueInto(
+    scope: RequestScope,
+    product: Product,
+    context: { sourceIp?: string | null; userAgent?: string | null } = {},
+  ): Promise<ProductLaunch> {
     const enabled = await this.prisma.withScope(scope, (tx) =>
       tx.subscription.findFirst({
         where: { merchantId: scope.merchantId, product, status: 'ACTIVE' },
@@ -132,24 +135,8 @@ export class ProductsService {
     if (!url) {
       throw conflict('PRODUCT_NOT_AVAILABLE', `${PRODUCT_NAMES[product]} isn't available yet`);
     }
-    const secret = this.env.PRODUCT_JWT_SECRET;
-    if (!secret) {
-      throw new ServiceUnavailableException(
-        'product sign-in is not configured (PRODUCT_JWT_SECRET)',
-      );
-    }
-    const issuedAt = Math.floor(Date.now() / 1000);
-    const expiresAt = issuedAt + PRODUCT_TOKEN_TTL_SECONDS;
-    const token = await new SignJWT({ mid: scope.merchantId, role: scope.role })
-      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
-      .setIssuer(PRODUCT_TOKEN_ISSUER)
-      .setAudience(product)
-      .setSubject(scope.userId)
-      .setIssuedAt(issuedAt)
-      .setExpirationTime(expiresAt)
-      .setJti(randomUUID())
-      .sign(new TextEncoder().encode(secret));
-    return { product, url, token, expiresAt: new Date(expiresAt * 1000).toISOString() };
+    const session = await this.sessions.issueProductSession(scope, product, context);
+    return { product, url, ...session };
   }
 
   private urlOf(product: Product): string | null {
