@@ -9,6 +9,7 @@
     { "name": "Internal (API to API)" },
     { "name": "Sign-in" },
     { "name": "Company and onboarding" },
+    { "name": "Product company APIs" },
     { "name": "Brands" },
     { "name": "Team" },
     { "name": "Locations" },
@@ -639,7 +640,10 @@
                     "taxId": { "type": ["string", "null"] },
                     "currency": { "type": "string" },
                     "timezone": { "type": "string" },
-                    "themeColor": { "type": "string" },
+                    "themeColor": {
+                      "type": ["string", "null"],
+                      "description": "Optional: null when the Company Admin set none (DEFAULT_BRAND_THEME_COLOR stands in wherever a colour is needed)."
+                    },
                     "logoKey": { "type": ["string", "null"] },
                     "status": { "$ref": "#/components/schemas/BrandStatus" },
                     "createdAt": { "type": "string", "format": "date-time" },
@@ -890,7 +894,10 @@
                     "taxId": { "type": ["string", "null"] },
                     "currency": { "type": "string" },
                     "timezone": { "type": "string" },
-                    "themeColor": { "type": "string" },
+                    "themeColor": {
+                      "type": ["string", "null"],
+                      "description": "Optional: null when the Company Admin set none (DEFAULT_BRAND_THEME_COLOR stands in wherever a colour is needed)."
+                    },
                     "logoKey": { "type": ["string", "null"] },
                     "status": { "$ref": "#/components/schemas/BrandStatus" },
                     "createdAt": { "type": "string", "format": "date-time" },
@@ -7638,6 +7645,353 @@
         "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
       }
     },
+    "/companies/{companyId}": {
+      "get": {
+        "tags": ["Product company APIs"],
+        "operationId": "CompanyProfileController_get",
+        "summary": "Company Profile",
+        "description": "Company Profile: the Company's details (id, companyName, legalName, taxId, brandStructure, status, contactEmail = the sign-up email) and the Brands this user can access (all for the Company Admin, otherwise only those assigned), each with id, legalName, displayName, currency, timezone, themeColor (null when none set), status and archived. Read-only. 403 NOT_YOUR_COMPANY for any other Company id.\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/company-profile.controller.ts` (`CompanyProfileController.get`)",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CompanyProfile" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/company/brands": {
+      "post": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductBrandsController_add",
+        "summary": "Brand Management (Company Admin)",
+        "description": "Brand Management (Company Admin): adds a Brand. Legal Name, Display Name (unique within the Company, ignoring case and spacing; 409 DISPLAY_NAME_TAKEN), Currency and Timezone required; Theme Color optional. Not limited by the Brand Structure. Returns id, displayName and status (ACTIVE).\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-brands.controller.ts` (`ProductBrandsController.add`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "currency": { "type": "string", "minLength": 1 },
+                  "timezone": { "type": "string" },
+                  "themeColor": {
+                    "anyOf": [
+                      { "type": "string", "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                      { "type": "null" }
+                    ]
+                  }
+                },
+                "required": ["legalName", "displayName", "currency", "timezone"],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AddedBrand" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/company/brands/{brandId}": {
+      "put": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductBrandsController_edit",
+        "summary": "Brand Management (Company Admin)",
+        "description": "Brand Management (Company Admin): edits a Brand under the same rules as adding; keeping its own Display Name is fine. Returns the Brand. 403 for a Brand of another Company.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-brands.controller.ts` (`ProductBrandsController.edit`)",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "currency": { "type": "string", "minLength": 1 },
+                  "timezone": { "type": "string" },
+                  "themeColor": {
+                    "anyOf": [
+                      { "type": "string", "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                      { "type": "null" }
+                    ]
+                  }
+                },
+                "required": ["legalName", "displayName", "currency", "timezone"],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProductBrand" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/company/brands/{brandId}/archive": {
+      "post": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductBrandsController_archive",
+        "summary": "Brand Management (Company Admin)",
+        "description": "Brand Management (Company Admin): marks the Brand archived and returns it. 403 for a Brand of another Company.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-brands.controller.ts` (`ProductBrandsController.archive`)",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProductBrand" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
     "/company/products": {
       "get": {
         "tags": ["Company and onboarding"],
@@ -7839,6 +8193,54 @@
         "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
       }
     },
+    "/company/roles": {
+      "get": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductRolesController_list",
+        "summary": "Role List (Company Admin)",
+        "description": "Role List (Company Admin): the asking product's fixed roles, each with id and name, the same for every Company and without the Company Admin. HQ: Executive, Manager, Associate. Sugrpay: Admin, Brand Admin, Finance User, Sales User, Read Only.\n\n**Access:** USERS:READ\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-roles.controller.ts` (`ProductRolesController.list`)",
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ProductRole" }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
     "/company/subscriptions": {
       "get": {
         "tags": ["Company and onboarding"],
@@ -7924,6 +8326,443 @@
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ProductSubscription" }
               }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/company/users": {
+      "get": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductUsersController_list",
+        "summary": "User List (Company Admin)",
+        "description": "User List (Company Admin): the Company's users, each with id, name, email, phone, role (the asking product's only; COMPANY_ADMIN for the Company Admin), Brands and status (ACTIVE, INVITED or DEACTIVATED). Optional brandId narrows to users assigned to that Brand; the Company Admin is under every Brand. 404 for a Brand of another Company.\n\n**Access:** USERS:READ\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.list`)",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ProductUser" }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      },
+      "post": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductUsersController_add",
+        "summary": "User Management (Company Admin)",
+        "description": "User Management (Company Admin): adds an active user who signs in with the email and password given. Name, email (unique across the platform; 409 EMAIL_TAKEN), phone { country, number } (valid for that country; 400 PHONE_INVALID), password (the platform's rules), role (one of GET /company/roles; 400 ROLE_NOT_AVAILABLE) and at least one Brand of the Company (400 BRAND_NOT_IN_COMPANY), all required.\n\n**Access:** USERS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.add`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "email": { "type": "string", "format": "email", "maxLength": 320 },
+                  "phone": {
+                    "type": "object",
+                    "properties": {
+                      "country": { "type": "string", "pattern": "^[A-Za-z]{2}$" },
+                      "number": { "type": "string", "minLength": 1, "maxLength": 30 }
+                    },
+                    "required": ["country", "number"],
+                    "additionalProperties": true
+                  },
+                  "role": { "type": "string", "minLength": 1, "maxLength": 60 },
+                  "brandIds": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "uuid" },
+                    "minItems": 1,
+                    "maxItems": 500
+                  },
+                  "password": { "type": "string", "minLength": 12, "maxLength": 200 }
+                },
+                "required": ["name", "email", "phone", "role", "brandIds", "password"],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProductUser" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/company/users/{userId}": {
+      "put": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductUsersController_edit",
+        "summary": "User Management (Company Admin)",
+        "description": "User Management (Company Admin): edits a user's details, role and Brands under the same rules as adding, without the password. Sugrpay's role is also the user's platform role. 404 for another Company's user; 409 COMPANY_ADMIN_ACCOUNT for the Company Admin's own account.\n\n**Access:** USERS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.edit`)",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "email": { "type": "string", "format": "email", "maxLength": 320 },
+                  "phone": {
+                    "type": "object",
+                    "properties": {
+                      "country": { "type": "string", "pattern": "^[A-Za-z]{2}$" },
+                      "number": { "type": "string", "minLength": 1, "maxLength": 30 }
+                    },
+                    "required": ["country", "number"],
+                    "additionalProperties": true
+                  },
+                  "role": { "type": "string", "minLength": 1, "maxLength": 60 },
+                  "brandIds": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "uuid" },
+                    "minItems": 1,
+                    "maxItems": 500
+                  }
+                },
+                "required": ["name", "email", "phone", "role", "brandIds"],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProductUser" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/company/users/{userId}/deactivate": {
+      "post": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductUsersController_deactivate",
+        "summary": "User Management (Company Admin)",
+        "description": "User Management (Company Admin): deactivates a user. They cannot sign in, their sessions end, and their records are kept. 403 CANNOT_DEACTIVATE_SELF for the Company Admin's own account.\n\n**Access:** USERS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.deactivate`)",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProductUser" } }
+            }
+          },
+          "400": {
+            "description": "The request is invalid. Validation failures list every field problem.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/Error" }
+                  ]
+                },
+                "example": {
+                  "message": "validation failed",
+                  "issues": [
+                    { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found, or not yours (or a payment link that is no longer valid).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": { "statusCode": 404, "error": "Not Found", "message": "not found" }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }, { "cookieAuth": [] }]
+      }
+    },
+    "/company/users/{userId}/reactivate": {
+      "post": {
+        "tags": ["Product company APIs"],
+        "operationId": "ProductUsersController_reactivate",
+        "summary": "User Management (Company Admin)",
+        "description": "User Management (Company Admin): makes a deactivated user active again; they can sign in again.\n\n**Access:** USERS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.reactivate`)",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ProductUser" } }
             }
           },
           "400": {
@@ -12130,6 +12969,15 @@
       }
     },
     "schemas": {
+      "AddedBrand": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "displayName": { "type": "string" },
+          "status": { "type": "string", "enum": ["ACTIVE", "ARCHIVED"] }
+        },
+        "required": ["id", "displayName", "status"]
+      },
       "AuthenticatedUser": {
         "type": "object",
         "properties": {
@@ -12216,7 +13064,10 @@
           "taxId": { "type": ["string", "null"] },
           "currency": { "type": "string" },
           "timezone": { "type": "string" },
-          "themeColor": { "type": "string" },
+          "themeColor": {
+            "type": ["string", "null"],
+            "description": "Optional: null when the Company Admin set none (DEFAULT_BRAND_THEME_COLOR stands in wherever a colour is needed)."
+          },
           "logoKey": { "type": ["string", "null"] },
           "status": { "$ref": "#/components/schemas/BrandStatus" },
           "createdAt": { "type": "string", "format": "date-time" },
@@ -12338,6 +13189,39 @@
           "invoiceNumber",
           "createdAt"
         ]
+      },
+      "CompanyDetails": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "companyName": { "type": "string" },
+          "legalName": { "type": ["string", "null"] },
+          "taxId": { "type": ["string", "null"] },
+          "brandStructure": { "enum": ["SINGLE", "MULTI", null], "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "CLOSED"] },
+          "contactEmail": { "type": "string", "description": "The company email used at sign-up." }
+        },
+        "required": [
+          "id",
+          "companyName",
+          "legalName",
+          "taxId",
+          "brandStructure",
+          "status",
+          "contactEmail"
+        ]
+      },
+      "CompanyProfile": {
+        "type": "object",
+        "properties": {
+          "company": { "$ref": "#/components/schemas/CompanyDetails" },
+          "brands": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ProductBrand" },
+            "description": "The Brands this user can access: all of them for the Company Admin, otherwise only those assigned to the user."
+          }
+        },
+        "required": ["company", "brands"]
       },
       "CreatedBrandSummary": {
         "type": "object",
@@ -14074,6 +14958,32 @@
           "createdAt"
         ]
       },
+      "ProductBrand": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "legalName": { "type": "string" },
+          "displayName": { "type": "string" },
+          "currency": { "type": "string" },
+          "timezone": { "type": "string" },
+          "themeColor": {
+            "type": ["string", "null"],
+            "description": "Null when none has been set."
+          },
+          "status": { "type": "string", "enum": ["ACTIVE", "ARCHIVED"] },
+          "archived": { "type": "boolean" }
+        },
+        "required": [
+          "id",
+          "legalName",
+          "displayName",
+          "currency",
+          "timezone",
+          "themeColor",
+          "status",
+          "archived"
+        ]
+      },
       "ProductCard": {
         "type": "object",
         "properties": {
@@ -14109,6 +15019,14 @@
         },
         "required": ["product", "url", "token", "expiresAt", "refreshToken", "refreshExpiresAt"]
       },
+      "ProductRole": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "What User Management takes as `role`." },
+          "name": { "type": "string" }
+        },
+        "required": ["id", "name"]
+      },
       "ProductSubscription": {
         "type": "object",
         "properties": {
@@ -14135,6 +15053,37 @@
           "expiresAt": { "type": "string" }
         },
         "required": ["token", "expiresAt"]
+      },
+      "ProductUser": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "phone": {
+            "anyOf": [{ "$ref": "#/components/schemas/ProductUserPhone" }, { "type": "null" }],
+            "description": "Null for accounts made before phones were recorded (e.g. at sign-up)."
+          },
+          "role": {
+            "type": ["string", "null"],
+            "description": "COMPANY_ADMIN for the Company Admin; otherwise the role in the asking product only, or null when they hold none there."
+          },
+          "brands": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "displayName": { "type": "string" },
+                "archived": { "type": "boolean" }
+              },
+              "required": ["id", "displayName", "archived"]
+            },
+            "description": "All of the Company's Brands for the Company Admin; otherwise the Brands assigned to the user."
+          },
+          "status": { "type": "string", "enum": ["ACTIVE", "INVITED", "DEACTIVATED"] }
+        },
+        "required": ["id", "name", "email", "phone", "role", "brands", "status"]
       },
       "ProductUserDetails": {
         "type": "object",
@@ -14165,6 +15114,16 @@
           }
         },
         "required": ["user", "companyId", "product", "role", "expiresAt"]
+      },
+      "ProductUserPhone": {
+        "type": "object",
+        "properties": {
+          "country": { "type": "string", "description": "ISO 3166 alpha-2, e.g. \"US\"." },
+          "countryCode": { "type": "string", "description": "The dialling code, e.g. \"+1\"." },
+          "number": { "type": "string", "description": "The national number, digits only." },
+          "e164": { "type": "string", "description": "The full number, E.164." }
+        },
+        "required": ["country", "countryCode", "number", "e164"]
       },
       "PublicInvoiceView": {
         "type": "object",

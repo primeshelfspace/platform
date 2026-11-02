@@ -416,14 +416,14 @@ describeWithDb('company onboarding', () => {
       });
     });
 
-    it('adds the brand without a theme colour, with the default one', async () => {
+    it('adds the brand without a theme colour, leaving it unset', async () => {
       const { scope } = await signUp();
       await register(scope);
 
       const result = await merchants.addFirstBrand(scope, brand);
 
       const row = await owner.brand.findUniqueOrThrow({ where: { id: result.brand.id } });
-      expect(row.themeColor).toBe('#2D6A6A');
+      expect(row.themeColor).toBeNull();
     });
 
     it('adds one brand whichever brand structure was chosen', async () => {

@@ -168,6 +168,9 @@ model User {
   email        String
   passwordHash String     @map("password_hash")
   name         String
+  /// Entered with its country (User Management): ISO alpha-2, and E.164.
+  phoneCountry String?    @map("phone_country")
+  phoneNumber  String?    @map("phone_number")
   role         Role
   status       UserStatus @default(INVITED)
   totpSecret   String?    @map("totp_secret")
@@ -267,7 +270,9 @@ model Brand {
   taxId          String?       @map("tax_id")
   currency       String        @default("USD")
   timezone       String        @default("America/New_York")
-  themeColor     String        @default("#2D6A6A") @map("theme_color")
+  /// Optional: null when the Company Admin set none (DEFAULT_BRAND_THEME_COLOR
+  /// stands in wherever a colour is needed).
+  themeColor     String?       @map("theme_color")
   logoKey        String?       @map("logo_key")
   status         BrandStatus   @default(ACTIVE)
   createdAt      DateTime      @default(now()) @map("created_at")

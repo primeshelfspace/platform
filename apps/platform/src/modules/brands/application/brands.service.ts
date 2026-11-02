@@ -1,7 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Brand } from '../../database/client.js';
 import type { Scope, StoragePort } from '@platform/kernel';
-import type { BrandInput } from '@platform/platform-contracts';
+import { DEFAULT_BRAND_THEME_COLOR, type BrandInput } from '@platform/platform-contracts';
 import { isPublicScope, storageKeys, STORAGE_PORT } from '@platform/kernel';
 import {
   LOGO_URL_TTL_SECONDS,
@@ -54,7 +54,9 @@ export class BrandsService {
     return Promise.all(brands.map((brand) => this.withLogoUrl(brand)));
   }
 
-  private async withLogoUrl(brand: Brand): Promise<BrandWithLogo> {
+  private async withLogoUrl(stored: Brand): Promise<BrandWithLogo> {
+    // Brand settings always shows a colour; null means none was set.
+    const brand = { ...stored, themeColor: stored.themeColor ?? DEFAULT_BRAND_THEME_COLOR };
     if (!brand.logoKey) return { ...brand, logoUrl: null };
     const logoUrl = await this.storage.getSignedUrl(brand.logoKey, {
       expiresInSeconds: LOGO_URL_TTL_SECONDS,

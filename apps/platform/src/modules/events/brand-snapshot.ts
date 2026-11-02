@@ -1,3 +1,4 @@
+import { DEFAULT_BRAND_THEME_COLOR } from '@platform/platform-contracts';
 import type { Brand, Location, Subscription } from '../database/client.js';
 import type {
   AddressSnapshot,
@@ -22,7 +23,9 @@ export function toBrandSnapshot(brand: Brand): BrandSnapshot {
     taxId: brand.taxId,
     currency: brand.currency,
     timezone: brand.timezone,
-    themeColor: brand.themeColor,
+    // Products always get a colour to brand with; the platform keeps null for
+    // "none set" (Company Profile story).
+    themeColor: brand.themeColor ?? DEFAULT_BRAND_THEME_COLOR,
     logoKey: brand.logoKey,
     status: brand.status,
     createdAt: brand.createdAt.toISOString(),
