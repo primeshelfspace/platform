@@ -20,7 +20,11 @@ import { loadEnv } from '@platform/server';
 import { getEnv } from '@platform/server';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
 import { createPlatformHarness } from '../../testing/platform-harness.test-support.js';
-import { BrandSettingsService } from './brand-settings.service.js';
+import {
+  BrandSettingsService,
+  withInvoiceNotes,
+  type InvoicePdfSettings,
+} from './brand-settings.service.js';
 
 loadEnv();
 const hasDb = Boolean(process.env['INVOICING_DATABASE_URL']);
@@ -208,5 +212,23 @@ describeWithDb('BrandSettingsService', () => {
     if (!foreign) throw new Error('seed data missing a second merchant');
 
     await expect(settings.getEmailReceiptSettings(scope, foreign.id)).rejects.toThrow(/not found/);
+  });
+});
+
+describe('withInvoiceNotes', () => {
+  const brandSettings = {
+    showNotes: false,
+    notes: 'Thank you for your business.',
+  } as InvoicePdfSettings;
+
+  it("shows the invoice's own notes in place of the brand's default note, even when that is hidden", () => {
+    const settings = withInvoiceNotes(brandSettings, '  Deliver to the back door.  ');
+    expect(settings.notes).toBe('Deliver to the back door.');
+    expect(settings.showNotes).toBe(true);
+  });
+
+  it("keeps the brand's settings when the invoice has no notes of its own", () => {
+    expect(withInvoiceNotes(brandSettings, null)).toBe(brandSettings);
+    expect(withInvoiceNotes(brandSettings, '   ')).toBe(brandSettings);
   });
 });

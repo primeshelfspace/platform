@@ -527,6 +527,20 @@ export function toInvoicePdfSettings(settings: BrandSettings, brand: Brand): Inv
   };
 }
 
+/**
+ * The settings one invoice is shown with: the invoice's own Notes (typed on
+ * the invoice, or pulled from Zoho) replace the brand's default note, and are
+ * shown even when the brand hides its default note — they were written for
+ * this customer. Without notes of its own, the brand's settings stand.
+ */
+export function withInvoiceNotes(
+  settings: InvoicePdfSettings,
+  invoiceNotes: string | null | undefined,
+): InvoicePdfSettings {
+  const notes = invoiceNotes?.trim();
+  return notes ? { ...settings, notes, showNotes: true } : settings;
+}
+
 /** Brand.mailingAddress is a loosely-typed Json column (see BrandsService) —
  * this reads it defensively rather than assuming the CustomerAddress shape
  * always holds, since nothing enforces that at the database level. Exported

@@ -48,6 +48,8 @@ export interface InvoicePdfHtmlInput {
   };
   readonly lines: ReadonlyArray<{
     readonly itemName: string;
+    /** Shown under the item name when set. */
+    readonly description?: string | null;
     /** Already formatted for display (e.g. "20"), same convention as the
      * admin preview's InvoicePdfPreviewInvoice.lineItems. */
     readonly quantityLabel: string;
@@ -151,7 +153,11 @@ function itemsTable(input: InvoicePdfHtmlInput): string {
     .map(
       (line, index) => `<tr>
           <td>${index + 1}</td>
-          <td>${escapeHtml(line.itemName)}</td>
+          <td>${escapeHtml(line.itemName)}${
+            line.description
+              ? `<div class="muted" style="margin-top:2px;font-size:12px;white-space:pre-line;">${escapeHtml(line.description)}</div>`
+              : ''
+          }</td>
           <td class="muted">${escapeHtml(line.quantityLabel)}</td>
           <td class="muted">${escapeHtml(line.rateLabel)}</td>
           <td>${escapeHtml(line.amountLabel)}</td>

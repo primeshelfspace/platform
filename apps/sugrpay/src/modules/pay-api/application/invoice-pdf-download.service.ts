@@ -41,6 +41,7 @@ export class InvoicePdfDownloadService {
       settings: view.invoicePdf,
       lines: view.lines.map((line) => ({
         itemName: line.itemName,
+        description: line.description,
         quantityLabel: line.quantity,
         rateLabel: formatMinorForDisplay(line.unitPriceMinor, currency),
         amountLabel: formatMinorForDisplay(line.lineTotalMinor, currency),

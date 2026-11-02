@@ -177,4 +177,16 @@ describe('renderInvoicePdfHtml', () => {
     expect(html).not.toContain('<Ltd>');
     expect(html).not.toContain('"Fixtures"');
   });
+
+  it("shows a line's description under its item name, escaped, and nothing when it has none", () => {
+    const html = renderInvoicePdfHtml({
+      ...base,
+      lines: [
+        { ...base.lines[0]!, description: 'Pre-seasoned <10" skillet> & lid' },
+        base.lines[1]!,
+      ],
+    });
+    expect(html).toContain('Pre-seasoned &lt;10&quot; skillet&gt; &amp; lid');
+    expect(renderInvoicePdfHtml(base)).not.toContain('margin-top:2px;font-size:12px');
+  });
 });
