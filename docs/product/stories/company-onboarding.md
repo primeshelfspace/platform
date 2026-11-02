@@ -109,7 +109,7 @@ COMPANY_ALREADY_REGISTERED` and is left unchanged.
 | `displayName` | required; 1–120 characters, trimmed                                                                         |
 | `currency`    | required; one of the supported currencies (USD, CAD, EUR, GBP, PKR)                                         |
 | `timezone`    | required; a real IANA time zone (e.g. `America/New_York`), checked against the runtime's time zone database |
-| `themeColor`  | optional; a hex colour (`#2D6A6A` or `2D6A6A`); the default colour if left out                              |
+| `themeColor`  | optional; a hex colour (`#2D6A6A` or `2D6A6A`); none if left out (products show their default)              |
 
 - **Company not registered:** `409 COMPANY_NOT_REGISTERED`.
 - **One brand in this step:** a company that already has a brand answers `409

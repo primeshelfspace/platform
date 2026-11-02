@@ -349,3 +349,43 @@ export const userListQuerySchema = paginationSchema.extend({
   status: userStatusSchema.optional(),
 });
 export type UserListQuery = z.infer<typeof userListQuerySchema>;
+
+// --- Product company APIs (User Management) --------------------------------
+
+/** A phone entered with its country: ISO 3166 alpha-2 (e.g. "US") and the
+ * number as typed. The API checks the number is valid for that country. */
+export const countryPhoneSchema = z.object({
+  country: z
+    .string({ required_error: 'country is required' })
+    .trim()
+    .regex(/^[A-Za-z]{2}$/, 'country must be a 2-letter country code, e.g. US')
+    .transform((value) => value.toUpperCase()),
+  number: z
+    .string({ required_error: 'phone number is required' })
+    .trim()
+    .min(1, 'phone number is required')
+    .max(30),
+});
+
+const productUserFields = {
+  name: z.string({ required_error: 'name is required' }).trim().min(1, 'name is required').max(120),
+  email: emailSchema,
+  phone: countryPhoneSchema,
+  role: z.string({ required_error: 'role is required' }).trim().min(1, 'role is required').max(60),
+  brandIds: z
+    .array(idSchema, { required_error: 'choose at least one Brand' })
+    .min(1, 'choose at least one Brand')
+    .max(500),
+};
+
+/** Add a user from a product: every field is required. */
+export const productUserSchema = z.object({ ...productUserFields, password: passwordSchema });
+export type ProductUserInput = z.infer<typeof productUserSchema>;
+
+/** Edit a user: the same rules as adding, without the password. */
+export const productUserEditSchema = z.object(productUserFields);
+export type ProductUserEditInput = z.infer<typeof productUserEditSchema>;
+
+/** The user list, optionally narrowed to one Brand. */
+export const productUserListQuerySchema = z.object({ brandId: idSchema.optional() });
+export type ProductUserListQuery = z.infer<typeof productUserListQuerySchema>;

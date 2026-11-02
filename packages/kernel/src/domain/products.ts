@@ -37,3 +37,25 @@ export function isProduct(value: unknown): value is Product {
 export function isProductRole(product: Product, role: unknown): boolean {
   return typeof role === 'string' && (PRODUCT_ROLES[product] as readonly string[]).includes(role);
 }
+
+/** How each product's roles are named to people. */
+export const PRODUCT_ROLE_NAMES: { readonly [P in Product]: Record<string, string> } = {
+  INVOICING: {
+    MERCHANT_OWNER: 'Owner',
+    MERCHANT_ADMIN: 'Admin',
+    BRAND_ADMIN: 'Brand Admin',
+    FINANCE_USER: 'Finance User',
+    SALES_USER: 'Sales User',
+    READ_ONLY: 'Read Only',
+  },
+  HQ: { EXECUTIVE: 'Executive', MANAGER: 'Manager', ASSOCIATE: 'Associate' },
+};
+
+/**
+ * The roles a Company Admin can give a user in a product (Role Management —
+ * Role List): the product's fixed roles, the same for every company, without
+ * the Company Admin's own company-level access (Sugrpay's MERCHANT_OWNER).
+ */
+export function assignableProductRoles(product: Product): readonly string[] {
+  return PRODUCT_ROLES[product].filter((role) => role !== 'MERCHANT_OWNER');
+}
