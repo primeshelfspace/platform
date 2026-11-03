@@ -9,7 +9,10 @@ import {
   storeLogo,
   type LogoUpload,
 } from '@platform/server';
-import { PlatformPrismaService } from '../../database/platform-prisma.service.js';
+import {
+  PlatformPrismaService,
+  type ScopedClient,
+} from '../../database/platform-prisma.service.js';
 import { PlatformOutbox } from '../../events/platform-outbox.js';
 
 /** The brand record as this feature returns it. */
@@ -134,6 +137,29 @@ export class BrandsService {
       timezone: input.timezone,
       themeColor: input.themeColor,
     });
+  }
+
+  /**
+   * Announces every brand again (platform.brand.updated), so a product that
+   * keeps a copy and joined late (HQ, when its database is first set up)
+   * gets all of them. Harmless to products that already have them: each
+   * applies a snapshot only when it is not older than its own copy. Returns
+   * how many brands were announced.
+   */
+  async republishAll(): Promise<number> {
+    const count = await this.prisma.withoutScope(
+      "announcing every company's brands again for a product's copy",
+      (client) =>
+        client.$transaction(async (tx) => {
+          const brands = await tx.brand.findMany({ orderBy: { createdAt: 'asc' } });
+          for (const brand of brands) {
+            await this.outbox.recordBrand(tx as unknown as ScopedClient, 'updated', brand);
+          }
+          return brands.length;
+        }),
+    );
+    await this.outbox.flush();
+    return count;
   }
 
   /**

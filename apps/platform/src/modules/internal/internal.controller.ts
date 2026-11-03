@@ -101,6 +101,18 @@ export class InternalController {
     return { ok: true };
   }
 
+  /**
+   * Announces every brand again, for a product joining late (HQ's first
+   * setup: deploy/production/add-hq-database.sh). Products skip what they
+   * already have.
+   */
+  @Post('brands/republish')
+  @InternalOnly()
+  @HttpCode(200)
+  async republishBrands(): Promise<{ brands: number }> {
+    return { brands: await this.brands.republishAll() };
+  }
+
   /** The platform's append-only audit log, shared by every product. */
   @Post('audit')
   @InternalOnly()
