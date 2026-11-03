@@ -1,0 +1,3121 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "HQ API",
+    "version": "0.1.0",
+    "description": "Every API the **HQ** product uses, in the order you meet them: signing up and onboarding in Accounts, the Product Session, then the Company APIs HQ calls with its JWT. Each operation has the story it comes from, when to call it, a request and response example, and every error it can return with its `code`.\n\nThis page is generated from the code (`pnpm docs:api`), like the main reference at [/docs](/docs), so it always matches what the API does. The design notes are in the repository: [product-session.md](https://github.com/primeshelfspace/platform/blob/main/docs/product/stories/product-session.md) and [product-company-apis.md](https://github.com/primeshelfspace/platform/blob/main/docs/product/stories/product-company-apis.md).\n\n## The flow\n\n1. **Accounts** (group 1). The person signs up (`POST /auth/register`) or signs in (`POST /auth/login`) and gets an **Accounts session token**. Onboarding, in order:\n   - Register Your Company;\n   - Add Your Brand;\n   - Select Your Products, enabling HQ.\n2. **Continue into HQ** (`POST /company/products/HQ/continue`). This returns HQ's address, a **JWT** (12 hours) and a **refresh token** (30 days). The browser goes to `https://<hq>#token=<JWT>&refreshToken=<refresh token>`.\n3. **HQ starts.** It reads both tokens from the URL fragment, keeps them in local storage and clears the fragment. Then:\n   - `GET /product-session/me` gives the user, `companyId` and role;\n   - `GET /companies/{companyId}` gives the Company and the user's Brands.\n4. **HQ works.** Every call sends `Authorization: Bearer <JWT>`. The Company Admin manages Brands, users and roles (groups 4–6).\n5. **When the JWT expires**, `POST /product-session/refresh` returns a new one. When the refresh token has expired too (`401 SIGN_IN_REQUIRED`), the user signs in again through Accounts.\n\n## Trying it on this page\n\n1. `POST /auth/login` (Try it out) returns `token`. Click **Authorize**, paste it under **accountsSession**, and close.\n2. `POST /company/products/{product}/continue` with `product` = `HQ` returns the HQ `token`. Paste it under **productJwt** in **Authorize**.\n3. Every HQ call on this page now sends the JWT.\n\nUntil HQ has a web address on the server (`HQ_PUBLIC_URL`), Continue into HQ answers `409 PRODUCT_NOT_AVAILABLE`. To try groups 2–6 before then, continue into `INVOICING` instead: the same APIs answer, with Sugrpay's roles in place of HQ's.\n\n## Two tokens\n\n| Token                     | Comes from                                        | Used for                             | Lasts    |\n| ------------------------- | ------------------------------------------------- | ------------------------------------ | -------- |\n| **Accounts session**      | `POST /auth/login`, `POST /auth/register`         | Group 1 (onboarding, Continue)       | 12 hours |\n| **HQ JWT** (`productJwt`) | Continue into HQ, `POST /product-session/refresh` | Groups 2–6                           | 12 hours |\n| **Refresh token**         | Continue into HQ                                  | `POST /product-session/refresh` only | 30 days  |\n\n- The JWT names the user, the Company and the product, so HQ never sends a user ID or a Company ID. Company Profile is the exception: it takes the Company ID and checks it.\n- The platform refuses a JWT that is invalid or expired, whose session has ended, or for a product the Company no longer has enabled.\n- The refresh token is never accepted as a Bearer token.\n- An Accounts session token on an HQ endpoint gets `403 PRODUCT_TOKEN_REQUIRED`.\n\n## Who may do what\n\n- **Company Admin:** the account that signed the Company up. It has company-level access, so all of the Company's Brands are its automatically, and it shows as role `COMPANY_ADMIN`. Only the Company Admin manages Brands and users and reads the user and role lists.\n- **Everyone else:** they hold one **HQ role** (`EXECUTIVE`, `MANAGER` or `ASSOCIATE`) and see only the Brands **assigned** to them. Their Sugrpay role, if any, is never returned to HQ.\n- **Isolation:** a Company never sees or changes another Company's data. A Brand or user of another Company is refused (`403` or `404`), and nothing about it is returned.\n\n## Errors\n\n- Errors are `{ statusCode, error, message }`. Many also carry a `code`, listed on each operation. Branch on `code`, not on `message`.\n- Validation errors are `400 { message: \"validation failed\", issues: [{ path, message, code }] }`, one issue per field problem. Show them next to their fields.\n- Field errors the API finds against its data (`EMAIL_TAKEN`, `PHONE_INVALID`, `ROLE_NOT_AVAILABLE`, `BRAND_NOT_IN_COMPANY`, `DISPLAY_NAME_TAKEN`) carry the same `issues` list, naming the field.\n\n| Status | Meaning                                                                              |\n| ------ | ------------------------------------------------------------------------------------ |\n| `400`  | The request is invalid (see `issues`).                                               |\n| `401`  | No valid token. For the JWT: refresh, then retry once; else sign in again.           |\n| `403`  | Signed in, but not allowed: not the Company Admin, wrong token, or not your Company. |\n| `404`  | Not found, or not yours.                                                             |\n| `409`  | Conflicts with existing data (a name or email taken, a step done or not done yet).   |\n| `429`  | Too many requests: wait and retry.                                                   |\n\n## Conventions\n\n- **IDs** are UUIDs. **Dates** are ISO 8601, UTC.\n- **Currency** is an ISO 4217 code (`USD`), and a **timezone** is an IANA name (`America/New_York`).\n- **Colors** are `#RRGGBB`. A **phone** is `{ country: \"US\", number }`, returned with its dialling code and E.164 form.\n- **Lists** are returned whole. Ask again whenever you need fresh data: every answer reflects the latest roles, Brands and users.\n\n## Coming next\n\nHQ's own APIs will be added to this page as they are built, from their stories:\n\n- Locations (stores and warehouses);\n- the product catalog;\n- stock;\n- purchase orders and receiving;\n- transfers;\n- sales-channel sync."
+  },
+  "tags": [
+    {
+      "name": "1. Accounts: sign up and onboarding",
+      "description": "Before HQ: the Accounts web app signs the person up, registers the Company, adds its first Brand and enables HQ, then sends the user into HQ with a JWT. These calls use the **Accounts session token** (`accountsSession`), not the HQ JWT. Stories 1–4."
+    },
+    {
+      "name": "2. Product Session",
+      "description": "HQ arrives with a 12-hour JWT and a refresh token. Ask who is signed in, and refresh the JWT when it expires. Story 5."
+    },
+    {
+      "name": "3. Company Profile",
+      "description": "The Company's details and the Brands the user can access. Story 6."
+    },
+    {
+      "name": "4. Brand Management",
+      "description": "The Company Admin adds, edits and archives Brands from HQ. Story 7."
+    },
+    {
+      "name": "5. User Management",
+      "description": "The Company Admin lists, adds, edits, deactivates and reactivates the Company's users. Stories 8 and 9."
+    },
+    {
+      "name": "6. Role List",
+      "description": "HQ's roles, for choosing one when adding or editing a user. Story 10."
+    },
+    { "name": "7. Service", "description": "Whether the API is up." }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "AuthController_register",
+        "summary": "Sign Up with a company email and a password (12+ characters)",
+        "description": "**Story:** Sign Up, Sign In, Forgot Password\n\nCreates the account with a **company email** (not a personal provider such as Gmail) and a password of at least 12 characters. The person becomes the **Company Admin** of a new Company.\n\nReturns an **Accounts session token** (12 hours) and `nextStep: REGISTER_COMPANY`. Use the token as `accountsSession` for the rest of onboarding.\n\n**Authorization:** none\n\n---\n\nSign Up with a company email and a password (12+ characters). Free email providers are refused; one account per email across every company (409 EMAIL_TAKEN). Creates the company with the person as its Company Admin, signs them in (token, as login) and returns nextStep REGISTER_COMPANY. No product is enabled yet.\n\n**Access:** public\n**Served by:** the platform API — `apps/platform/src/modules/auth/interface/auth.controller.ts` (`AuthController.register`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string", "minLength": 1 },
+                  "password": { "type": "string", "minLength": 1 }
+                },
+                "required": ["email", "password"],
+                "additionalProperties": true
+              },
+              "example": { "email": "dana@acmecoffee.com", "password": "a long enough password" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": { "type": "string" },
+                    "expiresAt": { "type": "string" },
+                    "user": { "$ref": "#/components/schemas/AuthenticatedUser" },
+                    "nextStep": { "type": "string", "const": "REGISTER_COMPANY" }
+                  },
+                  "required": ["token", "expiresAt", "user", "nextStep"]
+                },
+                "example": {
+                  "token": "a3f9c1e7b5d2049e8f6a1c3b5d7e9f0a2c4e6b8d0f1a3c5e7b9d1f3a5c7e9b0d",
+                  "expiresAt": "2026-11-04T02:00:00.000Z",
+                  "user": {
+                    "id": "15b43278-6e25-46f5-956e-b620577f484b",
+                    "merchantId": "7876d1ee-36c2-4e64-a583-9ff50657f8b1",
+                    "email": "dana@acmecoffee.com",
+                    "name": "dana",
+                    "role": "MERCHANT_OWNER",
+                    "mustResetPassword": false
+                  },
+                  "nextStep": "REGISTER_COMPANY"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Email missing, not an email, or from a personal provider; password shorter than 12 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "Email missing, not an email, or from a personal provider; password shorter than 12 characters.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`EMAIL_TAKEN`**: An account (in any Company) already uses this email, in any case.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "EMAIL_TAKEN": {
+                    "summary": "EMAIL_TAKEN: An account (in any Company) already uses this email, in any case.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "an account with this email address already exists",
+                      "code": "EMAIL_TAKEN"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 429,
+                  "error": "Too Many Requests",
+                  "message": "too many requests"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "AuthController_login",
+        "summary": "Signs in with email and password",
+        "description": "**Story:** Sign Up, Sign In, Forgot Password\n\nSigns in with email and password. Returns an **Accounts session token** (12 hours).\n\nThen call `GET /merchant/onboarding`: when `nextStep` is not `SELECT_PRODUCTS` with onboarding complete, the user finishes onboarding first.\n\n**Lockout:** 5 wrong passwords in a row lock the account for 2 hours, even against the right password. Every failure answers the same, so it never tells whether the email exists.\n\n**Authorization:** none\n\n---\n\nSigns in with email and password. Returns the session token (also set as a cookie) and its expiry. Locks the account after 5 failures in 15 minutes.\n\n**Access:** public\n**Served by:** the platform API — `apps/platform/src/modules/auth/interface/auth.controller.ts` (`AuthController.login`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string", "format": "email", "maxLength": 320 },
+                  "password": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "totp": { "type": "string", "pattern": "^\\d{6}$" }
+                },
+                "required": ["email", "password"],
+                "additionalProperties": true
+              },
+              "example": { "email": "dana@acmecoffee.com", "password": "a long enough password" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": { "type": "string" },
+                    "expiresAt": { "type": "string" },
+                    "user": { "$ref": "#/components/schemas/AuthenticatedUser" }
+                  },
+                  "required": ["token", "expiresAt", "user"]
+                },
+                "example": {
+                  "token": "a3f9c1e7b5d2049e8f6a1c3b5d7e9f0a2c4e6b8d0f1a3c5e7b9d1f3a5c7e9b0d",
+                  "expiresAt": "2026-11-04T02:00:00.000Z",
+                  "user": {
+                    "id": "15b43278-6e25-46f5-956e-b620577f484b",
+                    "merchantId": "7876d1ee-36c2-4e64-a583-9ff50657f8b1",
+                    "email": "dana@acmecoffee.com",
+                    "name": "dana",
+                    "role": "MERCHANT_OWNER",
+                    "mustResetPassword": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong email or password, a locked account, or a deactivated user (all answer the same).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "Wrong email or password, a locked account, or a deactivated user (all answer the same).",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "invalid email or password"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 429,
+                  "error": "Too Many Requests",
+                  "message": "too many requests"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/forgot-password": {
+      "post": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "AuthController_forgotPassword",
+        "summary": "Emails a password-reset link",
+        "description": "**Story:** Sign Up, Sign In, Forgot Password\n\nEmails a single-use link to set a new password. Always answers `202 { ok: true }`, whether or not the email has an account, so it cannot be used to find accounts.\n\n**Authorization:** none\n\n---\n\nEmails a password-reset link. Always answers the same way, so it does not reveal which emails exist.\n\n**Access:** public\n**Served by:** the platform API — `apps/platform/src/modules/auth/interface/auth.controller.ts` (`AuthController.forgotPassword`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string", "format": "email", "maxLength": 320 }
+                },
+                "required": ["email"],
+                "additionalProperties": true
+              },
+              "example": { "email": "dana@acmecoffee.com" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "ok": { "type": "boolean", "const": true } },
+                  "required": ["ok"]
+                },
+                "example": { "ok": true }
+              }
+            }
+          },
+          "400": {
+            "description": "Not an email address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "Not an email address.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 429,
+                  "error": "Too Many Requests",
+                  "message": "too many requests"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/auth/set-password/token": {
+      "post": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "AuthController_setPasswordWithToken",
+        "summary": "Sets a password from an emailed link (sign-up, invitation or reset) and signs the user in",
+        "description": "**Story:** Sign Up, Sign In, Forgot Password\n\nSets a new password with the token from the emailed link and signs the user in. The link works once; the old password stops working.\n\n**Authorization:** none\n\n---\n\nSets a password from an emailed link (sign-up, invitation or reset) and signs the user in.\n\n**Access:** public\n**Served by:** the platform API — `apps/platform/src/modules/auth/interface/auth.controller.ts` (`AuthController.setPasswordWithToken`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                  "newPassword": { "type": "string", "minLength": 12, "maxLength": 200 }
+                },
+                "required": ["token", "newPassword"],
+                "additionalProperties": true
+              },
+              "example": {
+                "token": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+                "newPassword": "a brand new long password"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": { "type": "string" },
+                    "expiresAt": { "type": "string" },
+                    "user": { "$ref": "#/components/schemas/AuthenticatedUser" }
+                  },
+                  "required": ["token", "expiresAt", "user"]
+                },
+                "example": {
+                  "token": "a3f9c1e7b5d2049e8f6a1c3b5d7e9f0a2c4e6b8d0f1a3c5e7b9d1f3a5c7e9b0d",
+                  "expiresAt": "2026-11-04T02:00:00.000Z",
+                  "user": {
+                    "id": "15b43278-6e25-46f5-956e-b620577f484b",
+                    "merchantId": "7876d1ee-36c2-4e64-a583-9ff50657f8b1",
+                    "email": "dana@acmecoffee.com",
+                    "name": "dana",
+                    "role": "MERCHANT_OWNER",
+                    "mustResetPassword": false
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "New password shorter than 12 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "New password shorter than 12 characters.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The link was used, expired or replaced.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "The link was used, expired or replaced.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "this link is no longer valid"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 429,
+                  "error": "Too Many Requests",
+                  "message": "too many requests"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/merchant/onboarding": {
+      "get": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "MerchantController_getOnboardingState",
+        "summary": "Where onboarding stands",
+        "description": "**Story:** Sign Up, Sign In, Forgot Password\n\nWhere onboarding stands, worked out from the data: `REGISTER_COMPANY` → `ADD_BRAND` → `SELECT_PRODUCTS`. Send the user to that step after signing in.\n\n**Authorization:** the Accounts session token, `Authorization: Bearer <token>` (**accountsSession**)\n\n---\n\nWhere onboarding stands: nextStep (REGISTER_COMPANY, ADD_BRAND or SELECT_PRODUCTS), worked out from the data; the registered company; whether it has brands and has completed onboarding. Signing in goes to nextStep.\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.getOnboardingState`)",
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MerchantOnboardingState" },
+                "example": {
+                  "nextStep": "ADD_BRAND",
+                  "onboardingComplete": false,
+                  "company": {
+                    "companyName": "Acme Coffee Group",
+                    "legalName": "Acme Coffee Group LLC",
+                    "taxId": "12-3456789",
+                    "contactEmail": "dana@acmecoffee.com",
+                    "brandStructure": "MULTI",
+                    "registeredAt": "2026-11-03T01:30:00.000Z"
+                  },
+                  "hasBrands": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No Accounts session token, or it expired (12 hours) or was signed out.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No Accounts session token, or it expired (12 hours) or was signed out.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "accountsSession": [] }]
+      }
+    },
+    "/merchant/register-company": {
+      "post": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "MerchantController_registerCompany",
+        "summary": "Register Your Company (Company Admin)",
+        "description": "**Story:** Register Your Company\n\nCompany Admin only. Company Name (unique across all Companies, ignoring case and spacing), Legal Name, Tax ID and Brand Structure (`SINGLE` or `MULTI`), all required. Done once. The Company's contact email is the sign-up email.\n\nThe Brand Structure does not limit how many Brands the Company can have later.\n\n**Authorization:** the Accounts session token, `Authorization: Bearer <token>` (**accountsSession**)\n\n---\n\nRegister Your Company (Company Admin): Company Name (unique across companies, ignoring case and spacing; 409 COMPANY_NAME_TAKEN), Legal Name, Tax ID and Brand Structure, all required. Once per company (409 COMPANY_ALREADY_REGISTERED). The contact email is the sign-up email. Returns nextStep ADD_BRAND.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.registerCompany`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "companyName": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "taxId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9 ./-]*$"
+                  },
+                  "brandStructure": { "type": "string", "enum": ["SINGLE", "MULTI"] }
+                },
+                "required": ["companyName", "legalName", "taxId", "brandStructure"],
+                "additionalProperties": true
+              },
+              "example": {
+                "companyName": "Acme Coffee Group",
+                "legalName": "Acme Coffee Group LLC",
+                "taxId": "12-3456789",
+                "brandStructure": "MULTI"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nextStep": {
+                      "type": "string",
+                      "enum": ["REGISTER_COMPANY", "ADD_BRAND", "SELECT_PRODUCTS"]
+                    }
+                  },
+                  "required": ["nextStep"]
+                },
+                "example": { "nextStep": "ADD_BRAND" }
+              }
+            }
+          },
+          "400": {
+            "description": "A field missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "A field missing or invalid.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No Accounts session token, or it expired (12 hours) or was signed out.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No Accounts session token, or it expired (12 hours) or was signed out.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`COMPANY_NAME_TAKEN`**: Another Company has this name.\n\n**`COMPANY_ALREADY_REGISTERED`**: Register Your Company was already done.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "COMPANY_NAME_TAKEN": {
+                    "summary": "COMPANY_NAME_TAKEN: Another Company has this name.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "a company with this name is already registered",
+                      "code": "COMPANY_NAME_TAKEN"
+                    }
+                  },
+                  "COMPANY_ALREADY_REGISTERED": {
+                    "summary": "COMPANY_ALREADY_REGISTERED: Register Your Company was already done.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "this company is already registered",
+                      "code": "COMPANY_ALREADY_REGISTERED"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "accountsSession": [] }]
+      }
+    },
+    "/merchant/first-brand": {
+      "post": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "MerchantController_addFirstBrand",
+        "summary": "Add Your Brand (Company Admin)",
+        "description": "**Story:** Add Your Brand\n\nCompany Admin only. The first Brand: Legal Name, Display Name, Currency (e.g. `USD`) and an IANA Timezone (e.g. `America/New_York`) required; Theme Color optional. Later Brands are added from HQ with `POST /company/brands`.\n\n**Authorization:** the Accounts session token, `Authorization: Bearer <token>` (**accountsSession**)\n\n---\n\nAdd Your Brand (Company Admin): the company's first brand, active. Legal Name, Display Name, Currency and a valid IANA Timezone are required; Theme Color optional. 409 COMPANY_NOT_REGISTERED before Register Your Company; 409 BRAND_ALREADY_ADDED if a brand exists. Returns nextStep SELECT_PRODUCTS.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/companies/interface/merchant.controller.ts` (`MerchantController.addFirstBrand`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "currency": { "type": "string", "minLength": 1 },
+                  "timezone": { "type": "string" },
+                  "themeColor": {
+                    "anyOf": [
+                      { "type": "string", "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                      { "type": "null" }
+                    ]
+                  }
+                },
+                "required": ["legalName", "displayName", "currency", "timezone"],
+                "additionalProperties": true
+              },
+              "example": {
+                "legalName": "Acme Coffee LLC",
+                "displayName": "Acme Coffee",
+                "currency": "USD",
+                "timezone": "America/New_York",
+                "themeColor": "#2D6A6A"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "brand": { "$ref": "#/components/schemas/CreatedBrandSummary" },
+                    "nextStep": {
+                      "type": "string",
+                      "enum": ["REGISTER_COMPANY", "ADD_BRAND", "SELECT_PRODUCTS"]
+                    }
+                  },
+                  "required": ["brand", "nextStep"]
+                },
+                "example": {
+                  "brand": {
+                    "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                    "displayName": "Acme Coffee"
+                  },
+                  "nextStep": "SELECT_PRODUCTS"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A required field missing, or an invalid currency, timezone or colour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "A required field missing, or an invalid currency, timezone or colour.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No Accounts session token, or it expired (12 hours) or was signed out.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No Accounts session token, or it expired (12 hours) or was signed out.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`COMPANY_NOT_REGISTERED`**: Register Your Company is not done yet.\n\n**`BRAND_ALREADY_ADDED`**: The Company already has a Brand.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "COMPANY_NOT_REGISTERED": {
+                    "summary": "COMPANY_NOT_REGISTERED: Register Your Company is not done yet.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "register the company before adding a brand",
+                      "code": "COMPANY_NOT_REGISTERED"
+                    }
+                  },
+                  "BRAND_ALREADY_ADDED": {
+                    "summary": "BRAND_ALREADY_ADDED: The Company already has a Brand.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "this company already has a brand; add more from Brand Management",
+                      "code": "BRAND_ALREADY_ADDED"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "accountsSession": [] }]
+      }
+    },
+    "/company/products": {
+      "get": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "ProductsController_list",
+        "summary": "Select Your Products",
+        "description": "**Story:** Select Your Products & Redirect\n\nThe products (Sugrpay and HQ): whether each is enabled, and whether this user may enable it.\n\n**Authorization:** the Accounts session token, `Authorization: Bearer <token>` (**accountsSession**)\n\n---\n\nSelect Your Products: the fixed list (Sugrpay, HQ) with name, description, whether each is enabled and whether this user may enable it; and whether onboarding is complete.\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/subscriptions/interface/products.controller.ts` (`ProductsController.list`)",
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductsView" },
+                "example": {
+                  "products": [
+                    {
+                      "product": "INVOICING",
+                      "name": "Sugrpay",
+                      "description": "Invoices, payments and collections for every brand.",
+                      "enabled": false,
+                      "canEnable": true
+                    },
+                    {
+                      "product": "HQ",
+                      "name": "HQ",
+                      "description": "Run your stores and warehouses: inventory, purchasing and team, in one place.",
+                      "enabled": true,
+                      "canEnable": false
+                    }
+                  ],
+                  "onboardingComplete": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No Accounts session token, or it expired (12 hours) or was signed out.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No Accounts session token, or it expired (12 hours) or was signed out.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "accountsSession": [] }]
+      },
+      "post": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "ProductsController_enable",
+        "summary": "Enables the selected products (Company Admin; at least one, no repeats)",
+        "description": "**Story:** Select Your Products & Redirect\n\nCompany Admin only. Enables the products sent (at least one; others untouched) and completes onboarding. The Company Admin gets HQ's top role, `EXECUTIVE`.\n\n`continueWith` names the product to open straight away when exactly one is enabled; then call Continue for it.\n\n**Authorization:** the Accounts session token, `Authorization: Bearer <token>` (**accountsSession**)\n\n---\n\nEnables the selected products (Company Admin; at least one, no repeats). 409 COMPANY_NOT_REGISTERED / ADD_BRAND_FIRST before those steps. Completes onboarding. continueWith names the product to open straight away when exactly one is enabled.\n\n**Access:** PLAN_AND_BILLING:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/subscriptions/interface/products.controller.ts` (`ProductsController.enable`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "products": {
+                    "type": "array",
+                    "items": { "type": "string", "enum": ["INVOICING", "HQ"] },
+                    "minItems": 1
+                  }
+                },
+                "required": ["products"],
+                "additionalProperties": true
+              },
+              "example": { "products": ["HQ"] }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EnabledProducts" },
+                "example": {
+                  "products": [
+                    {
+                      "product": "INVOICING",
+                      "name": "Sugrpay",
+                      "description": "Invoices, payments and collections for every brand.",
+                      "enabled": false,
+                      "canEnable": true
+                    },
+                    {
+                      "product": "HQ",
+                      "name": "HQ",
+                      "description": "Run your stores and warehouses: inventory, purchasing and team, in one place.",
+                      "enabled": true,
+                      "canEnable": false
+                    }
+                  ],
+                  "onboardingComplete": true,
+                  "continueWith": "HQ"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "An empty or repeated list, or an unknown product.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "An empty or repeated list, or an unknown product.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No Accounts session token, or it expired (12 hours) or was signed out.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No Accounts session token, or it expired (12 hours) or was signed out.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`COMPANY_NOT_REGISTERED`**: Register Your Company is not done.\n\n**`ADD_BRAND_FIRST`**: The Company has no Brand yet.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "COMPANY_NOT_REGISTERED": {
+                    "summary": "COMPANY_NOT_REGISTERED: Register Your Company is not done.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "register the company before enabling products",
+                      "code": "COMPANY_NOT_REGISTERED"
+                    }
+                  },
+                  "ADD_BRAND_FIRST": {
+                    "summary": "ADD_BRAND_FIRST: The Company has no Brand yet.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "add a brand before enabling products",
+                      "code": "ADD_BRAND_FIRST"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "accountsSession": [] }]
+      }
+    },
+    "/company/products/{product}/continue": {
+      "post": {
+        "tags": ["1. Accounts: sign up and onboarding"],
+        "operationId": "ProductsController_continueInto",
+        "summary": "Continue into a product",
+        "description": "**Story:** Select Your Products & Redirect\n\nAny user of the Company. For `HQ`, returns HQ's web address, the **HQ JWT** (12 hours) and a **refresh token** (30 days).\n\nThe Accounts app sends the browser to `url#token=<JWT>&refreshToken=<refresh token>`. HQ reads both from the URL fragment (it never reaches a server log), keeps them in local storage, removes the fragment from the address bar, and sends the JWT as `Authorization: Bearer <JWT>` on every call.\n\n**Until HQ has a web address** (`HQ_PUBLIC_URL` on the server), this answers `409 PRODUCT_NOT_AVAILABLE` for HQ.\n\n**Authorization:** the Accounts session token, `Authorization: Bearer <token>` (**accountsSession**)\n\n---\n\nContinue into a product: returns its URL, a 12-hour JWT (HS256; sub user, mid company, aud product, sid session) with expiresAt, and a refresh token (30 days) with refreshExpiresAt. The product sends the JWT as a Bearer token on every platform call. Only for a product enabled for the company (409 PRODUCT_NOT_ENABLED); 409 PRODUCT_NOT_AVAILABLE when the product has no web address yet (HQ until HQ_PUBLIC_URL is set).\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/subscriptions/interface/products.controller.ts` (`ProductsController.continueInto`)",
+        "parameters": [
+          {
+            "name": "product",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["INVOICING", "HQ"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductLaunch" },
+                "example": {
+                  "product": "HQ",
+                  "url": "https://hq.sugrpay.com",
+                  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtaWQiOiI3ODc2ZDFlZS0uLi4iLCJzaWQiOiIuLi4iLCJpc3MiOiJwbGF0Zm9ybSIsImF1ZCI6IkhRIiwic3ViIjoiMTViNDMyNzgtLi4uIn0.signature",
+                  "expiresAt": "2026-11-03T14:00:00.000Z",
+                  "refreshToken": "9f2c6d0b8e1a4f7c3b5d9e0a2c4f6b8d1e3a5c7f9b0d2e4a6c8f0b2d4e6a8c0f",
+                  "refreshExpiresAt": "2026-12-03T02:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`product` is not `HQ` or `INVOICING`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "`product` is not `HQ` or `INVOICING`.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No Accounts session token, or it expired (12 hours) or was signed out.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No Accounts session token, or it expired (12 hours) or was signed out.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`PRODUCT_NOT_ENABLED`**: The Company has not enabled HQ. No token is issued.\n\n**`PRODUCT_NOT_AVAILABLE`**: HQ has no web address configured yet.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "PRODUCT_NOT_ENABLED": {
+                    "summary": "PRODUCT_NOT_ENABLED: The Company has not enabled HQ. No token is issued.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "HQ is not enabled for this company",
+                      "code": "PRODUCT_NOT_ENABLED"
+                    }
+                  },
+                  "PRODUCT_NOT_AVAILABLE": {
+                    "summary": "PRODUCT_NOT_AVAILABLE: HQ has no web address configured yet.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "HQ isn't available yet",
+                      "code": "PRODUCT_NOT_AVAILABLE"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "accountsSession": [] }]
+      }
+    },
+    "/product-session/me": {
+      "get": {
+        "tags": ["2. Product Session"],
+        "operationId": "ProductSessionController_me",
+        "summary": "Product Session",
+        "description": "**Story:** Product Session — User Details & Tokens\n\nWho is signed in, from the JWT alone: no user or Company ID is sent. Call it when HQ opens, then call Company Profile with `companyId`.\n\n- `role` is `COMPANY_ADMIN` for the Company Admin; for anyone else it is their **HQ** role (`EXECUTIVE`, `MANAGER` or `ASSOCIATE`) only, never their Sugrpay role.\n- Read fresh on every call: a role changed by the Company Admin shows at once.\n- `expiresAt` is when this JWT expires: refresh shortly before it.\n- Company details and Brands are not here (Company Profile has them).\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nProduct Session: who is signed in, from the product's JWT alone (no user or Company id). Returns user (id, name, email), companyId, product, role (COMPANY_ADMIN for the Company Admin, otherwise the user's role in the asking product only) and the JWT's expiresAt. Read fresh each call. 401 for an invalid or expired JWT or a product no longer enabled; 403 PRODUCT_TOKEN_REQUIRED for a platform session.\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/auth/interface/product-session.controller.ts` (`ProductSessionController.me`)",
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductUserDetails" },
+                "example": {
+                  "user": {
+                    "id": "15b43278-6e25-46f5-956e-b620577f484b",
+                    "name": "Dana Smith",
+                    "email": "dana@acmecoffee.com"
+                  },
+                  "companyId": "7876d1ee-36c2-4e64-a583-9ff50657f8b1",
+                  "product": "HQ",
+                  "role": "COMPANY_ADMIN",
+                  "expiresAt": "2026-11-03T14:00:00.000Z"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\n**`NO_PRODUCT_ACCESS`**: The user holds no HQ role (and is not the Company Admin).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  },
+                  "NO_PRODUCT_ACCESS": {
+                    "summary": "NO_PRODUCT_ACCESS: The user holds no HQ role (and is not the Company Admin).",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "you have no access to this product",
+                      "code": "NO_PRODUCT_ACCESS"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/product-session/refresh": {
+      "post": {
+        "tags": ["2. Product Session"],
+        "operationId": "ProductSessionController_refresh",
+        "summary": "Product Session",
+        "description": "**Story:** Product Session — User Details & Tokens\n\nExchanges the refresh token for a **new 12-hour JWT**, without the user signing in again. No Authorization header: the refresh token is the credential. The refresh token itself does not change.\n\n**Suggested HQ logic:** refresh a minute before `expiresAt`, or when any call answers `401`; retry the call once with the new JWT. If refresh answers `401 SIGN_IN_REQUIRED` (the refresh token has expired after 30 days) or `401 INVALID_REFRESH_TOKEN`, clear local storage and send the user to Accounts to sign in.\n\n**Authorization:** none\n\n---\n\nProduct Session: exchanges the refresh token for a new 12-hour JWT and its expiresAt, without signing in again. 401 SIGN_IN_REQUIRED once the refresh token has expired (sign in through the platform); 401 INVALID_REFRESH_TOKEN for any other refused token (unknown, revoked, product no longer enabled, user suspended).\n\n**Access:** public\n**Served by:** the platform API — `apps/platform/src/modules/auth/interface/product-session.controller.ts` (`ProductSessionController.refresh`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": { "type": "string", "minLength": 1, "maxLength": 200 }
+                },
+                "required": ["refreshToken"],
+                "additionalProperties": true
+              },
+              "example": {
+                "refreshToken": "9f2c6d0b8e1a4f7c3b5d9e0a2c4f6b8d1e3a5c7f9b0d2e4a6c8f0b2d4e6a8c0f"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductTokens" },
+                "example": {
+                  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJtaWQiOiI3ODc2ZDFlZS0uLi4iLCJzaWQiOiIuLi4iLCJpc3MiOiJwbGF0Zm9ybSIsImF1ZCI6IkhRIiwic3ViIjoiMTViNDMyNzgtLi4uIn0.signature",
+                  "expiresAt": "2026-11-04T02:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`refreshToken` missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "`refreshToken` missing.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "**`SIGN_IN_REQUIRED`**: The refresh token has expired.\n\n**`INVALID_REFRESH_TOKEN`**: Unknown or revoked token, the user deactivated, or HQ no longer enabled.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "SIGN_IN_REQUIRED": {
+                    "summary": "SIGN_IN_REQUIRED: The refresh token has expired.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "the session has ended; sign in again",
+                      "code": "SIGN_IN_REQUIRED"
+                    }
+                  },
+                  "INVALID_REFRESH_TOKEN": {
+                    "summary": "INVALID_REFRESH_TOKEN: Unknown or revoked token, the user deactivated, or HQ no longer enabled.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "refresh token is not valid",
+                      "code": "INVALID_REFRESH_TOKEN"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests: wait and retry.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 429,
+                  "error": "Too Many Requests",
+                  "message": "too many requests"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/companies/{companyId}": {
+      "get": {
+        "tags": ["3. Company Profile"],
+        "operationId": "CompanyProfileController_get",
+        "summary": "Company Profile",
+        "description": "**Story:** Company Profile — Company Details & Brands\n\nSend the `companyId` from `GET /product-session/me`. Any signed-in user.\n\n- `company`: details; `contactEmail` is the company email used at sign-up.\n- `brands`: the Brands this user can access — **all** of them for the Company Admin, otherwise only those **assigned** to the user (possibly none). Archived Brands are included with `archived: true`. `themeColor` is `null` when none was set.\n- Use the Brand IDs in further calls. No role and no Locations here. Ask again whenever fresh data is needed.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nCompany Profile: the Company's details (id, companyName, legalName, taxId, brandStructure, status, contactEmail = the sign-up email) and the Brands this user can access (all for the Company Admin, otherwise only those assigned), each with id, legalName, displayName, currency, timezone, themeColor (null when none set), status and archived. Read-only. 403 NOT_YOUR_COMPANY for any other Company id.\n\n**Access:** ORGANISATION_PROFILE:READ\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/company-profile.controller.ts` (`CompanyProfileController.get`)",
+        "parameters": [
+          {
+            "name": "companyId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CompanyProfile" },
+                "example": {
+                  "company": {
+                    "id": "7876d1ee-36c2-4e64-a583-9ff50657f8b1",
+                    "companyName": "Acme Coffee Group",
+                    "legalName": "Acme Coffee Group LLC",
+                    "taxId": "12-3456789",
+                    "brandStructure": "MULTI",
+                    "status": "ACTIVE",
+                    "contactEmail": "dana@acmecoffee.com"
+                  },
+                  "brands": [
+                    {
+                      "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                      "legalName": "Acme Coffee LLC",
+                      "displayName": "Acme Coffee",
+                      "currency": "USD",
+                      "timezone": "America/New_York",
+                      "themeColor": "#2D6A6A",
+                      "status": "ACTIVE",
+                      "archived": false
+                    },
+                    {
+                      "id": "84dace18-1b14-4b7e-9e28-185ee9c0b03a",
+                      "legalName": "Acme Roasters LLC",
+                      "displayName": "Acme Roasters",
+                      "currency": "USD",
+                      "timezone": "America/New_York",
+                      "themeColor": null,
+                      "status": "ARCHIVED",
+                      "archived": true
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`companyId` is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "`companyId` is not a UUID.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\n**`NOT_YOUR_COMPANY`**: The ID is not the signed-in Company's. Nothing is returned.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  },
+                  "NOT_YOUR_COMPANY": {
+                    "summary": "NOT_YOUR_COMPANY: The ID is not the signed-in Company's. Nothing is returned.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "that is not your Company",
+                      "code": "NOT_YOUR_COMPANY"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/company/brands": {
+      "post": {
+        "tags": ["4. Brand Management"],
+        "operationId": "ProductBrandsController_add",
+        "summary": "Brand Management (Company Admin)",
+        "description": "**Story:** Brand Management\n\nCompany Admin only. Adds an **active** Brand to the signed-in Company.\n\n- Required: Legal Name, Display Name, Currency (ISO code, e.g. `USD`), Timezone (IANA, e.g. `America/Chicago`). Optional: Theme Color (`#RRGGBB`).\n- Display Name must be unique within the Company, ignoring case and extra spaces; another Company may use the same name.\n- There is no limit on the number of Brands, whatever Brand Structure was chosen.\n- Returns the new Brand's ID: use it in further calls.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nBrand Management (Company Admin): adds a Brand. Legal Name, Display Name (unique within the Company, ignoring case and spacing; 409 DISPLAY_NAME_TAKEN), Currency and Timezone required; Theme Color optional. Not limited by the Brand Structure. Returns id, displayName and status (ACTIVE).\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-brands.controller.ts` (`ProductBrandsController.add`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "currency": { "type": "string", "minLength": 1 },
+                  "timezone": { "type": "string" },
+                  "themeColor": {
+                    "anyOf": [
+                      { "type": "string", "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                      { "type": "null" }
+                    ]
+                  }
+                },
+                "required": ["legalName", "displayName", "currency", "timezone"],
+                "additionalProperties": true
+              },
+              "example": {
+                "legalName": "Acme Roasters LLC",
+                "displayName": "Acme Roasters",
+                "currency": "USD",
+                "timezone": "America/Chicago",
+                "themeColor": "#7A4B2A"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AddedBrand" },
+                "example": {
+                  "id": "84dace18-1b14-4b7e-9e28-185ee9c0b03a",
+                  "displayName": "Acme Roasters",
+                  "status": "ACTIVE"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A required detail missing, or an invalid currency, timezone or colour (each listed under `issues`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "A required detail missing, or an invalid currency, timezone or colour (each listed under `issues`).",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`DISPLAY_NAME_TAKEN`**: The Display Name is used by another Brand of the Company.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "DISPLAY_NAME_TAKEN": {
+                    "summary": "DISPLAY_NAME_TAKEN: The Display Name is used by another Brand of the Company.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "another Brand in your Company already has this Display Name",
+                      "code": "DISPLAY_NAME_TAKEN"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/company/brands/{brandId}": {
+      "put": {
+        "tags": ["4. Brand Management"],
+        "operationId": "ProductBrandsController_edit",
+        "summary": "Brand Management (Company Admin)",
+        "description": "**Story:** Brand Management\n\nCompany Admin only. Replaces the Brand's details under the same rules as adding (send all four required details; leave out `themeColor` to clear it). Keeping the Brand's own Display Name is fine. Returns the updated Brand.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nBrand Management (Company Admin): edits a Brand under the same rules as adding; keeping its own Display Name is fine. Returns the Brand. 403 for a Brand of another Company.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-brands.controller.ts` (`ProductBrandsController.edit`)",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "legalName": { "type": "string", "minLength": 1, "maxLength": 200 },
+                  "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "currency": { "type": "string", "minLength": 1 },
+                  "timezone": { "type": "string" },
+                  "themeColor": {
+                    "anyOf": [
+                      { "type": "string", "pattern": "^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$" },
+                      { "type": "null" }
+                    ]
+                  }
+                },
+                "required": ["legalName", "displayName", "currency", "timezone"],
+                "additionalProperties": true
+              },
+              "example": {
+                "legalName": "Acme Roasters Holdings LLC",
+                "displayName": "Acme Roasters",
+                "currency": "USD",
+                "timezone": "America/Chicago",
+                "themeColor": "#7A4B2A"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductBrand" },
+                "example": {
+                  "id": "84dace18-1b14-4b7e-9e28-185ee9c0b03a",
+                  "legalName": "Acme Roasters Holdings LLC",
+                  "displayName": "Acme Roasters",
+                  "currency": "USD",
+                  "timezone": "America/Chicago",
+                  "themeColor": "#7A4B2A",
+                  "status": "ACTIVE",
+                  "archived": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A required detail removed or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "A required detail removed or invalid.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe Brand belongs to another Company (nothing changes), or the user may not manage Brands.\n\nThe signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The Brand belongs to another Company (nothing changes), or the user may not manage Brands.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "insufficient permissions"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  },
+                  "403-2": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`DISPLAY_NAME_TAKEN`**: Renamed to another Brand's Display Name.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "DISPLAY_NAME_TAKEN": {
+                    "summary": "DISPLAY_NAME_TAKEN: Renamed to another Brand's Display Name.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "another Brand in your Company already has this Display Name",
+                      "code": "DISPLAY_NAME_TAKEN"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/company/brands/{brandId}/archive": {
+      "post": {
+        "tags": ["4. Brand Management"],
+        "operationId": "ProductBrandsController_archive",
+        "summary": "Brand Management (Company Admin)",
+        "description": "**Story:** Brand Management\n\nCompany Admin only. Marks the Brand archived and returns it. Archiving an archived Brand changes nothing. Archived Brands still appear in Company Profile, marked `archived: true`.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nBrand Management (Company Admin): marks the Brand archived and returns it. 403 for a Brand of another Company.\n\n**Access:** BRANDS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-brands.controller.ts` (`ProductBrandsController.archive`)",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductBrand" },
+                "example": {
+                  "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                  "legalName": "Acme Coffee LLC",
+                  "displayName": "Acme Coffee",
+                  "currency": "USD",
+                  "timezone": "America/New_York",
+                  "themeColor": "#2D6A6A",
+                  "status": "ARCHIVED",
+                  "archived": true
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe Brand belongs to another Company (nothing changes), or the user may not manage Brands.\n\nThe signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The Brand belongs to another Company (nothing changes), or the user may not manage Brands.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "insufficient permissions"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  },
+                  "403-2": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/company/users": {
+      "get": {
+        "tags": ["5. User Management"],
+        "operationId": "ProductUsersController_list",
+        "summary": "User List (Company Admin)",
+        "description": "**Story:** User Management — User List\n\nCompany Admin only. The Company's users, including deactivated ones (`status: DEACTIVATED`). No Company ID is sent.\n\n- `role` is each user's **HQ** role only (`COMPANY_ADMIN` for the Company Admin; `null` for a user with no HQ role).\n- `brandId` (optional) narrows to the users assigned to that Brand. The Company Admin appears under every Brand; a user with several Brands appears under each. A Brand with nobody else assigned returns just the Company Admin.\n- `phone` is `null` for accounts created before phones were recorded.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nUser List (Company Admin): the Company's users, each with id, name, email, phone, role (the asking product's only; COMPANY_ADMIN for the Company Admin), Brands and status (ACTIVE, INVITED or DEACTIVATED). Optional brandId narrows to users assigned to that Brand; the Company Admin is under every Brand. 404 for a Brand of another Company.\n\n**Access:** USERS:READ\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.list`)",
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ProductUser" }
+                },
+                "example": [
+                  {
+                    "id": "15b43278-6e25-46f5-956e-b620577f484b",
+                    "name": "Dana Smith",
+                    "email": "dana@acmecoffee.com",
+                    "phone": null,
+                    "role": "COMPANY_ADMIN",
+                    "brands": [
+                      {
+                        "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                        "displayName": "Acme Coffee",
+                        "archived": false
+                      },
+                      {
+                        "id": "84dace18-1b14-4b7e-9e28-185ee9c0b03a",
+                        "displayName": "Acme Roasters",
+                        "archived": false
+                      }
+                    ],
+                    "status": "ACTIVE"
+                  },
+                  {
+                    "id": "3f9c2a10-6b1e-4f7d-8a55-0c2e9d4b7a61",
+                    "name": "Riley Stone",
+                    "email": "riley@acmecoffee.com",
+                    "phone": {
+                      "country": "US",
+                      "countryCode": "+1",
+                      "number": "2025550143",
+                      "e164": "+12025550143"
+                    },
+                    "role": "MANAGER",
+                    "brands": [
+                      {
+                        "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                        "displayName": "Acme Coffee",
+                        "archived": false
+                      }
+                    ],
+                    "status": "ACTIVE"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "`brandId` is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "`brandId` is not a UUID.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`brandId` is another Company's Brand. No users are returned.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "404": {
+                    "summary": "`brandId` is another Company's Brand. No users are returned.",
+                    "value": {
+                      "statusCode": 404,
+                      "error": "Not Found",
+                      "message": "brand not found"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      },
+      "post": {
+        "tags": ["5. User Management"],
+        "operationId": "ProductUsersController_add",
+        "summary": "User Management (Company Admin)",
+        "description": "**Story:** User Management — Users, Roles & Access\n\nCompany Admin only. Adds an **active** user to the signed-in Company. They sign in with this email and password.\n\n- All required: `name`, `email` (unique across the platform), `phone` (`country`: 2-letter code, `number`: valid for that country), `password` (at least 12 characters), `role` (an `id` from `GET /company/roles`) and `brandIds` (at least one Brand of the Company).\n- The Company Admin is not assigned Brands: they have all of them.\n- Returns the user with their HQ role, Brands and status.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nUser Management (Company Admin): adds an active user who signs in with the email and password given. Name, email (unique across the platform; 409 EMAIL_TAKEN), phone { country, number } (valid for that country; 400 PHONE_INVALID), password (the platform's rules), role (one of GET /company/roles; 400 ROLE_NOT_AVAILABLE) and at least one Brand of the Company (400 BRAND_NOT_IN_COMPANY), all required.\n\n**Access:** USERS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.add`)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "email": { "type": "string", "format": "email", "maxLength": 320 },
+                  "phone": {
+                    "type": "object",
+                    "properties": {
+                      "country": { "type": "string", "pattern": "^[A-Za-z]{2}$" },
+                      "number": { "type": "string", "minLength": 1, "maxLength": 30 }
+                    },
+                    "required": ["country", "number"],
+                    "additionalProperties": true
+                  },
+                  "role": { "type": "string", "minLength": 1, "maxLength": 60 },
+                  "brandIds": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "uuid" },
+                    "minItems": 1,
+                    "maxItems": 500
+                  },
+                  "password": { "type": "string", "minLength": 12, "maxLength": 200 }
+                },
+                "required": ["name", "email", "phone", "role", "brandIds", "password"],
+                "additionalProperties": true
+              },
+              "example": {
+                "name": "Riley Stone",
+                "email": "riley@acmecoffee.com",
+                "phone": { "country": "US", "number": "(202) 555-0143" },
+                "password": "a long enough password",
+                "role": "MANAGER",
+                "brandIds": ["65dcd015-b48d-4ea3-98bc-28188c086226"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductUser" },
+                "example": {
+                  "id": "3f9c2a10-6b1e-4f7d-8a55-0c2e9d4b7a61",
+                  "name": "Riley Stone",
+                  "email": "riley@acmecoffee.com",
+                  "phone": {
+                    "country": "US",
+                    "countryCode": "+1",
+                    "number": "2025550143",
+                    "e164": "+12025550143"
+                  },
+                  "role": "MANAGER",
+                  "brands": [
+                    {
+                      "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                      "displayName": "Acme Coffee",
+                      "archived": false
+                    }
+                  ],
+                  "status": "ACTIVE"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A detail missing, an invalid email, a short password, a bad country code, or no Brand (each listed under `issues`).\n\n**`PHONE_INVALID`**: The number is not valid for the country.\n\n**`ROLE_NOT_AVAILABLE`**: The role is not one of HQ's roles.\n\n**`BRAND_NOT_IN_COMPANY`**: A Brand belongs to another Company.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "A detail missing, an invalid email, a short password, a bad country code, or no Brand (each listed under `issues`).",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  },
+                  "PHONE_INVALID": {
+                    "summary": "PHONE_INVALID: The number is not valid for the country.",
+                    "value": {
+                      "statusCode": 400,
+                      "error": "Bad Request",
+                      "message": "enter a valid phone number for that country",
+                      "code": "PHONE_INVALID"
+                    }
+                  },
+                  "ROLE_NOT_AVAILABLE": {
+                    "summary": "ROLE_NOT_AVAILABLE: The role is not one of HQ's roles.",
+                    "value": {
+                      "statusCode": 400,
+                      "error": "Bad Request",
+                      "message": "choose one of the roles for this product",
+                      "code": "ROLE_NOT_AVAILABLE"
+                    }
+                  },
+                  "BRAND_NOT_IN_COMPANY": {
+                    "summary": "BRAND_NOT_IN_COMPANY: A Brand belongs to another Company.",
+                    "value": {
+                      "statusCode": 400,
+                      "error": "Bad Request",
+                      "message": "choose Brands of your Company",
+                      "code": "BRAND_NOT_IN_COMPANY"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`EMAIL_TAKEN`**: Any account on the platform uses this email.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "EMAIL_TAKEN": {
+                    "summary": "EMAIL_TAKEN: Any account on the platform uses this email.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "an account with this email already exists",
+                      "code": "EMAIL_TAKEN"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/company/users/{userId}": {
+      "put": {
+        "tags": ["5. User Management"],
+        "operationId": "ProductUsersController_edit",
+        "summary": "User Management (Company Admin)",
+        "description": "**Story:** User Management — Users, Roles & Access\n\nCompany Admin only. Replaces the user's name, email, phone, HQ role and Brands, under the same rules as adding. The password is not part of editing.\n\nThe change shows at once in `GET /product-session/me` and Company Profile for that user. Their Sugrpay role (if any) is untouched.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nUser Management (Company Admin): edits a user's details, role and Brands under the same rules as adding, without the password. Sugrpay's role is also the user's platform role. 404 for another Company's user; 409 COMPANY_ADMIN_ACCOUNT for the Company Admin's own account.\n\n**Access:** USERS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.edit`)",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "email": { "type": "string", "format": "email", "maxLength": 320 },
+                  "phone": {
+                    "type": "object",
+                    "properties": {
+                      "country": { "type": "string", "pattern": "^[A-Za-z]{2}$" },
+                      "number": { "type": "string", "minLength": 1, "maxLength": 30 }
+                    },
+                    "required": ["country", "number"],
+                    "additionalProperties": true
+                  },
+                  "role": { "type": "string", "minLength": 1, "maxLength": 60 },
+                  "brandIds": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "uuid" },
+                    "minItems": 1,
+                    "maxItems": 500
+                  }
+                },
+                "required": ["name", "email", "phone", "role", "brandIds"],
+                "additionalProperties": true
+              },
+              "example": {
+                "name": "Riley Stone",
+                "email": "riley.stone@acmecoffee.com",
+                "phone": { "country": "US", "number": "(202) 555-0143" },
+                "role": "EXECUTIVE",
+                "brandIds": [
+                  "65dcd015-b48d-4ea3-98bc-28188c086226",
+                  "84dace18-1b14-4b7e-9e28-185ee9c0b03a"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductUser" },
+                "example": {
+                  "id": "3f9c2a10-6b1e-4f7d-8a55-0c2e9d4b7a61",
+                  "name": "Riley Stone",
+                  "email": "riley.stone@acmecoffee.com",
+                  "phone": {
+                    "country": "US",
+                    "countryCode": "+1",
+                    "number": "2025550143",
+                    "e164": "+12025550143"
+                  },
+                  "role": "EXECUTIVE",
+                  "brands": [
+                    {
+                      "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                      "displayName": "Acme Coffee",
+                      "archived": false
+                    },
+                    {
+                      "id": "84dace18-1b14-4b7e-9e28-185ee9c0b03a",
+                      "displayName": "Acme Roasters",
+                      "archived": false
+                    }
+                  ],
+                  "status": "ACTIVE"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A detail removed or invalid, or all Brands removed.\n\n**`PHONE_INVALID`**: The number is not valid for the country.\n\n**`ROLE_NOT_AVAILABLE`**: The role is not one of HQ's roles.\n\n**`BRAND_NOT_IN_COMPANY`**: A Brand belongs to another Company.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ValidationError" },
+                    { "$ref": "#/components/schemas/CodedError" }
+                  ]
+                },
+                "examples": {
+                  "validation": {
+                    "summary": "A detail removed or invalid, or all Brands removed.",
+                    "value": {
+                      "message": "validation failed",
+                      "issues": [
+                        { "path": "email", "message": "Invalid email", "code": "invalid_string" }
+                      ]
+                    }
+                  },
+                  "PHONE_INVALID": {
+                    "summary": "PHONE_INVALID: The number is not valid for the country.",
+                    "value": {
+                      "statusCode": 400,
+                      "error": "Bad Request",
+                      "message": "enter a valid phone number for that country",
+                      "code": "PHONE_INVALID"
+                    }
+                  },
+                  "ROLE_NOT_AVAILABLE": {
+                    "summary": "ROLE_NOT_AVAILABLE: The role is not one of HQ's roles.",
+                    "value": {
+                      "statusCode": 400,
+                      "error": "Bad Request",
+                      "message": "choose one of the roles for this product",
+                      "code": "ROLE_NOT_AVAILABLE"
+                    }
+                  },
+                  "BRAND_NOT_IN_COMPANY": {
+                    "summary": "BRAND_NOT_IN_COMPANY: A Brand belongs to another Company.",
+                    "value": {
+                      "statusCode": 400,
+                      "error": "Bad Request",
+                      "message": "choose Brands of your Company",
+                      "code": "BRAND_NOT_IN_COMPANY"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The user belongs to another Company. Nothing changes.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "404": {
+                    "summary": "The user belongs to another Company. Nothing changes.",
+                    "value": {
+                      "statusCode": 404,
+                      "error": "Not Found",
+                      "message": "user not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`EMAIL_TAKEN`**: Another account uses the new email.\n\n**`COMPANY_ADMIN_ACCOUNT`**: The user is the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "EMAIL_TAKEN": {
+                    "summary": "EMAIL_TAKEN: Another account uses the new email.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "an account with this email already exists",
+                      "code": "EMAIL_TAKEN"
+                    }
+                  },
+                  "COMPANY_ADMIN_ACCOUNT": {
+                    "summary": "COMPANY_ADMIN_ACCOUNT: The user is the Company Admin.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "the Company Admin's account is not managed here",
+                      "code": "COMPANY_ADMIN_ACCOUNT"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/company/users/{userId}/deactivate": {
+      "post": {
+        "tags": ["5. User Management"],
+        "operationId": "ProductUsersController_deactivate",
+        "summary": "User Management (Company Admin)",
+        "description": "**Story:** User Management — Users, Roles & Access\n\nCompany Admin only. The user can no longer sign in, and their sessions end at once (their HQ JWT and refresh token stop working). Their records are kept, and they still appear in the User List as `DEACTIVATED`. The Company Admin cannot deactivate their own account.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nUser Management (Company Admin): deactivates a user. They cannot sign in, their sessions end, and their records are kept. 403 CANNOT_DEACTIVATE_SELF for the Company Admin's own account.\n\n**Access:** USERS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.deactivate`)",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductUser" },
+                "example": {
+                  "id": "3f9c2a10-6b1e-4f7d-8a55-0c2e9d4b7a61",
+                  "name": "Riley Stone",
+                  "email": "riley@acmecoffee.com",
+                  "phone": {
+                    "country": "US",
+                    "countryCode": "+1",
+                    "number": "2025550143",
+                    "e164": "+12025550143"
+                  },
+                  "role": "MANAGER",
+                  "brands": [
+                    {
+                      "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                      "displayName": "Acme Coffee",
+                      "archived": false
+                    }
+                  ],
+                  "status": "DEACTIVATED"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe signed-in user is not the Company Admin.\n\n**`CANNOT_DEACTIVATE_SELF`**: The Company Admin named their own account.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  },
+                  "CANNOT_DEACTIVATE_SELF": {
+                    "summary": "CANNOT_DEACTIVATE_SELF: The Company Admin named their own account.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "you cannot deactivate your own account",
+                      "code": "CANNOT_DEACTIVATE_SELF"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The user belongs to another Company. Nothing changes.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "404": {
+                    "summary": "The user belongs to another Company. Nothing changes.",
+                    "value": {
+                      "statusCode": 404,
+                      "error": "Not Found",
+                      "message": "user not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`COMPANY_ADMIN_ACCOUNT`**: The user is the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "COMPANY_ADMIN_ACCOUNT": {
+                    "summary": "COMPANY_ADMIN_ACCOUNT: The user is the Company Admin.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "the Company Admin's account is not managed here",
+                      "code": "COMPANY_ADMIN_ACCOUNT"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/company/users/{userId}/reactivate": {
+      "post": {
+        "tags": ["5. User Management"],
+        "operationId": "ProductUsersController_reactivate",
+        "summary": "User Management (Company Admin)",
+        "description": "**Story:** User Management — Users, Roles & Access\n\nCompany Admin only. A deactivated user becomes active again and can sign in again. Reactivating an active user changes nothing.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nUser Management (Company Admin): makes a deactivated user active again; they can sign in again.\n\n**Access:** USERS:WRITE\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-users.controller.ts` (`ProductUsersController.reactivate`)",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProductUser" },
+                "example": {
+                  "id": "3f9c2a10-6b1e-4f7d-8a55-0c2e9d4b7a61",
+                  "name": "Riley Stone",
+                  "email": "riley@acmecoffee.com",
+                  "phone": {
+                    "country": "US",
+                    "countryCode": "+1",
+                    "number": "2025550143",
+                    "e164": "+12025550143"
+                  },
+                  "role": "MANAGER",
+                  "brands": [
+                    {
+                      "id": "65dcd015-b48d-4ea3-98bc-28188c086226",
+                      "displayName": "Acme Coffee",
+                      "archived": false
+                    }
+                  ],
+                  "status": "ACTIVE"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The user belongs to another Company.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "404": {
+                    "summary": "The user belongs to another Company.",
+                    "value": {
+                      "statusCode": 404,
+                      "error": "Not Found",
+                      "message": "user not found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "**`COMPANY_ADMIN_ACCOUNT`**: The user is the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "COMPANY_ADMIN_ACCOUNT": {
+                    "summary": "COMPANY_ADMIN_ACCOUNT: The user is the Company Admin.",
+                    "value": {
+                      "statusCode": 409,
+                      "error": "Conflict",
+                      "message": "the Company Admin's account is not managed here",
+                      "code": "COMPANY_ADMIN_ACCOUNT"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/company/roles": {
+      "get": {
+        "tags": ["6. Role List"],
+        "operationId": "ProductRolesController_list",
+        "summary": "Role List (Company Admin)",
+        "description": "**Story:** Role Management — Role List\n\nCompany Admin only. HQ's fixed roles, the same for every Company, each with the `id` User Management takes as `role` and a display `name`. The Company Admin is not in the list: that is the account's own company-level access. Companies cannot create, edit or delete roles.\n\n**Authorization:** the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)\n\n---\n\nRole List (Company Admin): the asking product's fixed roles, each with id and name, the same for every Company and without the Company Admin. HQ: Executive, Manager, Associate. Sugrpay: Admin, Brand Admin, Finance User, Sales User, Read Only.\n\n**Access:** USERS:READ\n**Served by:** the platform API — `apps/platform/src/modules/product-company/interface/product-roles.controller.ts` (`ProductRolesController.list`)",
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ProductRole" }
+                },
+                "example": [
+                  { "id": "EXECUTIVE", "name": "Executive" },
+                  { "id": "MANAGER", "name": "Manager" },
+                  { "id": "ASSOCIATE", "name": "Associate" }
+                ]
+              }
+            }
+          },
+          "401": {
+            "description": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "401": {
+                    "summary": "No JWT, or it is invalid, expired, or its product session ended; or HQ is no longer enabled for the Company. Refresh the JWT (POST /product-session/refresh) and retry once.",
+                    "value": {
+                      "statusCode": 401,
+                      "error": "Unauthorized",
+                      "message": "authentication required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "**`PRODUCT_TOKEN_REQUIRED`**: Called with an Accounts (platform) session token instead of the HQ JWT.\n\nThe signed-in user is not the Company Admin.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CodedError" },
+                "examples": {
+                  "403": {
+                    "summary": "The signed-in user is not the Company Admin.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "only the Company Admin can do this"
+                    }
+                  },
+                  "PRODUCT_TOKEN_REQUIRED": {
+                    "summary": "PRODUCT_TOKEN_REQUIRED: Called with an Accounts (platform) session token instead of the HQ JWT.",
+                    "value": {
+                      "statusCode": 403,
+                      "error": "Forbidden",
+                      "message": "call this with the product's JWT",
+                      "code": "PRODUCT_TOKEN_REQUIRED"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "productJwt": [] }]
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": ["7. Service"],
+        "operationId": "HealthController_summary",
+        "summary": "Overall status, environment, active adapters and each dependency's state",
+        "description": "Whether the API and what it depends on (database, Redis, storage) are up. `200` when every check is up, `503` otherwise. No sign-in.\n\n**Authorization:** none\n\n---\n\nOverall status, environment, active adapters and each dependency's state.\n\n**Access:** public\n**Served by:** every API (platform, Sugrpay and HQ) — `packages/server/src/health/health.controller.ts` (`HealthController.summary`)",
+        "responses": {
+          "200": {
+            "description": "Every check is up.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthReport" },
+                "example": {
+                  "status": "ok",
+                  "checks": [
+                    { "name": "database", "state": "up", "durationMs": 3 },
+                    { "name": "redis", "state": "up", "durationMs": 1 }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "At least one check is down.",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/HealthReport" } }
+            }
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "productJwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "The HQ JWT: `token` from `POST /company/products/HQ/continue` or `POST /product-session/refresh`. Lasts 12 hours."
+      },
+      "accountsSession": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The Accounts session token: `token` from `POST /auth/login` or `POST /auth/register`. Used only for onboarding and Continue."
+      }
+    },
+    "schemas": {
+      "AddedBrand": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "displayName": { "type": "string" },
+          "status": { "type": "string", "enum": ["ACTIVE", "ARCHIVED"] }
+        },
+        "required": ["id", "displayName", "status"]
+      },
+      "AuthenticatedUser": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "merchantId": { "type": "string" },
+          "email": { "type": "string" },
+          "name": { "type": "string" },
+          "role": {
+            "type": "string",
+            "enum": [
+              "MERCHANT_OWNER",
+              "MERCHANT_ADMIN",
+              "BRAND_ADMIN",
+              "FINANCE_USER",
+              "SALES_USER",
+              "READ_ONLY"
+            ]
+          },
+          "mustResetPassword": {
+            "type": "boolean",
+            "description": "True for a user who has never signed in with a password of their own choosing — an INVITED account signing in for the first time with the temporary password whoever created it set. The client's only obligation on seeing this is to send them to set a real one before anything else."
+          }
+        },
+        "required": ["id", "merchantId", "email", "name", "role", "mustResetPassword"]
+      },
+      "CodedError": {
+        "type": "object",
+        "description": "An error. `code`, when present, says exactly which one: branch on it.",
+        "properties": {
+          "statusCode": { "type": "integer", "examples": [409] },
+          "error": { "type": "string", "examples": ["Conflict"] },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
+          },
+          "code": { "type": "string", "examples": ["EMAIL_TAKEN"] },
+          "issues": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "For field errors: the field(s) at fault."
+          }
+        },
+        "required": ["statusCode", "message"]
+      },
+      "CompanyDetails": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "companyName": { "type": "string" },
+          "legalName": { "type": ["string", "null"] },
+          "taxId": { "type": ["string", "null"] },
+          "brandStructure": { "enum": ["SINGLE", "MULTI", null], "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "CLOSED"] },
+          "contactEmail": { "type": "string", "description": "The company email used at sign-up." }
+        },
+        "required": [
+          "id",
+          "companyName",
+          "legalName",
+          "taxId",
+          "brandStructure",
+          "status",
+          "contactEmail"
+        ]
+      },
+      "CompanyProfile": {
+        "type": "object",
+        "properties": {
+          "company": { "$ref": "#/components/schemas/CompanyDetails" },
+          "brands": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ProductBrand" },
+            "description": "The Brands this user can access: all of them for the Company Admin, otherwise only those assigned to the user."
+          }
+        },
+        "required": ["company", "brands"]
+      },
+      "CreatedBrandSummary": {
+        "type": "object",
+        "properties": { "id": { "type": "string" }, "displayName": { "type": "string" } },
+        "required": ["id", "displayName"]
+      },
+      "EnabledProducts": {
+        "type": "object",
+        "properties": {
+          "continueWith": {
+            "enum": ["INVOICING", "HQ", null],
+            "type": ["string", "null"],
+            "description": "Open this product straight away: exactly one is enabled. Otherwise the user picks with Continue."
+          },
+          "products": { "type": "array", "items": { "$ref": "#/components/schemas/ProductCard" } },
+          "onboardingComplete": { "type": "boolean" }
+        },
+        "required": ["continueWith", "products", "onboardingComplete"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "statusCode": { "type": "integer", "examples": [404] },
+          "error": { "type": "string", "examples": ["Not Found"] },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }],
+            "examples": ["invoice not found"]
+          }
+        },
+        "required": ["statusCode", "message"]
+      },
+      "HealthReport": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "degraded", "ready", "not-ready"] },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "examples": ["database", "redis", "storage"] },
+                "state": { "type": "string", "enum": ["up", "down"] },
+                "durationMs": { "type": "number" },
+                "detail": { "type": "string" }
+              },
+              "required": ["name", "state", "durationMs"]
+            }
+          }
+        },
+        "required": ["status", "checks"]
+      },
+      "MerchantOnboardingState": {
+        "type": "object",
+        "properties": {
+          "nextStep": {
+            "type": "string",
+            "enum": ["REGISTER_COMPANY", "ADD_BRAND", "SELECT_PRODUCTS"],
+            "description": "Where onboarding stands; the web app opens this step's screen."
+          },
+          "onboardingComplete": { "type": "boolean" },
+          "company": {
+            "type": "object",
+            "properties": {
+              "companyName": { "type": ["string", "null"] },
+              "legalName": { "type": ["string", "null"] },
+              "taxId": { "type": ["string", "null"] },
+              "contactEmail": { "type": "string" },
+              "brandStructure": { "enum": ["SINGLE", "MULTI", null], "type": ["string", "null"] },
+              "registeredAt": { "format": "date-time", "type": ["string", "null"] }
+            },
+            "required": [
+              "companyName",
+              "legalName",
+              "taxId",
+              "contactEmail",
+              "brandStructure",
+              "registeredAt"
+            ],
+            "description": "Register Your Company, once done."
+          },
+          "hasBrands": { "type": "boolean" }
+        },
+        "required": ["nextStep", "onboardingComplete", "company", "hasBrands"]
+      },
+      "ProductBrand": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "legalName": { "type": "string" },
+          "displayName": { "type": "string" },
+          "currency": { "type": "string" },
+          "timezone": { "type": "string" },
+          "themeColor": {
+            "type": ["string", "null"],
+            "description": "Null when none has been set."
+          },
+          "status": { "type": "string", "enum": ["ACTIVE", "ARCHIVED"] },
+          "archived": { "type": "boolean" }
+        },
+        "required": [
+          "id",
+          "legalName",
+          "displayName",
+          "currency",
+          "timezone",
+          "themeColor",
+          "status",
+          "archived"
+        ]
+      },
+      "ProductCard": {
+        "type": "object",
+        "properties": {
+          "product": { "type": "string", "enum": ["INVOICING", "HQ"] },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "enabled": { "type": "boolean" },
+          "canEnable": {
+            "type": "boolean",
+            "description": "The Company Admin may enable it (it is not enabled yet)."
+          }
+        },
+        "required": ["product", "name", "description", "enabled", "canEnable"]
+      },
+      "ProductLaunch": {
+        "type": "object",
+        "properties": {
+          "product": { "type": "string", "enum": ["INVOICING", "HQ"] },
+          "url": {
+            "type": "string",
+            "description": "Where to send the user; the token goes in the URL fragment."
+          },
+          "token": {
+            "type": "string",
+            "description": "The 12-hour JWT the product sends with every platform call."
+          },
+          "expiresAt": { "type": "string" },
+          "refreshToken": {
+            "type": "string",
+            "description": "Gets a new JWT when it expires (POST /product-session/refresh)."
+          },
+          "refreshExpiresAt": { "type": "string" }
+        },
+        "required": ["product", "url", "token", "expiresAt", "refreshToken", "refreshExpiresAt"]
+      },
+      "ProductRole": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "What User Management takes as `role`." },
+          "name": { "type": "string" }
+        },
+        "required": ["id", "name"]
+      },
+      "ProductTokens": {
+        "type": "object",
+        "properties": {
+          "token": { "type": "string", "description": "The JWT, and when it expires (ISO)." },
+          "expiresAt": { "type": "string" }
+        },
+        "required": ["token", "expiresAt"]
+      },
+      "ProductUser": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "phone": {
+            "anyOf": [{ "$ref": "#/components/schemas/ProductUserPhone" }, { "type": "null" }],
+            "description": "Null for accounts made before phones were recorded (e.g. at sign-up)."
+          },
+          "role": {
+            "type": ["string", "null"],
+            "description": "COMPANY_ADMIN for the Company Admin; otherwise the role in the asking product only, or null when they hold none there."
+          },
+          "brands": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "displayName": { "type": "string" },
+                "archived": { "type": "boolean" }
+              },
+              "required": ["id", "displayName", "archived"]
+            },
+            "description": "All of the Company's Brands for the Company Admin; otherwise the Brands assigned to the user."
+          },
+          "status": { "type": "string", "enum": ["ACTIVE", "INVITED", "DEACTIVATED"] }
+        },
+        "required": ["id", "name", "email", "phone", "role", "brands", "status"]
+      },
+      "ProductUserDetails": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "email": { "type": "string" }
+            },
+            "required": ["id", "name", "email"],
+            "description": "The details held on the account; for a sign-up account, the sign-in email."
+          },
+          "companyId": { "type": "string", "description": "The Company the user is signed in to." },
+          "product": {
+            "type": "string",
+            "enum": ["INVOICING", "HQ"],
+            "description": "The product the JWT was issued to."
+          },
+          "role": {
+            "type": "string",
+            "description": "COMPANY_ADMIN for the Company Admin; otherwise the role in this product only."
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "When the JWT expires (ISO); refresh it then."
+          }
+        },
+        "required": ["user", "companyId", "product", "role", "expiresAt"]
+      },
+      "ProductUserPhone": {
+        "type": "object",
+        "properties": {
+          "country": { "type": "string", "description": "ISO 3166 alpha-2, e.g. \"US\"." },
+          "countryCode": { "type": "string", "description": "The dialling code, e.g. \"+1\"." },
+          "number": { "type": "string", "description": "The national number, digits only." },
+          "e164": { "type": "string", "description": "The full number, E.164." }
+        },
+        "required": ["country", "countryCode", "number", "e164"]
+      },
+      "ProductsView": {
+        "type": "object",
+        "properties": {
+          "products": { "type": "array", "items": { "$ref": "#/components/schemas/ProductCard" } },
+          "onboardingComplete": { "type": "boolean" }
+        },
+        "required": ["products", "onboardingComplete"]
+      },
+      "ValidationError": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string", "const": "validation failed" },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "The field, dotted (e.g. `lines.0.unitPrice`)."
+                },
+                "message": { "type": "string" },
+                "code": {
+                  "type": "string",
+                  "description": "The Zod issue code, e.g. `invalid_type`."
+                }
+              },
+              "required": ["path", "message", "code"]
+            }
+          }
+        },
+        "required": ["message", "issues"]
+      }
+    }
+  }
+}

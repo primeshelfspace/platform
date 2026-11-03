@@ -1,6 +1,9 @@
 /**
  * Generates docs/api/openapi.json, the Swagger (OpenAPI 3.1) document every
- * API serves at /docs. Like docs/api/endpoints.md it is built from the code,
+ * API serves at /docs, and docs/api/hq-openapi.json, the HQ page (/hq/docs):
+ * the endpoints HQ uses, taken from the same generated operations and
+ * annotated by scripts/hq-api-reference.mjs (guides, examples, errors). The
+ * HQ examples are checked against the generated schemas, so they cannot drift. Like docs/api/endpoints.md it is built from the code,
  * never written by hand:
  *
  * - the routes, access rules and descriptions: scripts/api-reference.mjs;
@@ -26,9 +29,12 @@ import * as platformContracts from '@platform/platform-contracts';
 import * as invoicingContracts from '@platform/invoicing-contracts';
 // @ts-expect-error — a plain .mjs script with no type declarations.
 import { AREAS, DESCRIPTIONS, access, routes } from './api-reference.mjs';
+// @ts-expect-error — a plain .mjs script with no type declarations.
+import { HQ_DETAILS, HQ_GROUPS } from './hq-api-reference.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const OUT = path.join(ROOT, 'docs/api/openapi.json');
+const HQ_OUT = path.join(ROOT, 'docs/api/hq-openapi.json');
 
 type Json = Record<string, unknown>;
 
@@ -702,19 +708,333 @@ function build(): Json {
   };
 }
 
-const prettier = await import('prettier');
-const text = await prettier.format(JSON.stringify(build()), {
-  ...(await prettier.resolveConfig(OUT)),
-  parser: 'json',
-});
-if (process.argv.includes('--check')) {
-  const current = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
-  if (current !== text) {
-    console.error('docs/api/openapi.json is out of date: run `pnpm docs:api`.');
-    process.exit(1);
-  }
-  console.log('docs/api/openapi.json is up to date.');
-} else {
-  fs.writeFileSync(OUT, text);
-  console.log(`wrote ${path.relative(ROOT, OUT)}`);
+// ---------------------------------------------------------------------------
+// The HQ page
+
+interface HqError {
+  status: number;
+  code?: string;
+  message: string;
+  when: string;
 }
+interface HqDetail {
+  auth: 'jwt' | 'accounts' | 'public';
+  story: string | null;
+  guide: string;
+  request?: unknown;
+  response?: unknown;
+  errors: HqError[];
+}
+
+const STATUS_TEXT: Record<number, string> = {
+  400: 'Bad Request',
+  401: 'Unauthorized',
+  403: 'Forbidden',
+  404: 'Not Found',
+  409: 'Conflict',
+  429: 'Too Many Requests',
+};
+
+/**
+ * Fails when an example does not fit its schema: a missing required field, a
+ * field the schema does not have, or a value of the wrong type or enum. Enough
+ * to keep the HQ page's examples true to the generated shapes.
+ */
+function checkExample(
+  value: unknown,
+  schema: Json,
+  schemas: Record<string, Json>,
+  at: string,
+): void {
+  if (schema['$ref']) {
+    const name = String(schema['$ref']).split('/').pop()!;
+    checkExample(value, schemas[name]!, schemas, at);
+    return;
+  }
+  const alternatives = (schema['anyOf'] ?? schema['oneOf']) as Json[] | undefined;
+  if (alternatives) {
+    const fits = alternatives.some((alt) => {
+      try {
+        checkExample(value, alt, schemas, at);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (!fits) throw new Error(`${at}: ${JSON.stringify(value)} fits none of its alternatives`);
+    return;
+  }
+  if ('const' in schema && schema['const'] !== value) {
+    throw new Error(`${at}: expected ${JSON.stringify(schema['const'])}`);
+  }
+  if (Array.isArray(schema['enum']) && !(schema['enum'] as unknown[]).includes(value)) {
+    throw new Error(
+      `${at}: ${JSON.stringify(value)} is not one of ${JSON.stringify(schema['enum'])}`,
+    );
+  }
+  const types = ([] as unknown[]).concat(schema['type'] ?? []) as string[];
+  const kind =
+    value === null
+      ? 'null'
+      : Array.isArray(value)
+        ? 'array'
+        : Number.isInteger(value)
+          ? 'integer'
+          : typeof value;
+  if (types.length && !types.includes(kind) && !(kind === 'integer' && types.includes('number'))) {
+    throw new Error(`${at}: expected ${types.join(' or ')}, got ${kind}`);
+  }
+  if (kind === 'array' && schema['items']) {
+    (value as unknown[]).forEach((item, i) =>
+      checkExample(item, schema['items'] as Json, schemas, `${at}[${i}]`),
+    );
+  }
+  if (kind === 'object' && schema['properties']) {
+    const properties = schema['properties'] as Record<string, Json>;
+    const object = value as Record<string, unknown>;
+    for (const key of (schema['required'] as string[] | undefined) ?? []) {
+      if (!(key in object)) throw new Error(`${at}: missing required ${key}`);
+    }
+    for (const [key, item] of Object.entries(object)) {
+      const property = properties[key];
+      if (!property) {
+        if (schema['additionalProperties'] === true) continue;
+        throw new Error(`${at}: ${key} is not in the schema`);
+      }
+      checkExample(item, property, schemas, `${at}.${key}`);
+    }
+  }
+}
+
+/** One status's error response: every way it happens, each as an example. */
+function hqErrorResponse(status: number, errors: HqError[]): Json {
+  const examples: Json = {};
+  for (const e of errors) {
+    const name = e.code ?? (status === 400 ? 'validation' : `${status}`);
+    examples[examples[name] ? `${name}-${Object.keys(examples).length}` : name] = {
+      summary: e.code ? `${e.code}: ${e.when}` : e.when,
+      value:
+        status === 400 && !e.code
+          ? {
+              message: 'validation failed',
+              issues: [{ path: 'email', message: 'Invalid email', code: 'invalid_string' }],
+            }
+          : {
+              statusCode: status,
+              error: STATUS_TEXT[status],
+              message: e.message,
+              ...(e.code ? { code: e.code } : {}),
+            },
+    };
+  }
+  return {
+    description: errors.map((e) => (e.code ? `**\`${e.code}\`**: ${e.when}` : e.when)).join('\n\n'),
+    content: {
+      'application/json': {
+        schema:
+          status === 400
+            ? { anyOf: [ref('ValidationError'), ref('CodedError')] }
+            : ref('CodedError'),
+        examples,
+      },
+    },
+  };
+}
+
+const HQ_AUTH: Record<HqDetail['auth'], { security: Json[]; text: string }> = {
+  jwt: {
+    security: [{ productJwt: [] }],
+    text: 'the HQ JWT, `Authorization: Bearer <JWT>` (**productJwt**)',
+  },
+  accounts: {
+    security: [{ accountsSession: [] }],
+    text: 'the Accounts session token, `Authorization: Bearer <token>` (**accountsSession**)',
+  },
+  public: { security: [], text: 'none' },
+};
+
+function hqOperation(
+  op: Json,
+  tag: string,
+  key: string,
+  detail: HqDetail,
+  schemas: Record<string, Json>,
+): Json {
+  const auth = HQ_AUTH[detail.auth];
+  const description = [
+    ...(detail.story ? [`**Story:** ${detail.story}`, ''] : []),
+    detail.guide,
+    '',
+    `**Authorization:** ${auth.text}`,
+    '',
+    '---',
+    '',
+    String(op['description']),
+  ].join('\n');
+
+  const out: Json = { ...op, tags: [tag], description, security: auth.security };
+  delete out['x-internal'];
+
+  if (detail.request !== undefined) {
+    const body = (op['requestBody'] as Json | undefined)?.['content'] as
+      Record<string, Json> | undefined;
+    const media = body?.['application/json'];
+    if (!media) throw new Error(`${key}: has a request example but takes no JSON body`);
+    checkExample(detail.request, media['schema'] as Json, schemas, `${key} request`);
+    out['requestBody'] = {
+      ...(op['requestBody'] as Json),
+      content: { 'application/json': { ...media, example: detail.request } },
+    };
+  }
+
+  const responses: Json = {};
+  for (const [status, response] of Object.entries(op['responses'] as Record<string, Json>)) {
+    if (!status.startsWith('2')) continue;
+    const content = response['content'] as Record<string, Json> | undefined;
+    const media = content?.['application/json'];
+    if (media && detail.response !== undefined) {
+      checkExample(detail.response, media['schema'] as Json, schemas, `${key} response`);
+      responses[status] = {
+        ...response,
+        content: { 'application/json': { ...media, example: detail.response } },
+      };
+    } else {
+      responses[status] = response;
+    }
+  }
+  const byStatus = new Map<number, HqError[]>();
+  for (const e of detail.errors) byStatus.set(e.status, [...(byStatus.get(e.status) ?? []), e]);
+  for (const [status, errors] of [...byStatus].sort(([a], [b]) => a - b)) {
+    responses[String(status)] = hqErrorResponse(status, errors);
+  }
+  const generated = op['responses'] as Record<string, Json>;
+  if (generated['429'] && !byStatus.has(429)) responses['429'] = generated['429'];
+  if (generated['503']) responses['503'] = generated['503'];
+  out['responses'] = responses;
+  return out;
+}
+
+/** Every component a part of the document refers to, and theirs in turn. */
+function referenced(
+  node: unknown,
+  schemas: Record<string, Json>,
+  found = new Set<string>(),
+): Set<string> {
+  if (Array.isArray(node)) node.forEach((item) => referenced(item, schemas, found));
+  else if (node && typeof node === 'object') {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === '$ref' && typeof value === 'string') {
+        const name = value.split('/').pop()!;
+        if (!found.has(name)) {
+          found.add(name);
+          referenced(schemas[name], schemas, found);
+        }
+      } else referenced(value, schemas, found);
+    }
+  }
+  return found;
+}
+
+function buildHq(full: Json): Json {
+  const fullPaths = full['paths'] as Record<string, Record<string, Json>>;
+  const schemas: Record<string, Json> = {
+    ...((full['components'] as Json)['schemas'] as Record<string, Json>),
+    CodedError: {
+      type: 'object',
+      description: 'An error. `code`, when present, says exactly which one: branch on it.',
+      properties: {
+        statusCode: { type: 'integer', examples: [409] },
+        error: { type: 'string', examples: ['Conflict'] },
+        message: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+        code: { type: 'string', examples: ['EMAIL_TAKEN'] },
+        issues: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'For field errors: the field(s) at fault.',
+        },
+      },
+      required: ['statusCode', 'message'],
+    },
+  };
+  const groups = HQ_GROUPS as { name: string; description: string; routes: string[] }[];
+  const details = HQ_DETAILS as Record<string, HqDetail>;
+
+  const paths: Record<string, Json> = {};
+  const listed = new Set<string>();
+  for (const group of groups) {
+    for (const key of group.routes) {
+      if (listed.has(key)) throw new Error(`HQ reference lists ${key} twice`);
+      listed.add(key);
+      const detail = details[key];
+      if (!detail) throw new Error(`HQ reference: ${key} has no HQ_DETAILS entry`);
+      const [method, route] = key.split(' ') as [string, string];
+      const p = route.replace(/:(\w+)/g, '{$1}');
+      const op = fullPaths[p]?.[method.toLowerCase()];
+      if (!op) throw new Error(`HQ reference lists ${key}, which the API does not have`);
+      paths[p] = {
+        ...(paths[p] ?? {}),
+        [method.toLowerCase()]: hqOperation(op, group.name, key, detail, schemas),
+      };
+    }
+  }
+  for (const key of Object.keys(details)) {
+    if (!listed.has(key)) throw new Error(`HQ_DETAILS has ${key}, which no HQ group lists`);
+  }
+
+  const used = referenced(paths, schemas);
+  const intro = fs
+    .readFileSync(path.join(ROOT, 'docs/api/hq-swagger-intro.md'), 'utf8')
+    .replace(/^#.*\n+/, '')
+    .replace(/<!--[\s\S]*?-->\n*/g, '')
+    .trim();
+
+  return {
+    openapi: '3.1.0',
+    info: { title: 'HQ API', version: (full['info'] as Json)['version'], description: intro },
+    tags: groups.map((g) => ({ name: g.name, description: g.description })),
+    // In page order, not sorted: the groups follow the stories.
+    paths,
+    components: {
+      securitySchemes: {
+        productJwt: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description:
+            'The HQ JWT: `token` from `POST /company/products/HQ/continue` or `POST /product-session/refresh`. Lasts 12 hours.',
+        },
+        accountsSession: {
+          type: 'http',
+          scheme: 'bearer',
+          description:
+            'The Accounts session token: `token` from `POST /auth/login` or `POST /auth/register`. Used only for onboarding and Continue.',
+        },
+      },
+      schemas: Object.fromEntries([...used].sort().map((name) => [name, schemas[name]!])),
+    },
+  };
+}
+
+const prettier = await import('prettier');
+const options = { ...(await prettier.resolveConfig(OUT)), parser: 'json' as const };
+const full = build();
+const documents: [string, string][] = [
+  [OUT, await prettier.format(JSON.stringify(full), options)],
+  [HQ_OUT, await prettier.format(JSON.stringify(buildHq(full)), options)],
+];
+const check = process.argv.includes('--check');
+let stale = false;
+for (const [file, text] of documents) {
+  const name = path.relative(ROOT, file).replace(/\\/g, '/');
+  if (check) {
+    const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    if (current !== text) {
+      console.error(`${name} is out of date: run \`pnpm docs:api\`.`);
+      stale = true;
+    } else console.log(`${name} is up to date.`);
+  } else {
+    fs.writeFileSync(file, text);
+    console.log(`wrote ${name}`);
+  }
+}
+if (stale) process.exit(1);
