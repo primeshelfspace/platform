@@ -13681,13 +13681,27 @@
       "DashboardTrendPoint": {
         "type": "object",
         "properties": {
-          "month": { "type": "string" },
+          "month": {
+            "type": "string",
+            "description": "The bucket's first day (YYYY-MM-DD for days and weeks, YYYY-MM for months). Named `month` from when every bucket was one."
+          },
           "label": { "type": "string" },
+          "granularity": {
+            "allOf": [{ "$ref": "#/components/schemas/TrendGranularity" }],
+            "description": "How long each point covers: a day, a week or a month (trendBuckets)."
+          },
           "invoicedMinor": { "type": "number" },
           "collectedMinor": { "type": "number" },
           "collectionRate": { "type": "number" }
         },
-        "required": ["month", "label", "invoicedMinor", "collectedMinor", "collectionRate"]
+        "required": [
+          "month",
+          "label",
+          "granularity",
+          "invoicedMinor",
+          "collectedMinor",
+          "collectionRate"
+        ]
       },
       "EmailReceiptSettings": {
         "type": "object",
@@ -15410,6 +15424,7 @@
           "daysOverdue"
         ]
       },
+      "TrendGranularity": { "type": "string", "enum": ["day", "week", "month"] },
       "ValidationError": {
         "type": "object",
         "properties": {
