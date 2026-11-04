@@ -52,7 +52,7 @@ export class DashboardController {
     @CurrentScope() scope: Scope,
     @Query(zodPipe(dashboardQuerySchema)) query: DashboardQuery,
   ): Promise<DashboardTrendPoint[]> {
-    return this.dashboard.getTrend(scope, query.brandId ?? null);
+    return this.dashboard.getTrend(scope, query.brandId ?? null, rangeFrom(query));
   }
 
   @Get('status-breakdown')
@@ -70,7 +70,7 @@ export class DashboardController {
     @CurrentScope() scope: Scope,
     @Query(zodPipe(dashboardQuerySchema)) query: DashboardQuery,
   ): Promise<TopOverdueCustomer[]> {
-    return this.dashboard.getTopOverdueCustomers(scope, query.brandId ?? null);
+    return this.dashboard.getTopOverdueCustomers(scope, query.brandId ?? null, rangeFrom(query));
   }
 
   @Get('needs-attention')
@@ -88,7 +88,7 @@ export class DashboardController {
     @CurrentScope() scope: Scope,
     @Query(zodPipe(dashboardQuerySchema)) query: DashboardQuery,
   ): Promise<RecentActivityItem[]> {
-    return this.dashboard.getRecentActivity(scope, query.brandId ?? null);
+    return this.dashboard.getRecentActivity(scope, query.brandId ?? null, rangeFrom(query));
   }
 
   /** Meaningless for one brand — always "every brand I can read". */
