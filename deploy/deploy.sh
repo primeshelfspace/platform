@@ -29,6 +29,8 @@ if grep -q '^HQ_DATABASE_URL=' .env; then
   pnpm --filter @platform/hq-api db:migrate
 else
   echo "HQ_DATABASE_URL is not set: skipping HQ migrations (run deploy/production/add-hq-database.sh)"
+  # The HQ API is still built, so it still needs its database client.
+  pnpm --filter @platform/hq-api db:generate
 fi
 # Zoho Books connections moved from the platform's database to Sugrpay's when
 # the APIs were split. Safe to repeat: only copies what Sugrpay lacks.
