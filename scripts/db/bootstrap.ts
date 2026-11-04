@@ -3,7 +3,8 @@
  * on every setup. Needs a superuser connection (DATABASE_ADMIN_URL) because
  * creating roles and databases is not something a module's own roles can do.
  *
- *   pnpm db:bootstrap
+ *   pnpm db:bootstrap        # every module
+ *   pnpm db:bootstrap hq     # one module (e.g. HQ, on its own RDS server)
  *
  * For each module it reads <MODULE>_DATABASE_URL (runtime, non-owner role)
  * and <MODULE>_DIRECT_DATABASE_URL (owner role) and ensures:
@@ -16,7 +17,10 @@
  */
 import { PrismaClient } from '../../apps/platform/generated/index.js';
 
-const MODULES = ['PLATFORM', 'INVOICING'] as const;
+const MODULES = ['PLATFORM', 'INVOICING', 'HQ'] as const;
+/** Modules a server may not have set up yet: skipped, with a notice, when
+ * their URLs are unset. */
+const OPTIONAL_MODULES = new Set<string>(['HQ']);
 
 interface Target {
   readonly module: string;
@@ -54,12 +58,30 @@ const ident = (name: string) => `"${name.replace(/"/g, '""')}"`;
 const literal = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
 async function main(): Promise<void> {
-  const adminUrl = process.env['DATABASE_ADMIN_URL'];
-  if (!adminUrl) throw new Error('DATABASE_ADMIN_URL is required to bootstrap the databases');
+  const only = process.argv.slice(2).map((m) => m.toUpperCase());
+  for (const module of MODULES) {
+    if (only.length && !only.includes(module)) continue;
+    if (OPTIONAL_MODULES.has(module) && !process.env[`${module}_DATABASE_URL`]) {
+      console.log(`- ${module.toLowerCase()}: ${module}_DATABASE_URL is not set, skipped`);
+      continue;
+    }
+    // A module on its own database server (HQ in production) brings that
+    // server's admin login; the rest share DATABASE_ADMIN_URL.
+    const adminUrl =
+      process.env[`${module}_DATABASE_ADMIN_URL`] ?? process.env['DATABASE_ADMIN_URL'];
+    if (!adminUrl) {
+      throw new Error(
+        `DATABASE_ADMIN_URL (or ${module}_DATABASE_ADMIN_URL) is required to bootstrap ${module.toLowerCase()}`,
+      );
+    }
+    await bootstrap(parse(module), adminUrl);
+  }
+}
 
+async function bootstrap(target: Target, adminUrl: string): Promise<void> {
   const admin = new PrismaClient({ datasources: { db: { url: adminUrl } } });
   try {
-    for (const target of MODULES.map(parse)) {
+    {
       for (const { role, password } of [target.owner, target.app]) {
         const exists = await admin.$queryRawUnsafe<unknown[]>(
           `SELECT 1 FROM pg_roles WHERE rolname = ${literal(role)}`,

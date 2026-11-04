@@ -10326,12 +10326,62 @@
         "x-internal": true
       }
     },
+    "/internal/brands/republish": {
+      "post": {
+        "tags": ["Internal (API to API)"],
+        "operationId": "InternalController_republishBrands",
+        "summary": "Platform",
+        "description": "Platform: announces every brand again (platform.brand.updated), so a product joining late (HQ's first setup) gets its copy; products skip what they already have.\n\n**Access:** internal key only\n**Served by:** the platform API — `apps/platform/src/modules/internal/internal.controller.ts` (`InternalController.republishBrands`)",
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": { "brands": { "type": "number" } },
+                  "required": ["brands"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session, or it expired or was ended.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 401,
+                  "error": "Unauthorized",
+                  "message": "authentication required"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Signed in, but not allowed (role, product or brand).",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" },
+                "example": {
+                  "statusCode": 403,
+                  "error": "Forbidden",
+                  "message": "insufficient permissions"
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "internalKey": [] }],
+        "x-internal": true
+      }
+    },
     "/internal/events": {
       "post": {
         "tags": ["Internal (API to API)"],
         "operationId": "InternalEventsController_receive",
-        "summary": "Sugrpay",
-        "description": "Sugrpay: receives a platform event (brand created/updated, …) from the platform outbox; a failure makes the platform retry.\n\n**Access:** internal key only\n**Served by:** the sugrpay API — `apps/sugrpay/src/modules/platform-access/internal-events.controller.ts` (`InternalEventsController.receive`)",
+        "summary": "Sugrpay and HQ (each serves its own)",
+        "description": "Sugrpay and HQ (each serves its own): receives a platform event (brand created/updated, …) from the platform outbox; a failure makes the platform retry.\n\n**Access:** internal key only\n**Served by:** the hq API — `apps/hq/src/platform-access/internal-events.controller.ts` (`InternalEventsController.receive`)",
         "requestBody": {
           "required": true,
           "content": {

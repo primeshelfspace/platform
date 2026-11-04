@@ -24,6 +24,12 @@ pnpm --filter "./packages/*" build
 # databases must exist first (pnpm db:bootstrap, once per server).
 pnpm --filter @platform/platform-api db:migrate
 pnpm --filter @platform/sugrpay-api db:migrate
+# HQ has its own database once deploy/production/add-hq-database.sh has run.
+if grep -q '^HQ_DATABASE_URL=' .env; then
+  pnpm --filter @platform/hq-api db:migrate
+else
+  echo "HQ_DATABASE_URL is not set: skipping HQ migrations (run deploy/production/add-hq-database.sh)"
+fi
 # Zoho Books connections moved from the platform's database to Sugrpay's when
 # the APIs were split. Safe to repeat: only copies what Sugrpay lacks.
 pnpm db:move-zoho-connections

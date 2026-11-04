@@ -41,8 +41,10 @@ export const DESCRIPTIONS = {
   'POST /internal/brands/:brandId/theme-color':
     "Platform: sets a brand's colour (Sugrpay's branding screens edit it; the brand is the platform's).",
   'POST /internal/audit': "Platform: writes an entry to the platform's append-only audit log.",
+  'POST /internal/brands/republish':
+    "Platform: announces every brand again (platform.brand.updated), so a product joining late (HQ's first setup) gets its copy; products skip what they already have.",
   'POST /internal/events':
-    'Sugrpay: receives a platform event (brand created/updated, …) from the platform outbox; a failure makes the platform retry.',
+    'Sugrpay and HQ (each serves its own): receives a platform event (brand created/updated, …) from the platform outbox; a failure makes the platform retry.',
   // Sign-in
   'POST /auth/register':
     'Sign Up with a company email and a password (12+ characters). Free email providers are refused; one account per email across every company (409 EMAIL_TAKEN). Creates the company with the person as its Company Admin, signs them in (token, as login) and returns nextStep REGISTER_COMPANY. No product is enabled yet.',
