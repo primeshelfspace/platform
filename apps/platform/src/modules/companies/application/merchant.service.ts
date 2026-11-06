@@ -216,7 +216,7 @@ export class MerchantService {
           displayName: input.displayName,
           currency: input.currency,
           timezone: input.timezone,
-          // Left out: no colour (products fall back to their default).
+          // Left out: the column's default colour.
           ...(input.themeColor ? { themeColor: input.themeColor } : {}),
           email: merchant.company_email,
           taxId: merchant.company_tax_id,

@@ -68,34 +68,8 @@ export const DESCRIPTIONS = {
   'POST /company/products':
     'Enables the selected products (Company Admin; at least one, no repeats). 409 COMPANY_NOT_REGISTERED / ADD_BRAND_FIRST before those steps. Completes onboarding. continueWith names the product to open straight away when exactly one is enabled.',
   'POST /company/products/:product/continue':
-    'Continue into a product: returns its URL, a 12-hour JWT (HS256; sub user, mid company, aud product, sid session) with expiresAt, and a refresh token (30 days) with refreshExpiresAt. The product sends the JWT as a Bearer token on every platform call. Only for a product enabled for the company (409 PRODUCT_NOT_ENABLED); 409 PRODUCT_NOT_AVAILABLE when the product has no web address yet (HQ until HQ_PUBLIC_URL is set).',
-  // Product Session
-  'GET /product-session/me':
-    "Product Session: who is signed in, from the product's JWT alone (no user or Company id). Returns user (id, name, email), companyId, product, role (COMPANY_ADMIN for the Company Admin, otherwise the user's role in the asking product only) and the JWT's expiresAt. Read fresh each call. 401 for an invalid or expired JWT or a product no longer enabled; 403 PRODUCT_TOKEN_REQUIRED for a platform session.",
-  'POST /product-session/refresh':
-    'Product Session: exchanges the refresh token for a new 12-hour JWT and its expiresAt, without signing in again. 401 SIGN_IN_REQUIRED once the refresh token has expired (sign in through the platform); 401 INVALID_REFRESH_TOKEN for any other refused token (unknown, revoked, product no longer enabled, user suspended).',
+    'Continue into a product: returns its URL and a 15-minute JWT (HS256; sub user, mid company, aud product). Only for a product enabled for the company (409 PRODUCT_NOT_ENABLED); 409 PRODUCT_NOT_AVAILABLE when the product has no web address yet (HQ until HQ_PUBLIC_URL is set).',
   'GET /company/subscriptions': "The company's products and whether each is switched on.",
-  // Product company APIs (product JWT only; 403 PRODUCT_TOKEN_REQUIRED otherwise)
-  'GET /companies/:companyId':
-    "Company Profile: the Company's details (id, companyName, legalName, taxId, brandStructure, status, contactEmail = the sign-up email) and the Brands this user can access (all for the Company Admin, otherwise only those assigned), each with id, legalName, displayName, currency, timezone, themeColor (null when none set), status and archived. Read-only. 403 NOT_YOUR_COMPANY for any other Company id.",
-  'POST /company/brands':
-    'Brand Management (Company Admin): adds a Brand. Legal Name, Display Name (unique within the Company, ignoring case and spacing; 409 DISPLAY_NAME_TAKEN), Currency and Timezone required; Theme Color optional. Not limited by the Brand Structure. Returns id, displayName and status (ACTIVE).',
-  'PUT /company/brands/:brandId':
-    'Brand Management (Company Admin): edits a Brand under the same rules as adding; keeping its own Display Name is fine. Returns the Brand. 403 for a Brand of another Company.',
-  'POST /company/brands/:brandId/archive':
-    'Brand Management (Company Admin): marks the Brand archived and returns it. 403 for a Brand of another Company.',
-  'GET /company/users':
-    "User List (Company Admin): the Company's users, each with id, name, email, phone, role (the asking product's only; COMPANY_ADMIN for the Company Admin), Brands and status (ACTIVE, INVITED or DEACTIVATED). Optional brandId narrows to users assigned to that Brand; the Company Admin is under every Brand. 404 for a Brand of another Company.",
-  'POST /company/users':
-    "User Management (Company Admin): adds an active user who signs in with the email and password given. Name, email (unique across the platform; 409 EMAIL_TAKEN), phone { country, number } (valid for that country; 400 PHONE_INVALID), password (the platform's rules), role (one of GET /company/roles; 400 ROLE_NOT_AVAILABLE) and at least one Brand of the Company (400 BRAND_NOT_IN_COMPANY), all required.",
-  'PUT /company/users/:userId':
-    "User Management (Company Admin): edits a user's details, role and Brands under the same rules as adding, without the password. Sugrpay's role is also the user's platform role. 404 for another Company's user; 409 COMPANY_ADMIN_ACCOUNT for the Company Admin's own account.",
-  'POST /company/users/:userId/deactivate':
-    "User Management (Company Admin): deactivates a user. They cannot sign in, their sessions end, and their records are kept. 403 CANNOT_DEACTIVATE_SELF for the Company Admin's own account.",
-  'POST /company/users/:userId/reactivate':
-    'User Management (Company Admin): makes a deactivated user active again; they can sign in again.',
-  'GET /company/roles':
-    "Role List (Company Admin): the asking product's fixed roles, each with id and name, the same for every Company and without the Company Admin. HQ: Executive, Manager, Associate. Sugrpay: Admin, Brand Admin, Finance User, Sales User, Read Only.",
   'PUT /company/subscriptions/:product':
     'Switches a product on or off for the company (no billing provider yet). Switching one on needs a registered company with a brand, and completes onboarding.',
   // Brands
@@ -278,16 +252,8 @@ export const DESCRIPTIONS = {
 
 export const AREAS = [
   ['Internal (API to API)', (p) => p.startsWith('/internal')],
-  ['Sign-in', (p) => p.startsWith('/auth') || p.startsWith('/product-session')],
-  [
-    'Company and onboarding',
-    (p) =>
-      p.startsWith('/merchant') ||
-      p === '/company/products' ||
-      p.startsWith('/company/products/') ||
-      p.startsWith('/company/subscriptions'),
-  ],
-  ['Product company APIs', (p) => p.startsWith('/companies') || p.startsWith('/company/')],
+  ['Sign-in', (p) => p.startsWith('/auth')],
+  ['Company and onboarding', (p) => p.startsWith('/merchant') || p.startsWith('/company')],
   ['Brands', (p) => /^\/brands(\/:brandId)?(\/logo)?$/.test(p)],
   ['Team', (p) => p.startsWith('/users')],
   ['Locations', (p) => p.startsWith('/locations')],
