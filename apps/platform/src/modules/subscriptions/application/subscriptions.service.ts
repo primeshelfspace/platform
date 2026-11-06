@@ -7,7 +7,6 @@ import {
   type ScopedClient,
 } from '../../database/platform-prisma.service.js';
 import { PlatformOutbox } from '../../events/platform-outbox.js';
-import { requireReadyForProducts } from '../../companies/application/merchant.service.js';
 
 /** One entry per product, whether or not the company has ever subscribed. */
 export interface ProductSubscription {
@@ -45,16 +44,7 @@ export class SubscriptionsService {
     input: UpdateSubscriptionInput,
   ): Promise<ProductSubscription> {
     const saved = await this.prisma.withScope(scope, async (tx) => {
-      // Switching a product on is enabling it: not before Register Your
-      // Company and Add Your Brand, and it completes onboarding.
-      if (input.status === 'ACTIVE') {
-        await requireReadyForProducts(tx, scope.merchantId);
-        await tx.merchant.update({
-          where: { id: scope.merchantId },
-          data: { onboardingComplete: true },
-        });
-      }
-      const subscription = await this.save(tx, scope.merchantId, product, input);
+      const subscription = await this.upsert(tx, scope.merchantId, product, input);
       await this.outbox.recordSubscription(tx, subscription);
       return subscription;
     });
@@ -62,12 +52,11 @@ export class SubscriptionsService {
     return toProductSubscription(product, [saved]);
   }
 
-  /** Creates or updates the company's subscription to one product. */
-  async save(
+  private async upsert(
     tx: ScopedClient,
     merchantId: string,
     product: Product,
-    input: Pick<UpdateSubscriptionInput, 'status'> & Partial<UpdateSubscriptionInput>,
+    input: UpdateSubscriptionInput,
   ): Promise<Subscription> {
     const active = input.status === 'ACTIVE';
     const existing = await tx.subscription.findUnique({

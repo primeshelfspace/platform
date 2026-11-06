@@ -1,11 +1,20 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
-import { type RequestScope } from '@platform/kernel';
 import {
-  firstBrandSchema,
-  registerCompanySchema,
-  type FirstBrandInput,
-  type OnboardingStep,
-  type RegisterCompanyInput,
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { type Scope } from '@platform/kernel';
+import {
+  brandStructureChoiceSchema,
+  companyDetailsSchema,
+  type BrandStructureChoiceInput,
+  type CompanyDetailsInput,
 } from '@platform/platform-contracts';
 import { zodPipe } from '@platform/server';
 import { CurrentScope, RequirePermission } from '@platform/server';
@@ -15,39 +24,60 @@ import {
   type MerchantOnboardingState,
 } from '../application/merchant.service.js';
 
-/**
- * Company onboarding: Register Your Company and Add Your Brand
- * (docs/product/stories/company-onboarding.md). Select Your Products is
- * ProductsController.
- */
 @Controller('merchant')
 export class MerchantController {
   constructor(private readonly merchant: MerchantService) {}
 
-  /** Every user may read where onboarding stands: it decides where signing
-   * in takes them. */
+  /**
+   * Read is ORGANISATION_PROFILE, not BRANDS — every role holds it (FRS-001
+   * §3.3). This is polled by every dashboard page's onboarding guard, not
+   * just the Owner/Admin actors who can actually complete these steps.
+   */
   @Get('onboarding')
   @RequirePermission('ORGANISATION_PROFILE', 'READ', { brandFrom: 'none' })
-  getOnboardingState(@CurrentScope() scope: RequestScope): Promise<MerchantOnboardingState> {
+  getOnboardingState(@CurrentScope() scope: Scope): Promise<MerchantOnboardingState> {
     return this.merchant.getOnboardingState(scope);
   }
 
-  @Post('register-company')
+  @Patch('company-details')
   @RequirePermission('BRANDS', 'WRITE', { brandFrom: 'none' })
-  @HttpCode(200)
-  registerCompany(
-    @CurrentScope() scope: RequestScope,
-    @Body(zodPipe(registerCompanySchema)) body: RegisterCompanyInput,
-  ): Promise<{ nextStep: OnboardingStep }> {
-    return this.merchant.registerCompany(scope, body);
+  async setCompanyDetails(
+    @CurrentScope() scope: Scope,
+    @Body(zodPipe(companyDetailsSchema)) body: CompanyDetailsInput,
+  ): Promise<{ ok: true }> {
+    await this.merchant.setCompanyDetails(scope, body);
+    return { ok: true };
   }
 
-  @Post('first-brand')
+  @Post('logo')
   @RequirePermission('BRANDS', 'WRITE', { brandFrom: 'none' })
-  addFirstBrand(
-    @CurrentScope() scope: RequestScope,
-    @Body(zodPipe(firstBrandSchema)) body: FirstBrandInput,
-  ): Promise<{ brand: CreatedBrandSummary; nextStep: OnboardingStep }> {
-    return this.merchant.addFirstBrand(scope, body);
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  uploadLogo(
+    @CurrentScope() scope: Scope,
+    @UploadedFile() file?: Express.Multer.File,
+  ): Promise<{ logoUrl: string }> {
+    if (!file) throw new BadRequestException('no file uploaded');
+    return this.merchant.setLogo(scope, {
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+      size: file.size,
+    });
+  }
+
+  @Post('brand-structure')
+  @RequirePermission('BRANDS', 'WRITE', { brandFrom: 'none' })
+  async chooseBrandStructure(
+    @CurrentScope() scope: Scope,
+    @Body(zodPipe(brandStructureChoiceSchema)) body: BrandStructureChoiceInput,
+  ): Promise<{ brand: CreatedBrandSummary | null }> {
+    const brand = await this.merchant.chooseBrandStructure(scope, body.structure);
+    return { brand };
+  }
+
+  @Post('complete-onboarding')
+  @RequirePermission('BRANDS', 'WRITE', { brandFrom: 'none' })
+  async completeOnboarding(@CurrentScope() scope: Scope): Promise<{ ok: true }> {
+    await this.merchant.completeOnboarding(scope);
+    return { ok: true };
   }
 }
