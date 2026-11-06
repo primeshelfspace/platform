@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { ZOHO_PAID_MARKER } from '../domain/zoho-paid-marker.js';
 import { UnrecoverableError } from 'bullmq';
 import type {
   AccountingAddress,
@@ -441,6 +442,13 @@ export class ZohoSyncService {
     if (!connection) return;
     const flags = await this.connections.getSyncFlags(scope, brandId);
     if (flags && !flags.invoiceSyncEnabled) return;
+
+    // Money received in Zoho, recorded here by the pull: it is Zoho's own,
+    // so pushing it would add it to Zoho a second time.
+    const marker = await this.prisma.withScope(scope, (tx) =>
+      tx.payment.findUnique({ where: { id: paymentId }, select: { zohoPaymentId: true } }),
+    );
+    if (marker?.zohoPaymentId?.startsWith(ZOHO_PAID_MARKER)) return;
 
     await this.runJob(scope, brandId, 'PAYMENT', paymentId, async (name) => {
       const payment = await this.prisma.withScope(scope, (tx) =>

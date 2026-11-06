@@ -318,4 +318,40 @@ describeWithDb('ZohoSyncService push (FR-ZHO-webhook)', () => {
     const updated = await owner.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(updated.zohoUnsyncedReason).toMatch(/greater than zero/);
   });
+
+  it('never pushes money received in Zoho back to Zoho', async () => {
+    const customer = await owner.customer.create({
+      data: { brandId, displayName: 'Acme Co', zohoContactId: 'contact-paid' },
+    });
+    const invoice = await owner.invoice.create({
+      data: {
+        brandId,
+        customerId: customer.id,
+        number: 'INV-0003',
+        invoiceDate: new Date('2026-08-01'),
+        dueDate: new Date('2026-08-31'),
+        zohoInvoiceId: 'remote-invoice-paid',
+        publicToken: randomUUID(),
+      },
+    });
+    // What ZohoPullService.recordPaidInZoho writes.
+    const payment = await owner.payment.create({
+      data: {
+        brandId,
+        invoiceId: invoice.id,
+        method: 'MANUAL',
+        amountMinor: 5000n,
+        status: 'SETTLED',
+        settledAt: new Date('2026-08-15T12:00:00Z'),
+        idempotencyKey: `zoho-paid:${invoice.id}`,
+        zohoPaymentId: 'zoho-invoice-paid:remote-invoice-paid',
+      },
+    });
+    const pushPayment = vi.fn();
+    const sync = service({ pushPayment });
+
+    await sync.pushPayment(brandId, payment.id);
+
+    expect(pushPayment).not.toHaveBeenCalled();
+  });
 });

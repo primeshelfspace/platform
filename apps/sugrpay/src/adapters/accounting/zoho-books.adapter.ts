@@ -132,6 +132,9 @@ export interface ZohoInvoiceListItem {
   total: number;
   balance: number;
   last_modified_time?: string;
+  /** The date of the latest payment on the invoice (YYYY-MM-DD), in the list
+   * response; empty or absent when nothing has been paid. */
+  last_payment_date?: string;
 }
 
 export interface ZohoInvoiceLineItem {

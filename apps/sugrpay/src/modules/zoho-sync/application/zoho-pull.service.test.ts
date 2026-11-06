@@ -1073,6 +1073,118 @@ describeWithDb('ZohoPullService', () => {
    * a deletion: the invoice pull is incremental, so an invoice removed from Zoho
    * just stopped being mentioned and its payment link stayed live here.
    */
+  describe('money received in Zoho', () => {
+    /** A Zoho invoice for a contact this brand already has, from the list. */
+    async function setUp() {
+      const run = randomUUID();
+      const contactId = `paid-contact-${run}`;
+      await owner.customer.create({
+        data: { brandId, type: 'BUSINESS', displayName: 'Paid Co', zohoContactId: contactId },
+      });
+      const zohoInvoiceId = `paid-invoice-${run}`;
+      const item = (fields: Partial<ZohoInvoiceListItem>): ZohoInvoiceListItem => ({
+        ...fakeInvoiceListItem(zohoInvoiceId, `PAID-${run.slice(0, 8)}`, contactId),
+        ...fields,
+      });
+      const zoho = new FakeZohoBooksAdapter();
+      const svc = service(zoho, redis);
+      const pull = async (fields: Partial<ZohoInvoiceListItem>) => {
+        zoho.listedInvoices = [item(fields)];
+        await svc.pullInvoices(scope, brandId, connection, null);
+        return owner.invoice.findFirstOrThrow({ where: { brandId, zohoInvoiceId } });
+      };
+      const paymentsOf = (invoiceId: string) =>
+        owner.payment.findMany({ where: { invoiceId }, orderBy: { createdAt: 'asc' } });
+      return { zoho, pull, paymentsOf, zohoInvoiceId };
+    }
+
+    it('records what was paid in Zoho as a settled payment, with no extra Zoho call', async () => {
+      const { zoho, pull, paymentsOf, zohoInvoiceId } = await setUp();
+
+      const invoice = await pull({
+        status: 'partially_paid',
+        total: 100,
+        balance: 40,
+        last_payment_date: '2026-08-15',
+        last_modified_time: '2026-08-15T10:00:00+0000',
+      });
+
+      const [payment, ...rest] = await paymentsOf(invoice.id);
+      expect(rest).toEqual([]);
+      expect(payment).toMatchObject({
+        amountMinor: 6000n,
+        status: 'SETTLED',
+        method: 'MANUAL',
+        currency: 'USD',
+        zohoPaymentId: `zoho-invoice-paid:${zohoInvoiceId}`,
+      });
+      expect(payment!.settledAt!.toISOString().slice(0, 10)).toBe('2026-08-15');
+      expect(zoho.getInvoiceCalls).toBe(0);
+    });
+
+    it('keeps one row per invoice, moving with the next payment, and drops it if voided', async () => {
+      const { pull, paymentsOf } = await setUp();
+      await pull({
+        status: 'partially_paid',
+        balance: 40,
+        last_payment_date: '2026-08-15',
+        last_modified_time: '2026-08-15T10:00:00+0000',
+      });
+
+      const paid = await pull({
+        status: 'paid',
+        balance: 0,
+        last_payment_date: '2026-08-20',
+        last_modified_time: '2026-08-20T10:00:00+0000',
+      });
+      const after = await paymentsOf(paid.id);
+      expect(after.map((p) => [p.amountMinor, p.settledAt!.toISOString().slice(0, 10)])).toEqual([
+        [10000n, '2026-08-20'],
+      ]);
+
+      const voided = await pull({
+        status: 'void',
+        balance: 0,
+        last_modified_time: '2026-08-21T10:00:00+0000',
+      });
+      expect(await paymentsOf(voided.id)).toEqual([]);
+    });
+
+    it('does not count twice a payment recorded here and already sent to Zoho', async () => {
+      const { pull, paymentsOf } = await setUp();
+      const invoice = await pull({ status: 'sent', balance: 100 });
+      expect(await paymentsOf(invoice.id)).toEqual([]);
+      // Recorded in Sugrpay ($30) and pushed, so Zoho's balance includes it.
+      await owner.payment.create({
+        data: {
+          invoiceId: invoice.id,
+          brandId,
+          method: 'CHECK',
+          amountMinor: 3000n,
+          currency: 'USD',
+          status: 'SETTLED',
+          settledAt: new Date('2026-08-10T12:00:00Z'),
+          idempotencyKey: `manual:${randomUUID()}`,
+          zohoPaymentId: `zoho-payment-${randomUUID()}`,
+        },
+      });
+
+      // Zoho then shows $50 paid in all: $30 from here, $20 paid in Zoho.
+      await pull({
+        status: 'partially_paid',
+        balance: 50,
+        last_payment_date: '2026-08-12',
+        last_modified_time: '2026-08-12T10:00:00+0000',
+      });
+
+      const payments = await paymentsOf(invoice.id);
+      expect(payments.map((p) => [p.method, p.amountMinor])).toEqual([
+        ['CHECK', 3000n],
+        ['MANUAL', 2000n],
+      ]);
+    });
+  });
+
   describe('deletion reconciliation', () => {
     async function zohoSourcedInvoice(opts: { createdAt: Date }) {
       const contactId = `recon-contact-${randomUUID()}`;
