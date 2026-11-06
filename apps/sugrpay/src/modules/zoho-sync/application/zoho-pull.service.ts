@@ -24,6 +24,7 @@ import {
   type ZohoInvoiceListItem,
 } from '../../../adapters/accounting/zoho-books.adapter.js';
 import { ZohoConnectionService } from './zoho-connection.service.js';
+import { ZOHO_PAID_MARKER } from '../domain/zoho-paid-marker.js';
 
 export interface PullCounts {
   readonly customers: number;
@@ -337,6 +338,9 @@ export class ZohoPullService {
   ): Promise<PullCounts> {
     const pullStartedAt = new Date();
     const cursor = await this.connections.getLastPulledAt(scope, brandId);
+    // Payments received in Zoho on invoices imported before they were
+    // recorded here; runs once per brand, no Zoho call.
+    await this.backfillPaidInZohoOnce(scope, brandId);
 
     // Contacts first, then invoices: an invoice whose customer is already
     // here needs no call to fetch that customer. Run side by side, an invoice
@@ -1379,7 +1383,7 @@ export class ZohoPullService {
         // *different* local invoice, usually one this platform numbered from
         // its own sequence. Retrying cannot change that, so it used to burn all
         // five attempts and then surface a raw Prisma error.
-        await this.withUniqueViolationRetry(
+        const saved = await this.withUniqueViolationRetry(
           () =>
             this.prisma.withScope(scope, (tx) =>
               tx.invoice.upsert({
@@ -1417,6 +1421,14 @@ export class ZohoPullService {
           }
           throw error;
         });
+        await this.recordPaidInZoho(scope, brandId, saved.id, {
+          zohoInvoiceId: invoiceId,
+          status: updateData.status,
+          totalMinor,
+          balanceMinor,
+          currency,
+          paidAt: this.zohoPaidAt(item),
+        });
         return true;
       },
       {
@@ -1425,6 +1437,125 @@ export class ZohoPullService {
         onlyIfFailed: Boolean(fromScan),
       },
     );
+  }
+
+  /**
+   * Money received on a Zoho invoice, recorded as one payment here so the
+   * dashboard's Collected and Collection Rate count it. Before, payments made
+   * in Zoho never came across at all (only invoices did), so Collected stayed
+   * near zero for Zoho data however much had been paid.
+   *
+   * No extra Zoho call: the invoice list the pull already reads has the total,
+   * the balance and the last payment date. What was paid in Zoho is total
+   * minus balance, less what was paid here (those payments were pushed to
+   * Zoho and are already in its balance). It is one row per invoice, dated by
+   * the latest payment, so several partial payments on different days count
+   * on the last of them. Credit notes applied in Zoho also lower its balance
+   * and are counted the same way.
+   *
+   * The row carries a zohoPaymentId marker, so it is never pushed back to
+   * Zoho (only payments without one are), and it is removed again if the
+   * invoice is voided or the amount falls to nothing.
+   */
+  private async recordPaidInZoho(
+    scope: Scope,
+    brandId: string,
+    localInvoiceId: string,
+    zohoInvoice: {
+      zohoInvoiceId: string;
+      status: InvoiceStatus;
+      totalMinor: bigint;
+      balanceMinor: bigint;
+      currency: string;
+      paidAt: Date;
+    },
+  ): Promise<void> {
+    const idempotencyKey = `zoho-paid:${localInvoiceId}`;
+    await this.prisma.withScope(scope, async (tx) => {
+      const paidInZoho =
+        zohoInvoice.status === 'CANCELLED' || zohoInvoice.status === 'DRAFT'
+          ? 0n
+          : zohoInvoice.totalMinor - zohoInvoice.balanceMinor;
+      const paidHere = await tx.payment.aggregate({
+        where: {
+          invoiceId: localInvoiceId,
+          status: { in: ['SETTLED', 'PARTIALLY_REFUNDED'] },
+          NOT: { idempotencyKey },
+        },
+        _sum: { amountMinor: true },
+      });
+      const external = paidInZoho - (paidHere._sum.amountMinor ?? 0n);
+      if (external <= 0n) {
+        await tx.payment.deleteMany({ where: { idempotencyKey } });
+        return;
+      }
+      await tx.payment.upsert({
+        where: { idempotencyKey },
+        create: {
+          invoiceId: localInvoiceId,
+          brandId,
+          method: 'MANUAL',
+          amountMinor: external,
+          currency: zohoInvoice.currency,
+          status: 'SETTLED',
+          settledAt: zohoInvoice.paidAt,
+          idempotencyKey,
+          zohoPaymentId: `${ZOHO_PAID_MARKER}${zohoInvoice.zohoInvoiceId}`,
+        },
+        update: {
+          amountMinor: external,
+          currency: zohoInvoice.currency,
+          settledAt: zohoInvoice.paidAt,
+        },
+      });
+    });
+  }
+
+  /** When the money on a Zoho invoice was received: its last payment date,
+   * else when Zoho last changed it, else its invoice date. */
+  private zohoPaidAt(item: ZohoInvoiceListItem): Date {
+    if (item.last_payment_date && /^d{4}-d{2}-d{2}/.test(item.last_payment_date)) {
+      return new Date(`${item.last_payment_date.slice(0, 10)}T12:00:00Z`);
+    }
+    return this.parseZohoTimestamp(item.last_modified_time) ?? new Date(item.date);
+  }
+
+  /**
+   * Once per brand: the same as recordPaidInZoho for invoices imported before
+   * it existed, from what is already stored (no Zoho call). Dated by when
+   * Zoho last changed the invoice, the closest stored stand-in for its last
+   * payment; the next time Zoho changes an invoice the pull sets the real date.
+   */
+  private async backfillPaidInZohoOnce(scope: Scope, brandId: string): Promise<void> {
+    const flag = `zoho:paid-backfill:v1:${brandId}`;
+    if (await this.redis.getJson<boolean>(flag).catch(() => null)) return;
+    const invoices = await this.prisma.withScope(scope, (tx) =>
+      tx.invoice.findMany({
+        where: { brandId, zohoInvoiceId: { not: null }, status: { notIn: ['DRAFT', 'CANCELLED'] } },
+        select: {
+          id: true,
+          zohoInvoiceId: true,
+          status: true,
+          totalMinor: true,
+          balanceMinor: true,
+          currency: true,
+          zohoSyncedVersion: true,
+          updatedAt: true,
+        },
+      }),
+    );
+    for (const invoice of invoices) {
+      if (invoice.balanceMinor >= invoice.totalMinor) continue;
+      await this.recordPaidInZoho(scope, brandId, invoice.id, {
+        zohoInvoiceId: invoice.zohoInvoiceId!,
+        status: invoice.status as InvoiceStatus,
+        totalMinor: invoice.totalMinor,
+        balanceMinor: invoice.balanceMinor,
+        currency: invoice.currency,
+        paidAt: invoice.zohoSyncedVersion ?? invoice.updatedAt,
+      });
+    }
+    await this.redis.setJson(flag, true).catch(() => undefined);
   }
 
   /**

@@ -442,13 +442,18 @@ export type CreateCheckSubmissionInput = z.infer<typeof createCheckSubmissionSch
 
 // --- Dashboard -------------------------------------------------------------
 
-export const dashboardQuerySchema = z.object({
-  brandId: idSchema.optional(),
-  dateRange: dateRangeSchema.optional(),
-  /** Flat range bounds for the KPI cards / By Brand rollup — a preset
-   * (This Month, Last Quarter, ...) resolved to concrete dates client-side,
-   * simpler to send as query params than the nested `dateRange` above. */
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
-});
+export const dashboardQuerySchema = z
+  .object({
+    brandId: idSchema.optional(),
+    dateRange: dateRangeSchema.optional(),
+    /** Flat range bounds for the KPI cards / By Brand rollup — a preset
+     * (This Month, Last Quarter, ...) resolved to concrete dates client-side,
+     * simpler to send as query params than the nested `dateRange` above. */
+    from: z.coerce.date().optional(),
+    to: z.coerce.date().optional(),
+  })
+  .refine((q) => !q.from || !q.to || q.from < q.to, {
+    message: 'from must be before to',
+    path: ['to'],
+  });
 export type DashboardQuery = z.infer<typeof dashboardQuerySchema>;
