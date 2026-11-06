@@ -107,9 +107,15 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     limit: number,
     windowSeconds: number,
   ): Promise<boolean> {
+    return (await this.incrementCounter(key, windowSeconds)) <= limit;
+  }
+
+  /** Adds one to a counter that lives windowSeconds from its first use, and
+   * returns the new count. */
+  async incrementCounter(key: string, windowSeconds: number): Promise<number> {
     const count = await this.cache.incr(key);
     if (count === 1) await this.cache.expire(key, windowSeconds);
-    return count <= limit;
+    return count;
   }
 
   /**

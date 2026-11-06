@@ -113,10 +113,14 @@ describe('ZohoBooksAdapter.listContactsPage', () => {
   // it needs a real-shaped env. request() also gates every call through
   // RedisService's rate-limit token bucket (see waitForRateSlot), so unlike
   // the shared `adapter` above, this one needs a real (if stubbed) redis
-  // whose acquireRateToken always grants a slot.
+  // that always grants a slot.
   const envAdapter = new ZohoBooksAdapter(
     { ZOHO_API_DOMAIN: 'https://www.zohoapis.com' } as Env,
-    { acquireRateToken: vi.fn().mockResolvedValue(true) } as unknown as RedisService,
+    {
+      acquireGenericRateToken: vi.fn().mockResolvedValue(true),
+      incrementCounter: vi.fn().mockResolvedValue(1),
+      getJson: vi.fn().mockResolvedValue(null),
+    } as unknown as RedisService,
   );
 
   const connection: AccountingConnection = {
@@ -162,11 +166,17 @@ describe('ZohoBooksAdapter rate-limit pause', () => {
     vi.unstubAllGlobals();
   });
 
-  /** Redis's getJson/setJson, in memory. */
+  /** Redis's getJson/setJson and counters, in memory. */
   function memoryRedis(): RedisService {
     const store = new Map<string, string>();
+    const incrementCounter = async (key: string) => {
+      const count = Number(store.get(key) ?? 0) + 1;
+      store.set(key, String(count));
+      return count;
+    };
     return {
-      acquireRateToken: vi.fn().mockResolvedValue(true),
+      acquireGenericRateToken: vi.fn().mockResolvedValue(true),
+      incrementCounter: vi.fn(incrementCounter),
       getJson: vi.fn(async (key: string) => {
         const raw = store.get(key);
         return raw === undefined ? null : JSON.parse(raw);
@@ -213,5 +223,42 @@ describe('ZohoBooksAdapter rate-limit pause', () => {
     const until = await adapter.rateLimitedUntil('shared-org');
     expect(until!.getTime() - Date.now()).toBeGreaterThan(100_000);
     expect(await adapter.rateLimitedUntil('another-org')).toBeNull();
+  });
+
+  it('pauses longer each time Zoho refuses again, up to 4 hours', async () => {
+    const redis = memoryRedis();
+    const adapter = new ZohoBooksAdapter(
+      { ZOHO_API_DOMAIN: 'https://www.zohoapis.com' } as Env,
+      redis,
+    );
+    // Zoho's daily limit: a 429 with no Retry-After.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ code: 45, message: 'daily limit reached' }), {
+            status: 429,
+          }),
+      ),
+    );
+    const pausedMinutes = async () => {
+      const until = await adapter.rateLimitedUntil('shared-org');
+      return Math.round((until!.getTime() - Date.now()) / 60_000);
+    };
+    const refusedAgain = async () => {
+      // The pause has ended: the next call reaches Zoho and is refused again.
+      await redis.setJson('zoho:rate-limited:shared-org', null);
+      await adapter.listContactsPage(connection('brand-a'), 1).catch(() => undefined);
+      return pausedMinutes();
+    };
+
+    expect(await refusedAgain()).toBe(15);
+    expect(await refusedAgain()).toBe(30);
+    expect(await refusedAgain()).toBe(60);
+    expect(await refusedAgain()).toBe(120);
+    expect(await refusedAgain()).toBe(240);
+    expect(await refusedAgain()).toBe(240);
+    // Every call that reached Zoho counts against the organisation's day.
+    expect(await adapter.callsToday('shared-org')).toBe(6);
   });
 });

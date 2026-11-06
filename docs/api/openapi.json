@@ -3485,8 +3485,11 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": { "queued": { "type": "boolean" } },
-                  "required": ["queued"]
+                  "properties": {
+                    "queued": { "type": "boolean" },
+                    "rateLimitedUntil": { "type": ["string", "null"] }
+                  },
+                  "required": ["queued", "rateLimitedUntil"]
                 }
               }
             }
@@ -4702,7 +4705,36 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ZohoConnectionStatus" }
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "connected": { "type": "boolean" },
+                    "organizationName": { "type": ["string", "null"] },
+                    "lastSyncAt": { "format": "date-time", "type": ["string", "null"] },
+                    "lastPulledAt": { "format": "date-time", "type": ["string", "null"] },
+                    "health": { "type": ["string", "null"] },
+                    "pullFrequencyMinutes": { "type": "number" },
+                    "scheduledPullEnabled": {
+                      "type": "boolean",
+                      "description": "Whether timed pulls may run on this server at all (ZOHO_SCHEDULED_PULL_ENABLED, an emergency switch, on by default). Off, every brand is Real-time whatever pullFrequencyMinutes says."
+                    },
+                    "customerSyncEnabled": { "type": "boolean" },
+                    "invoiceSyncEnabled": { "type": "boolean" },
+                    "rateLimitedUntil": { "type": ["string", "null"] }
+                  },
+                  "required": [
+                    "connected",
+                    "organizationName",
+                    "lastSyncAt",
+                    "lastPulledAt",
+                    "health",
+                    "pullFrequencyMinutes",
+                    "scheduledPullEnabled",
+                    "customerSyncEnabled",
+                    "invoiceSyncEnabled",
+                    "rateLimitedUntil"
+                  ]
+                }
               }
             }
           },

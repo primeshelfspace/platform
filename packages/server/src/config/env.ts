@@ -158,10 +158,17 @@ const envSchema = z
     /**
      * Whether the every-minute 'scheduled-sync' tick may pull from Zoho at
      * all, at each brand's own Sync Frequency (Real-time, the default, is
-     * every 5 minutes on top of webhooks). Set it false to stop every timed
+     * every 15 minutes on top of webhooks). Set it false to stop every timed
      * pull at once (e.g. while Zoho is rate-limiting an organisation).
      */
     ZOHO_SCHEDULED_PULL_ENABLED: booleanish.default(true),
+    /**
+     * Zoho Books API calls a day, per Zoho organisation, on its plan (Free
+     * 1000, Standard 2000, Professional 5000, Premium and above 10000). Timed
+     * pulls stop for the day at 60% of it, leaving the rest for pushes and
+     * "Sync now". Every brand on one organisation shares it.
+     */
+    ZOHO_DAILY_CALL_LIMIT: z.coerce.number().int().positive().default(1000),
 
     API_PUBLIC_URL: z.string().url().default('http://localhost:4001'),
     /** The Swagger page at /docs on every API (packages/server/src/api-docs.ts). */

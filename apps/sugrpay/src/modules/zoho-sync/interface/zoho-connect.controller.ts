@@ -116,11 +116,20 @@ export class ZohoConnectController {
 
   @Get('brands/:brandId/integrations/zoho/status')
   @RequirePermission('INTEGRATIONS', 'READ')
-  status(
+  async status(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
     @CurrentScope() scope: Scope,
-  ): Promise<ZohoConnectionStatus> {
-    return this.connections.getStatus(scope, brandId);
+  ): Promise<ZohoConnectionStatus & { rateLimitedUntil: string | null }> {
+    const status = await this.connections.getStatus(scope, brandId);
+    return { ...status, rateLimitedUntil: await this.pausedUntil(scope, brandId) };
+  }
+
+  /** When Zoho has told us to stop calling this brand's organisation, until
+   * when (ISO), or null. Every brand on the organisation shares the pause. */
+  private async pausedUntil(scope: Scope, brandId: string): Promise<string | null> {
+    const organisationId = await this.connections.getZohoOrganizationId(scope, brandId);
+    if (!organisationId) return null;
+    return (await this.zoho.rateLimitedUntil(organisationId))?.toISOString() ?? null;
   }
 
   @Get('brands/:brandId/integrations/zoho/activity')
@@ -170,9 +179,15 @@ export class ZohoConnectController {
   @RequirePermission('INTEGRATIONS', 'WRITE')
   async pullNow(
     @Param('brandId', zodPipe(idSchema)) brandId: string,
-  ): Promise<{ queued: boolean }> {
+    @CurrentScope() scope: Scope,
+  ): Promise<{ queued: boolean; rateLimitedUntil: string | null }> {
+    // While Zoho is pausing the organisation the pull would be skipped
+    // without a call. It used to be queued anyway and answer "queued", so
+    // "Sync now" looked like it worked and nothing happened. Say so instead.
+    const rateLimitedUntil = await this.pausedUntil(scope, brandId);
+    if (rateLimitedUntil) return { queued: false, rateLimitedUntil };
     await this.queue.enqueue('sync', 'zoho-pull-brand', { brandId, force: true });
-    return { queued: true };
+    return { queued: true, rateLimitedUntil: null };
   }
 
   /**
