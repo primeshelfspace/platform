@@ -19,7 +19,8 @@ import {
   type InvoicePdfSettings,
 } from '../../settings/application/brand-settings.service.js';
 import type { CheckImageUpload } from '../../../common/check-upload.js';
-import { LOGO_URL_TTL_SECONDS } from '@platform/server';
+import { ENV, encryptFile, LOGO_URL_TTL_SECONDS, type Env } from '@platform/server';
+import { CHECK_IMAGE_PURPOSE } from '../../../common/check-upload.js';
 import { StripeAccountService } from '../../platform-access/index.js';
 import { ZohoPullService } from '../../zoho-sync/application/zoho-pull.service.js';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
@@ -99,6 +100,7 @@ export class PublicInvoicesService {
     private readonly stripeAccounts: StripeAccountService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly zohoPull: ZohoPullService,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   /** Null covers both "no such token" and "deactivated" — deliberately
@@ -322,17 +324,25 @@ export class PublicInvoicesService {
       const frontImageKey = storageKeys.checkImage(scope.brandId, id, 'front');
       const backImageKey = storageKeys.checkImage(scope.brandId, id, 'back');
 
+      // A check carries the customer's bank account and routing numbers and
+      // signature, so the photos are encrypted here before they are stored
+      // (on top of the storage provider's own encryption at rest), and are
+      // only ever shown decrypted to signed-in staff (ChecksService.image).
+      const sealed = (image: CheckImageUpload) =>
+        encryptFile(image.buffer, this.env.CREDENTIAL_ENCRYPTION_KEY, CHECK_IMAGE_PURPOSE);
       await Promise.all([
         this.storage.put({
           key: frontImageKey,
-          body: images.front.buffer,
-          contentType: images.front.mimetype,
+          body: sealed(images.front),
+          contentType: 'application/octet-stream',
+          metadata: { 'sugrpay-encrypted': 'aes-256-gcm' },
           encrypt: true,
         }),
         this.storage.put({
           key: backImageKey,
-          body: images.back.buffer,
-          contentType: images.back.mimetype,
+          body: sealed(images.back),
+          contentType: 'application/octet-stream',
+          metadata: { 'sugrpay-encrypted': 'aes-256-gcm' },
           encrypt: true,
         }),
       ]);

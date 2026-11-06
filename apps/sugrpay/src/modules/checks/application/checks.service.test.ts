@@ -10,6 +10,7 @@ import type { InvoiceDraftInput } from '@platform/invoicing-contracts';
 import type { RequestScope } from '@platform/kernel';
 import { createFakeMailPort } from '@platform/server';
 import { LocalDiskAdapter } from '@platform/server';
+import { encryptFile, isEncryptedFile } from '@platform/server';
 import { loadEnv } from '@platform/server';
 import { getEnv } from '@platform/server';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
@@ -41,7 +42,8 @@ describeWithDb('ChecksService', () => {
     new InvoicePdfService(),
     { enrichCustomerFromZohoOnDemand: async () => false } as unknown as ZohoPullService,
   );
-  const checks = new ChecksService(prisma, invoices, new LocalDiskAdapter(env!));
+  const storage = new LocalDiskAdapter(env!);
+  const checks = new ChecksService(prisma, invoices, storage, env!);
   const owner = new PrismaClient({
     datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },
   });
@@ -251,13 +253,58 @@ describeWithDb('ChecksService', () => {
     });
   });
 
+  describe('image', () => {
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from('check-photo')]);
+
+    it('decrypts an encrypted photo for staff', async () => {
+      const invoice = await issuedInvoice();
+      const submission = await submitCheck(invoice.id);
+      await storage.put({
+        key: submission.frontImageKey,
+        body: encryptFile(jpeg, env!.CREDENTIAL_ENCRYPTION_KEY, 'check-image'),
+        contentType: 'application/octet-stream',
+      });
+
+      const image = await checks.image(ownerScope, solsticeId, submission.id, 'front');
+
+      expect(image.contentType).toBe('image/jpeg');
+      expect(image.body.equals(jpeg)).toBe(true);
+    });
+
+    it('encrypts a photo stored before encryption the first time it is opened', async () => {
+      const invoice = await issuedInvoice();
+      const submission = await submitCheck(invoice.id);
+      await storage.put({ key: submission.backImageKey, body: jpeg, contentType: 'image/jpeg' });
+
+      const image = await checks.image(ownerScope, solsticeId, submission.id, 'back');
+
+      expect(image.body.equals(jpeg)).toBe(true);
+      const stored = await storage.get(submission.backImageKey);
+      expect(isEncryptedFile(stored)).toBe(true);
+      // And it still opens afterwards.
+      expect(
+        (await checks.image(ownerScope, solsticeId, submission.id, 'back')).body.equals(jpeg),
+      ).toBe(true);
+    });
+
+    it("never shows another brand's check photo", async () => {
+      const invoice = await issuedInvoice();
+      const submission = await submitCheck(invoice.id);
+      await expect(
+        checks.image(ownerScope, '00000000-0000-0000-0000-000000000000', submission.id, 'front'),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('getDetail', () => {
-    it('signs both check image URLs and throws NotFoundException for a missing id', async () => {
+    it('points at the signed-in photo routes, never a storage link, and 404s a missing id', async () => {
       const invoice = await issuedInvoice();
       const submission = await submitCheck(invoice.id);
       const detail = await checks.getDetail(ownerScope, solsticeId, submission.id);
-      expect(new URL(detail.frontImageUrl).searchParams.get('key')).toBe(submission.frontImageKey);
-      expect(new URL(detail.backImageUrl).searchParams.get('key')).toBe(submission.backImageKey);
+      expect(detail.frontImageUrl).toBe(
+        `/brands/${solsticeId}/checks/${submission.id}/images/front`,
+      );
+      expect(detail.backImageUrl).toBe(`/brands/${solsticeId}/checks/${submission.id}/images/back`);
 
       await expect(
         checks.getDetail(ownerScope, solsticeId, '00000000-0000-0000-0000-000000000000'),

@@ -18,6 +18,7 @@ export * from './adapters/storage/storage.controller.js';
 export * from './adapters/storage/storage.module.js';
 export * from './common/concurrency.js';
 export * from './common/credential-encryption.js';
+export * from './common/file-encryption.js';
 export * from './common/http-security.js';
 export * from './common/image-content.js';
 export * from './common/logo-upload.js';
