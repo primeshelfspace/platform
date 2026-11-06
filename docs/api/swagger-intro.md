@@ -5,8 +5,6 @@
 
 Every endpoint of the three APIs: **platform** (sign-in, companies, brands, team, locations, payment-gateway connections), **Sugrpay** (customers, invoices, payments, checks, brand settings, dashboard, Zoho Books, the public payment page) and **HQ** (health only, so far). Each operation says which API serves it and the access it needs.
 
-**Building HQ?** The APIs HQ uses, with a step-by-step guide, examples and every error, are on their own page: [/hq/docs](/hq/docs).
-
 This document is generated from the code (`pnpm docs:api`), so it always matches what the API does. The guide is [docs/api/README.md](https://github.com/primeshelfspace/platform/blob/main/docs/api/README.md).
 
 ## Addresses

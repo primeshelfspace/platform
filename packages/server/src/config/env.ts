@@ -41,9 +41,6 @@ const envSchema = z
      */
     PLATFORM_INTERNAL_URL: z.string().url().default('http://127.0.0.1:4001'),
     SUGRPAY_INTERNAL_URL: z.string().url().default('http://127.0.0.1:4002'),
-    /** Where the platform forwards its events to HQ. Unset: HQ gets none (it
-     * is not set up on this server yet). */
-    HQ_INTERNAL_URL: z.string().url().optional(),
     INTERNAL_API_KEY: z.string().min(32).optional(),
 
     /**
@@ -61,10 +58,6 @@ const envSchema = z
     PLATFORM_DIRECT_DATABASE_URL: z.string().url().optional(),
     INVOICING_DATABASE_URL: z.string().url(),
     INVOICING_DIRECT_DATABASE_URL: z.string().url().optional(),
-    // HQ's own database. Optional here because the platform and Sugrpay APIs
-    // never use it; the HQ API refuses to start without HQ_DATABASE_URL.
-    HQ_DATABASE_URL: z.string().url().optional(),
-    HQ_DIRECT_DATABASE_URL: z.string().url().optional(),
     REDIS_URL: z.string().url(),
 
     SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
