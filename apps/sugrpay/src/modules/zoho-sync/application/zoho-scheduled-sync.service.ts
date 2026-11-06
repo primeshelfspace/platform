@@ -3,6 +3,7 @@ import { ENV, type Env } from '@platform/server';
 import { QueueService } from '../../../infra/queue/queue.service.js';
 import { ZohoConnectionService } from './zoho-connection.service.js';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
+import { ZohoBooksAdapter } from '../../../adapters/accounting/zoho-books.adapter.js';
 
 /**
  * How long a SyncJob may sit in RUNNING before it is treated as abandoned
@@ -12,8 +13,16 @@ import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.
 const STALE_SYNC_JOB_MS = 30 * 60 * 1000;
 
 /** Real-time (Sync Frequency 0): Zoho's webhooks bring changes within
- * seconds, and a full sync every 5 minutes catches any Zoho fails to send. */
-export const REAL_TIME_PULL_MINUTES = 5;
+ * seconds; the timed pull is only the safety net for anything a webhook
+ * missed. It was every 5 minutes, which with 13 brands on two Zoho
+ * organisations used up Zoho's daily API allowance by midnight: Zoho then
+ * answered 429 all day, and pushes failed with it. */
+export const REAL_TIME_PULL_MINUTES = 15;
+
+/** Timed pulls stop for the day once an organisation has used this share of
+ * its daily Zoho allowance (ZOHO_DAILY_CALL_LIMIT), so the rest is left for
+ * what people actually do: pushing invoices and customers, "Sync now". */
+export const SCHEDULED_SHARE_OF_DAILY_LIMIT = 0.6;
 
 /** Minutes between timed pulls for a brand's Sync Frequency. */
 export function pullIntervalMinutes(frequency: number): number {
@@ -24,6 +33,9 @@ export interface ScheduledSyncResult {
   readonly brandsConnected: number;
   readonly brandsEnqueued: number;
   readonly staleJobsReaped: number;
+  /** Organisations with a brand due but skipped this tick: Zoho is pausing
+   * them, or their timed pulls have used today's share. */
+  readonly organisationsHeld: number;
 }
 
 /**
@@ -46,6 +58,7 @@ export class ZohoScheduledSyncService {
     private readonly prisma: InvoicingPrismaService,
     private readonly connections: ZohoConnectionService,
     private readonly queue: QueueService,
+    private readonly zoho: ZohoBooksAdapter,
   ) {}
 
   async tick(): Promise<ScheduledSyncResult> {
@@ -98,19 +111,57 @@ export class ZohoScheduledSyncService {
     // emergency switch); the tick itself stays, for the reaping above, which
     // makes no Zoho calls.
     if (!this.env.ZOHO_SCHEDULED_PULL_ENABLED) {
-      return { brandsConnected: 0, brandsEnqueued: 0, staleJobsReaped };
+      return { brandsConnected: 0, brandsEnqueued: 0, staleJobsReaped, organisationsHeld: 0 };
     }
 
     const live = await this.connections.listLiveZohoConnections();
     const now = Date.now();
-    const due = live.filter(
-      (c) =>
-        !c.lastPulledAt ||
-        now - c.lastPulledAt.getTime() >= pullIntervalMinutes(c.pullFrequencyMinutes) * 60_000,
-    );
+    const overdueBy = (c: (typeof live)[number]) =>
+      c.lastPulledAt
+        ? now - c.lastPulledAt.getTime() - pullIntervalMinutes(c.pullFrequencyMinutes) * 60_000
+        : Number.POSITIVE_INFINITY;
+    const due = live.filter((c) => overdueBy(c) >= 0);
+
+    // Brands on one Zoho organisation share its limits, so they take turns:
+    // at most one of them per tick, the most overdue first. Before, every due
+    // brand was queued in the same second and they hit Zoho together.
+    const byOrganisation = new Map<string, (typeof due)[number]>();
+    for (const connection of due) {
+      const key = connection.organisationId ?? `brand:${connection.brandId}`;
+      const current = byOrganisation.get(key);
+      if (!current || overdueBy(connection) > overdueBy(current)) {
+        byOrganisation.set(key, connection);
+      }
+    }
+
+    const budget = Math.floor(this.env.ZOHO_DAILY_CALL_LIMIT * SCHEDULED_SHARE_OF_DAILY_LIMIT);
+    const toPull: string[] = [];
+    let organisationsHeld = 0;
+    for (const connection of byOrganisation.values()) {
+      const organisationId = connection.organisationId;
+      if (organisationId) {
+        // Zoho is pausing this organisation: queueing a pull now would only be
+        // skipped by the pull itself. Wait for the pause to end.
+        if (await this.zoho.rateLimitedUntil(organisationId)) {
+          organisationsHeld++;
+          continue;
+        }
+        if ((await this.zoho.callsToday(organisationId)) >= budget) {
+          organisationsHeld++;
+          continue;
+        }
+      }
+      toPull.push(connection.brandId);
+    }
+
     await Promise.all(
-      due.map(({ brandId }) => this.queue.enqueue('sync', 'zoho-pull-brand', { brandId })),
+      toPull.map((brandId) => this.queue.enqueue('sync', 'zoho-pull-brand', { brandId })),
     );
-    return { brandsConnected: live.length, brandsEnqueued: due.length, staleJobsReaped };
+    return {
+      brandsConnected: live.length,
+      brandsEnqueued: toPull.length,
+      staleJobsReaped,
+      organisationsHeld,
+    };
   }
 }

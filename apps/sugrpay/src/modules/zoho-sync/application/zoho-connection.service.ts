@@ -74,6 +74,9 @@ export interface LiveZohoConnection {
   readonly brandId: string;
   readonly lastPulledAt: Date | null;
   readonly pullFrequencyMinutes: number;
+  /** The Zoho organisation the brand is connected to. Brands on one
+   * organisation share its API limits. Null if the stored config has none. */
+  readonly organisationId: string | null;
 }
 
 /**
@@ -349,7 +352,7 @@ export class ZohoConnectionService {
    * Cross-tenant by nature, so it runs unscoped; it returns nothing secret.
    */
   async listLiveZohoConnections(): Promise<LiveZohoConnection[]> {
-    return this.prisma.withoutScope(
+    const rows = await this.prisma.withoutScope(
       'scheduled-sync: listing brands with a live Zoho connection',
       (client) =>
         client.zohoConnection.findMany({
@@ -357,9 +360,14 @@ export class ZohoConnectionService {
             status: 'CONNECTED',
             encryptedCredentials: { not: null },
           },
-          select: { brandId: true, lastPulledAt: true, pullFrequencyMinutes: true },
+          select: { brandId: true, lastPulledAt: true, pullFrequencyMinutes: true, config: true },
         }),
     );
+    return rows.map(({ config, ...row }) => ({
+      ...row,
+      organisationId:
+        (config as Partial<ZohoConnectionConfig> | null)?.organizationId?.trim() || null,
+    }));
   }
   /**
    * Records *why* a brand's sync is failing without stopping it.

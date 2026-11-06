@@ -28,8 +28,13 @@ import { RedisService } from '@platform/server';
 const ZOHO_BOOKS_RATE_LIMIT_PER_MINUTE = 90;
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 /** How long every brand on an organisation stops calling Zoho after a 429
- * that names no Retry-After (Zoho's daily limit names none). */
+ * that names no Retry-After (Zoho's daily limit names none). Each further
+ * 429 within RATE_LIMIT_STRIKE_WINDOW_SECONDS doubles it, up to the maximum:
+ * at a flat 15 minutes, a used-up daily allowance was asked again (and
+ * refused) every 15 minutes all day. */
 const RATE_LIMITED_PAUSE_MS = 15 * 60 * 1000;
+const RATE_LIMITED_MAX_PAUSE_MS = 4 * 60 * 60 * 1000;
+const RATE_LIMIT_STRIKE_WINDOW_SECONDS = 6 * 60 * 60;
 /** How long request() will wait for a slot to free up before giving up and
  * surfacing a TRANSIENT error for the job's own retry/backoff to handle —
  * long enough to ride out one full window, never indefinite. */
@@ -306,7 +311,8 @@ export class ZohoBooksAdapter implements AccountingPort {
         retryAfterMs: pausedUntil.getTime() - Date.now(),
       });
     }
-    await this.waitForRateSlot(connection.brandId, `${method} ${path}`);
+    await this.waitForRateSlot(connection.organisationId, `${method} ${path}`);
+    await this.countCall(connection.organisationId);
 
     const url = new URL(path, this.env.ZOHO_API_DOMAIN);
     url.searchParams.set('organization_id', connection.organisationId);
@@ -353,7 +359,8 @@ export class ZohoBooksAdapter implements AccountingPort {
   }
 
   private async pauseOrganisation(organisationId: string, retryAfterMs?: number): Promise<void> {
-    const ms = retryAfterMs && retryAfterMs > 0 ? retryAfterMs : RATE_LIMITED_PAUSE_MS;
+    const ms =
+      retryAfterMs && retryAfterMs > 0 ? retryAfterMs : await this.nextPauseMs(organisationId);
     const until = new Date(Date.now() + ms);
     try {
       await this.redis.setJson(
@@ -373,6 +380,45 @@ export class ZohoBooksAdapter implements AccountingPort {
     return `zoho:rate-limited:${organisationId}`;
   }
 
+  /** 15 minutes for the first 429, doubling for each further one within six
+   * hours, at most 4 hours. */
+  private async nextPauseMs(organisationId: string): Promise<number> {
+    let strikes = 1;
+    try {
+      strikes = await this.redis.incrementCounter(
+        `zoho:rate-limit-strikes:${organisationId}`,
+        RATE_LIMIT_STRIKE_WINDOW_SECONDS,
+      );
+    } catch {
+      // Without Redis, the first-strike pause.
+    }
+    return Math.min(
+      RATE_LIMITED_PAUSE_MS * 2 ** Math.min(strikes - 1, 8),
+      RATE_LIMITED_MAX_PAUSE_MS,
+    );
+  }
+
+  /** Zoho calls made today (UTC) for an organisation, by every brand on it. */
+  async callsToday(organisationId: string): Promise<number> {
+    try {
+      return Number((await this.redis.getJson<number>(this.callsKey(organisationId))) ?? 0);
+    } catch {
+      return 0;
+    }
+  }
+
+  private async countCall(organisationId: string): Promise<void> {
+    try {
+      await this.redis.incrementCounter(this.callsKey(organisationId), 2 * 24 * 60 * 60);
+    } catch {
+      // Counting is advisory: a Redis hiccup must not stop the call.
+    }
+  }
+
+  private callsKey(organisationId: string): string {
+    return `zoho:calls:${organisationId}:${new Date().toISOString().slice(0, 10)}`;
+  }
+
   /**
    * Proactive throttling, not just reactive 429 handling: RedisService's
    * per-brand token bucket (built for exactly this — see its own doc
@@ -383,19 +429,15 @@ export class ZohoBooksAdapter implements AccountingPort {
    * (the old one-call-at-a-time loop) or blowing past it into a 429/backoff
    * churn that would be slower than not throttling at all.
    *
-   * Keyed by brandId, matching acquireRateToken's own design — correct as
-   * long as a brand's Zoho connection maps to one Zoho organisation, which
-   * is what a brand's own IntegrationConnection row records today. Two
-   * brands sharing one underlying Zoho organisation would each get their own
-   * budget against what is, at Zoho, actually one shared ceiling; nothing in
-   * the connect flow prevents that today, so it's a real edge case, just not
-   * one this change introduces.
+   * Keyed by Zoho organisation, because that is what Zoho limits: in
+   * production 13 brands sit on two organisations, and keyed by brand each
+   * one had its own budget against what was really one shared ceiling.
    */
-  private async waitForRateSlot(brandId: string, context: string): Promise<void> {
+  private async waitForRateSlot(organisationId: string, context: string): Promise<void> {
     const startedAt = Date.now();
     while (
-      !(await this.redis.acquireRateToken(
-        brandId,
+      !(await this.redis.acquireGenericRateToken(
+        `ratelimit:zoho-organisation:${organisationId}`,
         ZOHO_BOOKS_RATE_LIMIT_PER_MINUTE,
         RATE_LIMIT_WINDOW_SECONDS,
       ))

@@ -127,11 +127,12 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
 
   beforeEach(() => {
     zohoServer.reset();
-    // A fresh brand id per test so the rate limiter's own per-brand window
-    // never leaks between cases.
+    // A fresh brand and organisation per test so the rate limiter's window
+    // (kept per organisation) and the day's call count never leak between cases.
+    const run = Math.random().toString(36).slice(2);
     connection = {
-      brandId: `http-test-${Math.random().toString(36).slice(2)}`,
-      organisationId: 'org-999',
+      brandId: `http-test-${run}`,
+      organisationId: `org-${run}`,
       accessToken: 'access-token-abc',
       refreshToken: 'refresh-token-xyz',
       expiresAt: null,
@@ -642,7 +643,7 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
 
   // --- rate limiter ---------------------------------------------------------
 
-  it('paces requests against the per-brand budget instead of only reacting to 429s', async () => {
+  it('paces requests against the organisation budget instead of only reacting to 429s', async () => {
     zohoServer.on('GET /books/v3/contacts', () => ({
       status: 200,
       body: { contacts: [], page_context: { has_more_page: false } },
@@ -656,6 +657,14 @@ describeWithRedis('ZohoBooksAdapter over HTTP', () => {
       await adapter.listContactsPage(connection, 1);
     }
     expect(zohoServer.requests).toHaveLength(90);
-    expect(await redis.acquireRateToken(connection.brandId, 90, 60)).toBe(false);
+    // Keyed by Zoho organisation: every brand on it shares Zoho's limit.
+    expect(
+      await redis.acquireGenericRateToken(
+        `ratelimit:zoho-organisation:${connection.organisationId}`,
+        90,
+        60,
+      ),
+    ).toBe(false);
+    expect(await adapter.callsToday(connection.organisationId)).toBe(90);
   });
 });
