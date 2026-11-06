@@ -59,8 +59,9 @@ export class InvoicePdfService implements OnModuleInit, OnModuleDestroy {
       '--disable-gpu',
     ];
 
+    let browser: Browser;
     try {
-      this.browser = await puppeteer.launch({ headless: true, args });
+      browser = await puppeteer.launch({ headless: true, args });
     } catch (error) {
       // Puppeteer's own bundled Chromium download, which lives under a
       // per-user cache directory. Some machines run an Application Control /
@@ -75,11 +76,26 @@ export class InvoicePdfService implements OnModuleInit, OnModuleDestroy {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      this.browser = await puppeteer.launch({ headless: true, channel: 'chrome', args });
+      browser = await puppeteer.launch({ headless: true, channel: 'chrome', args });
     }
+
+    // Chromium can exit on its own while the API keeps running (in production
+    // it did, minutes after start). Before this, the dead browser stayed in
+    // this.browser and every PDF failed with "Connection closed" until the
+    // API was restarted. Forgetting it here makes the next render launch a
+    // new one.
+    browser.on('disconnected', () => {
+      if (this.browser !== browser) return;
+      this.browser = null;
+      this.logger.warn('headless chromium exited; a new one starts with the next PDF');
+    });
+    this.browser = browser;
   }
 
-  async render(html: string): Promise<Buffer> {
+  /** The running browser, or a newly launched one if there is none or the
+   * one we had has died. */
+  private async liveBrowser(): Promise<Browser> {
+    if (this.browser && !this.browser.connected) this.browser = null;
     // A boot-time launch failure (see onModuleInit) leaves this null forever
     // otherwise — retrying here means a transient failure (box was mid
     // provisioning, briefly out of memory) recovers on its own instead of
@@ -88,14 +104,42 @@ export class InvoicePdfService implements OnModuleInit, OnModuleDestroy {
     if (!this.browser) {
       throw new Error('headless chromium is not available — invoice PDF rendering is down');
     }
+    return this.browser;
+  }
 
-    const page = await this.browser.newPage();
+  async render(html: string): Promise<Buffer> {
+    try {
+      return await this.renderWith(await this.liveBrowser(), html);
+    } catch (error) {
+      if (!isBrowserGone(error)) throw error;
+      // The browser died between the check above and the render (or mid
+      // render): start a fresh one and try once more.
+      this.logger.warn('headless chromium was gone during a render; retrying with a new one');
+      const dead = this.browser;
+      this.browser = null;
+      await dead?.close().catch(() => undefined);
+      return this.renderWith(await this.liveBrowser(), html);
+    }
+  }
+
+  private async renderWith(browser: Browser, html: string): Promise<Buffer> {
+    const page = await browser.newPage();
     try {
       await page.setContent(html, { waitUntil: 'load' });
       const pdf = await page.pdf({ format: 'a4', printBackground: true });
       return Buffer.from(pdf);
     } finally {
-      await page.close();
+      await page.close().catch(() => undefined);
     }
   }
+}
+
+/** Puppeteer's errors when the browser process is no longer there. */
+function isBrowserGone(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return (
+    error.name === 'ConnectionClosedError' ||
+    error.name === 'TargetCloseError' ||
+    /connection closed|target closed|browser has disconnected|session closed/i.test(error.message)
+  );
 }
