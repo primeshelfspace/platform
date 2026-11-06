@@ -1,8 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MailModule } from '@platform/server';
 import { AuthController } from './interface/auth.controller.js';
-import { ProductSessionController } from './interface/product-session.controller.js';
-import { ProductSessionService } from './application/product-session.service.js';
 import { AuthMailService } from './application/auth-mail.service.js';
 import { AuthService } from './application/auth.service.js';
 import { PasswordResetService } from './application/password-reset.service.js';
@@ -22,8 +20,8 @@ import { PasswordResetService } from './application/password-reset.service.js';
  */
 @Module({
   imports: [MailModule],
-  controllers: [AuthController, ProductSessionController],
-  providers: [AuthService, PasswordResetService, AuthMailService, ProductSessionService],
+  controllers: [AuthController],
+  providers: [AuthService, PasswordResetService, AuthMailService],
   exports: [AuthService, PasswordResetService, AuthMailService],
 })
 export class AuthModule {}

@@ -1,5 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { type Product, type RequestScope } from '@platform/kernel';
 import {
   enableProductsSchema,
@@ -46,11 +45,7 @@ export class ProductsController {
   continueInto(
     @CurrentScope() scope: RequestScope,
     @Param('product', zodPipe(productSchema)) product: Product,
-    @Req() request: Request,
   ): Promise<ProductLaunch> {
-    return this.products.continueInto(scope, product, {
-      sourceIp: request.ip ?? null,
-      userAgent: request.headers['user-agent'] ?? null,
-    });
+    return this.products.continueInto(scope, product);
   }
 }

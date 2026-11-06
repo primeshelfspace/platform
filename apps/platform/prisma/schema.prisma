@@ -168,9 +168,6 @@ model User {
   email        String
   passwordHash String     @map("password_hash")
   name         String
-  /// Entered with its country (User Management): ISO alpha-2, and E.164.
-  phoneCountry String?    @map("phone_country")
-  phoneNumber  String?    @map("phone_number")
   role         Role
   status       UserStatus @default(INVITED)
   totpSecret   String?    @map("totp_secret")
@@ -218,9 +215,6 @@ model Session {
   lastSeenAt DateTime? @map("last_seen_at")
   sourceIp   String?   @map("source_ip")
   userAgent  String?   @map("user_agent")
-  /// Set for a product session (Product Session story): its token is a
-  /// refresh token, never a bearer token, and the product JWT names this row.
-  product    Product?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -270,9 +264,7 @@ model Brand {
   taxId          String?       @map("tax_id")
   currency       String        @default("USD")
   timezone       String        @default("America/New_York")
-  /// Optional: null when the Company Admin set none (DEFAULT_BRAND_THEME_COLOR
-  /// stands in wherever a colour is needed).
-  themeColor     String?       @map("theme_color")
+  themeColor     String        @default("#2D6A6A") @map("theme_color")
   logoKey        String?       @map("logo_key")
   status         BrandStatus   @default(ACTIVE)
   createdAt      DateTime      @default(now()) @map("created_at")

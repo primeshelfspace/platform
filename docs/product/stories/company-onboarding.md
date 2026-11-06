@@ -109,7 +109,7 @@ COMPANY_ALREADY_REGISTERED` and is left unchanged.
 | `displayName` | required; 1–120 characters, trimmed                                                                         |
 | `currency`    | required; one of the supported currencies (USD, CAD, EUR, GBP, PKR)                                         |
 | `timezone`    | required; a real IANA time zone (e.g. `America/New_York`), checked against the runtime's time zone database |
-| `themeColor`  | optional; a hex colour (`#2D6A6A` or `2D6A6A`); none if left out (products show their default)              |
+| `themeColor`  | optional; a hex colour (`#2D6A6A` or `2D6A6A`); the default colour if left out                              |
 
 - **Company not registered:** `409 COMPANY_NOT_REGISTERED`.
 - **One brand in this step:** a company that already has a brand answers `409
@@ -147,10 +147,12 @@ Body `{ products: ["INVOICING", "HQ"] }`: at least one, no repeats.
 - Product not enabled for the company: `409 PRODUCT_NOT_ENABLED`, and no token.
 - Product with no web address configured (HQ until `HQ_PUBLIC_URL` is set):
   `409 PRODUCT_NOT_AVAILABLE`.
-- Otherwise returns `{ url, token, expiresAt, refreshToken, refreshExpiresAt }`:
-  a 12-hour product JWT and a refresh token. The web app sends the user to
-  `url` with both in the URL fragment, so they never reach a server log. How
-  the product uses and refreshes them: [product-session.md](product-session.md).
+- Otherwise returns `{ url, token, expiresAt }`. `token` is a JWT (HS256, signed
+  with `PRODUCT_JWT_SECRET`) with `sub` (user), `mid` (company), `aud` (product),
+  `iss` (`platform`), `iat`, `exp` (15 minutes) and a random `jti`. The web app
+  sends the user to `url`, carrying the token in the URL fragment so it never
+  reaches a server log. How the product keeps and refreshes it is the Product
+  Session story.
 
 ## Security
 
@@ -162,8 +164,8 @@ Body `{ products: ["INVOICING", "HQ"] }`: at least one, no repeats.
 - **Role checks:** writes check the role on the server, not just in the UI.
 - **Passwords:** hashed; never logged or returned. Sign-in failures are
   indistinguishable.
-- **Tokens:** a product JWT is issued only for an enabled product, lasts 12
-  hours, and travels in the URL fragment (see product-session.md).
+- **Tokens:** a product JWT is issued only for an enabled product, is
+  short-lived, and travels in the URL fragment.
 - **Input:** every body is validated by a Zod schema before any write;
   unknown fields are ignored.
 

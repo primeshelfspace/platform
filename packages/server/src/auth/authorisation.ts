@@ -174,10 +174,6 @@ export class AuthorisationGuard implements CanActivate {
  * for the check and carry the product role in productRoles.
  */
 export function productScope(scope: RequestScope, product: Product): RequestScope {
-  // A product JWT is for the product it was issued to, not another one.
-  if (scope.tokenProduct && scope.tokenProduct !== product) {
-    throw new ForbiddenException('this sign-in is for another product');
-  }
   if (!scope.products?.includes(product)) {
     throw new ForbiddenException('your company is not subscribed to this product');
   }

@@ -7,7 +7,6 @@ import { PlatformDatabaseModule } from './database/platform-database.module.js';
 import { PlatformEventsModule } from './events/platform-events.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { LocationsModule } from './locations/locations.module.js';
-import { ProductCompanyModule } from './product-company/product-company.module.js';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
 import { TenancyModule } from './tenancy/tenancy.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -28,7 +27,6 @@ import { UsersModule } from './users/users.module.js';
     IntegrationsModule,
     SubscriptionsModule,
     LocationsModule,
-    ProductCompanyModule,
   ],
   exports: [TenancyModule, IntegrationsModule, BrandsModule, AuditModule],
 })

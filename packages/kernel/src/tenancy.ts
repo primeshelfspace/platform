@@ -28,11 +28,6 @@ export interface RequestScope {
   readonly assignedLocationIds?: readonly string[];
   /** The product serving the current request, once the guard has checked it. */
   readonly product?: Product;
-  /** Set when the caller signed in with a product JWT (Product Session): the
-   * product it was issued to, and when it expires (ISO). Absent for a
-   * platform session. */
-  readonly tokenProduct?: Product;
-  readonly tokenExpiresAt?: string;
 }
 
 /**
