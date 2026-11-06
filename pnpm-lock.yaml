@@ -65,24 +65,15 @@ importers:
       '@platform/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
-      '@platform/platform-contracts':
-        specifier: workspace:*
-        version: link:../../packages/platform-contracts
       '@platform/server':
         specifier: workspace:*
         version: link:../../packages/server
-      '@prisma/client':
-        specifier: ^5.22.0
-        version: 5.22.0(prisma@5.22.0)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
-      zod:
-        specifier: ^3.24.1
-        version: 3.25.76
     devDependencies:
       '@nestjs/cli':
         specifier: ^10.4.9
@@ -96,15 +87,9 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.1
-      prisma:
-        specifier: ^5.22.0
-        version: 5.22.0
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
-      vitest:
-        specifier: ^2.1.8
-        version: 2.1.9(@types/node@22.20.1)(terser@5.49.0)
 
   apps/platform:
     dependencies:

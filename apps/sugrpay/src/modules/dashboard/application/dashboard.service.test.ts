@@ -18,7 +18,7 @@ import {
   createInvoicingBrand,
   deleteInvoicingBrand,
 } from '../../testing/brand-fixture.test-support.js';
-import { bucketFor, DashboardService, trendBuckets } from './dashboard.service.js';
+import { bucketFor, DashboardService } from './dashboard.service.js';
 
 /** Records what retrySyncJob actually asked the queue to do, rather than
  * either running it for real (BullMQ/Redis) or silently no-opping like
@@ -42,61 +42,6 @@ loadEnv();
 const hasDb = Boolean(process.env['INVOICING_DATABASE_URL']);
 const env = hasDb ? getEnv() : null;
 const describeWithDb = hasDb ? describe : describe.skip;
-
-describe('trendBuckets: the charts follow the date filter', () => {
-  const now = new Date('2026-11-04T15:00:00Z');
-  const period = (start: string, end: string) => ({ start: new Date(start), end: new Date(end) });
-
-  it('gives one point per day for a month, up to today', () => {
-    const thisMonth = trendBuckets(period('2026-11-01', '2026-12-01'), now);
-    expect(thisMonth.granularity).toBe('day');
-    expect(thisMonth.buckets.map((b) => b.key)).toEqual([
-      '2026-11-01',
-      '2026-11-02',
-      '2026-11-03',
-      '2026-11-04',
-    ]);
-    const lastMonth = trendBuckets(period('2026-10-01', '2026-11-01'), now);
-    expect(lastMonth.buckets).toHaveLength(31);
-    expect(lastMonth.buckets[0]!.label).toBe('Oct 1');
-  });
-
-  it('gives one point per week for a quarter, and per month for a year', () => {
-    const quarter = trendBuckets(period('2026-10-01', '2027-01-01'), now);
-    expect(quarter.granularity).toBe('week');
-    expect(quarter.buckets.map((b) => b.key)).toEqual([
-      '2026-10-01',
-      '2026-10-08',
-      '2026-10-15',
-      '2026-10-22',
-      '2026-10-29',
-    ]);
-    const lastQuarter = trendBuckets(period('2026-07-01', '2026-10-01'), now);
-    expect(lastQuarter.buckets).toHaveLength(14);
-    expect(lastQuarter.buckets.at(-1)!.end.toISOString()).toBe('2026-10-01T00:00:00.000Z');
-
-    const year = trendBuckets(period('2026-01-01', '2027-01-01'), now);
-    expect(year.granularity).toBe('month');
-    expect(year.buckets.map((b) => b.label)).toEqual([
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-    ]);
-  });
-
-  it('keeps the last six months when no period is given', () => {
-    const none = trendBuckets(undefined, now);
-    expect(none.buckets.map((b) => b.label)).toEqual(['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov']);
-  });
-});
 
 describe('bucketFor', () => {
   it('promotes overdue over every other status', () => {
@@ -281,119 +226,6 @@ describeWithDb('DashboardService', () => {
       });
 
       expect(await dashboard.getStatusBreakdown(ownerScope, brandId, february2020)).toEqual([]);
-    });
-  });
-
-  describe('every widget follows the date filter, in one currency', () => {
-    // March 2020: a month of its own, apart from every other test.
-    const march2020 = {
-      start: new Date('2020-03-01T00:00:00Z'),
-      end: new Date('2020-04-01T00:00:00Z'),
-    };
-    const april2020 = {
-      start: new Date('2020-04-01T00:00:00Z'),
-      end: new Date('2020-05-01T00:00:00Z'),
-    };
-    const clear = async () => {
-      const invoices = await owner.invoice.findMany({
-        where: { brandId, invoiceDate: { gte: march2020.start, lt: april2020.end } },
-        select: { id: true },
-      });
-      await owner.payment.deleteMany({ where: { invoiceId: { in: invoices.map((i) => i.id) } } });
-      await owner.invoice.deleteMany({ where: { id: { in: invoices.map((i) => i.id) } } });
-    };
-    const make = (
-      day: string,
-      data: { status: 'SENT' | 'PAID'; total: bigint; overdue?: boolean; currency?: string },
-    ) =>
-      owner.invoice.create({
-        data: {
-          ...invoiceDefaults(),
-          currency: data.currency ?? 'USD',
-          invoiceDate: new Date(`2020-03-${day}T00:00:00Z`),
-          dueDate: new Date(`2020-03-${day}T00:00:00Z`),
-          status: data.status,
-          overdue: data.overdue ?? false,
-          issuedAt: null,
-          totalMinor: data.total,
-          balanceMinor: data.status === 'PAID' ? 0n : data.total,
-        },
-      });
-
-    afterAll(clear);
-
-    beforeAll(async () => {
-      await clear();
-      await make('10', { status: 'SENT', total: 50_000n, overdue: true });
-      // A smaller amount in another currency: never added to the USD figures.
-      await make('10', { status: 'SENT', total: 9_000n, overdue: true, currency: 'EUR' });
-      const paid = await make('20', { status: 'PAID', total: 30_000n });
-      await owner.payment.create({
-        data: {
-          invoiceId: paid.id,
-          brandId,
-          method: 'ACH',
-          amountMinor: 30_000n,
-          currency: 'USD',
-          status: 'SETTLED',
-          settledAt: new Date('2020-03-21T12:00:00Z'),
-          gatewayReference: `test-${paid.id}`,
-          idempotencyKey: `test-${paid.id}`,
-        },
-      });
-    });
-
-    it('draws both charts over the chosen period, one point per day for a month', async () => {
-      const trend = await dashboard.getTrend(ownerScope, brandId, march2020);
-
-      expect(trend).toHaveLength(31);
-      expect(trend.every((p) => p.granularity === 'day')).toBe(true);
-      const day = (key: string) => trend.find((p) => p.month === key)!;
-      expect(day('2020-03-10')).toMatchObject({ invoicedMinor: 50_000, collectedMinor: 0 });
-      expect(day('2020-03-20')).toMatchObject({ invoicedMinor: 30_000, collectedMinor: 0 });
-      expect(day('2020-03-21')).toMatchObject({ invoicedMinor: 0, collectedMinor: 30_000 });
-    });
-
-    it('draws a year month by month', async () => {
-      const year = await dashboard.getTrend(ownerScope, brandId, {
-        start: new Date('2020-01-01T00:00:00Z'),
-        end: new Date('2021-01-01T00:00:00Z'),
-      });
-
-      expect(year).toHaveLength(12);
-      expect(year.find((p) => p.month === '2020-03')).toMatchObject({
-        invoicedMinor: 80_000,
-        collectedMinor: 30_000,
-        granularity: 'month',
-      });
-    });
-
-    it('counts overdue among the invoices dated in the period', async () => {
-      expect((await dashboard.getSummary(ownerScope, brandId, march2020)).overdueMinor).toBe(
-        50_000,
-      );
-      expect((await dashboard.getSummary(ownerScope, brandId, april2020)).overdueMinor).toBe(0);
-    });
-
-    it('lists the top overdue customers for the period', async () => {
-      const march = await dashboard.getTopOverdueCustomers(ownerScope, brandId, march2020);
-      expect(march.map((c) => [c.customerId, c.balanceMinor])).toEqual([[customerId, 50_000]]);
-      expect(await dashboard.getTopOverdueCustomers(ownerScope, brandId, april2020)).toEqual([]);
-    });
-
-    it('shows the activity of the period', async () => {
-      const march = await dashboard.getRecentActivity(ownerScope, brandId, march2020);
-      expect(march.map((a) => a.kind)).toEqual(['PAYMENT_RECEIVED']);
-      expect(march[0]!.message).toContain('$300.00');
-      expect(await dashboard.getRecentActivity(ownerScope, brandId, april2020)).toEqual([]);
-    });
-
-    it('keeps the status breakdown to one currency', async () => {
-      const breakdown = await dashboard.getStatusBreakdown(ownerScope, brandId, march2020);
-      expect(Object.fromEntries(breakdown.map((b) => [b.bucket, b.amountMinor]))).toEqual({
-        Paid: 30_000,
-        Overdue: 50_000,
-      });
     });
   });
 

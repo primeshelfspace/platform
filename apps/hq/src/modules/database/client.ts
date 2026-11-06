@@ -1,6 +1,0 @@
-/**
- * The HQ database's generated Prisma client. HQ code imports models, enums and
- * the Prisma namespace from here. It has no platform tables apart from
- * `Brand`, a read-only copy maintained from platform events.
- */
-export * from '../../../generated/index.js';

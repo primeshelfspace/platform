@@ -9,13 +9,12 @@ locations, Stripe/Square/Authorize.Net connections), the **Sugrpay** API
 (customers, invoices, payments, checks, the payment page, brand settings,
 dashboard, Zoho Books) and the **HQ** API (a skeleton: `/health` only).
 
-| Read                                                       | For                                                                 |
-| ---------------------------------------------------------- | ------------------------------------------------------------------- |
-| This page                                                  | How to call it: addresses, sign-in, errors, pagination, money       |
-| [endpoints.md](endpoints.md)                               | Every endpoint: which API, access rule, request, response           |
-| `/docs` on any API ([openapi.json](openapi.json))          | Swagger: every endpoint's fields, and **Try it out**                |
-| `/hq/docs` on any API ([hq-openapi.json](hq-openapi.json)) | Swagger for HQ: the APIs HQ uses, with a guide, examples and errors |
-| [test-report-2026-10-22.md](test-report-2026-10-22.md)     | The last full check of every endpoint (before the split)            |
+| Read                                                   | For                                                           |
+| ------------------------------------------------------ | ------------------------------------------------------------- |
+| This page                                              | How to call it: addresses, sign-in, errors, pagination, money |
+| [endpoints.md](endpoints.md)                           | Every endpoint: which API, access rule, request, response     |
+| `/docs` on any API ([openapi.json](openapi.json))      | Swagger: every endpoint's fields, and **Try it out**          |
+| [test-report-2026-10-22.md](test-report-2026-10-22.md) | The last full check of every endpoint (before the split)      |
 
 `endpoints.md` is generated from the controllers (`pnpm docs:api`), and
 `pnpm check` fails when it is out of date — so it always matches the code.
@@ -34,34 +33,7 @@ then paste the `token` into **Authorize**.
 `pnpm docs:api` writes `openapi.json` along with `endpoints.md`
 (`scripts/openapi.mts`), and `pnpm check` fails when it is out of date. The
 page's introduction is [swagger-intro.md](swagger-intro.md). Set
-`API_DOCS_ENABLED=false` to turn the pages off.
-
-### HQ
-
-**`/hq/docs`** (production: `https://api.sugrpay.com/hq/docs`; locally:
-`http://localhost:4001/hq/docs`) is HQ's own Swagger page, over
-[hq-openapi.json](hq-openapi.json). It lists only the APIs HQ uses, in story
-order:
-
-1. Accounts sign-up and onboarding;
-2. Product Session;
-3. Company Profile;
-4. Brand Management;
-5. User Management;
-6. Role List;
-7. Service health.
-
-Each one has its story, when to call it, a request and response example, and
-every error with its `code`.
-
-It is built by the same `pnpm docs:api` from the generated operations, plus
-[scripts/hq-api-reference.mjs](../../scripts/hq-api-reference.mjs), which holds
-the groups, guides, examples and errors. Its introduction is
-[hq-swagger-intro.md](hq-swagger-intro.md).
-
-The build fails when an endpoint listed there no longer exists, or when an
-example no longer fits the real request or response. Add HQ's own endpoints to
-that file as they are built.
+`API_DOCS_ENABLED=false` to turn the page off.
 
 ## Addresses
 

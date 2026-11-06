@@ -43,12 +43,8 @@ export interface DashboardSummary {
 }
 
 export interface DashboardTrendPoint {
-  /** The bucket's first day (YYYY-MM-DD for days and weeks, YYYY-MM for
-   * months). Named `month` from when every bucket was one. */
   readonly month: string;
   readonly label: string;
-  /** How long each point covers: a day, a week or a month (trendBuckets). */
-  readonly granularity: TrendGranularity;
   readonly invoicedMinor: number;
   readonly collectedMinor: number;
   readonly collectionRate: number;
@@ -162,85 +158,12 @@ export function bucketFor(status: InvoiceStatus, overdue: boolean): StatusBucket
   return 'Unpaid'; // SENT | VIEWED | PENDING_PAYMENT
 }
 
-export type TrendGranularity = 'day' | 'week' | 'month';
-
-interface TrendBucket {
-  readonly start: Date;
-  readonly end: Date;
-  readonly key: string;
-  readonly label: string;
-}
-
-const ymd = (d: Date) => d.toISOString().slice(0, 10);
-const dayLabel = (d: Date) =>
-  d.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-
-/**
- * The trend charts' points for a period, so they follow the date filter:
- * one per day for a period of up to 31 days (This/Last Month), one per week
- * up to 92 days (This/Last Quarter), one per month beyond (This Year). Only up
- * to today: days still to come would read as a drop to zero. Without a
- * period, the last six months, as before.
- */
-export function trendBuckets(
-  range?: DateRange,
-  now = new Date(),
-): { granularity: TrendGranularity; buckets: TrendBucket[] } {
-  if (!range) {
-    return {
-      granularity: 'month',
-      buckets: Array.from({ length: 6 }, (_, i) => monthBounds(5 - i, now)),
-    };
-  }
-  const startOfTomorrow = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
-  );
-  // A period wholly in the future still gets its first point, at zero.
-  const end = new Date(
-    Math.max(
-      Math.min(range.end.getTime(), startOfTomorrow.getTime()),
-      range.start.getTime() + DAY_MS,
-    ),
-  );
-  const days = (range.end.getTime() - range.start.getTime()) / DAY_MS;
-
-  const buckets: TrendBucket[] = [];
-  if (days <= 92) {
-    const step = days <= 31 ? 1 : 7;
-    for (let t = range.start.getTime(); t < end.getTime(); t += step * DAY_MS) {
-      const start = new Date(t);
-      buckets.push({
-        start,
-        end: new Date(Math.min(t + step * DAY_MS, range.end.getTime())),
-        key: ymd(start),
-        label: dayLabel(start),
-      });
-    }
-    return { granularity: step === 1 ? 'day' : 'week', buckets };
-  }
-  let start = new Date(Date.UTC(range.start.getUTCFullYear(), range.start.getUTCMonth(), 1));
-  while (start < end) {
-    const next = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
-    const bucketStart = start < range.start ? range.start : start;
-    buckets.push({
-      start: bucketStart,
-      end: next > range.end ? range.end : next,
-      key: ymd(bucketStart).slice(0, 7),
-      label: bucketStart.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }),
-    });
-    start = next;
-  }
-  return { granularity: 'month', buckets };
-}
-
 /** The last six calendar months' worth of names, in a compact key + a short
  * label, in UTC — nothing here is timezone-sensitive enough to warrant
  * resolving each brand's own timezone (BrandSettings.timezone) just to
  * decide which bucket a month boundary falls in. */
-function monthBounds(
-  monthsAgo: number,
-  now = new Date(),
-): { start: Date; end: Date; key: string; label: string } {
+function monthBounds(monthsAgo: number): { start: Date; end: Date; key: string; label: string } {
+  const now = new Date();
   const year = now.getUTCFullYear();
   const month = now.getUTCMonth() - monthsAgo;
   const start = new Date(Date.UTC(year, month, 1));
@@ -287,31 +210,6 @@ function invoicedIn(start: Date, end?: Date): Prisma.InvoiceWhereInput {
   };
 }
 
-/**
- * The currency with the largest invoiced total in the period: the one the KPI
- * cards headline. The charts and lists use it too, so amounts in different
- * currencies are never added together. Null when nothing was invoiced (no
- * filter then, which is only ever one currency or none).
- */
-async function dominantCurrency(
-  tx: ScopedClient,
-  brandId: string | null,
-  start: Date,
-  end: Date,
-): Promise<string | null> {
-  const rows = await tx.invoice.groupBy({
-    by: ['currency'],
-    where: { ...invoicedIn(start, end), ...(brandId ? { brandId } : {}) },
-    _sum: { totalMinor: true },
-  });
-  let best: { currency: string; total: bigint } | null = null;
-  for (const row of rows) {
-    const total = row._sum.totalMinor ?? 0n;
-    if (!best || total > best.total) best = { currency: row.currency, total };
-  }
-  return best?.currency ?? null;
-}
-
 @Injectable()
 export class DashboardService {
   constructor(
@@ -346,15 +244,9 @@ export class DashboardService {
           },
           _sum: { amountMinor: true },
         }),
-        // Overdue as of today, among the invoices dated in the period when
-        // one is chosen, so the card follows the date filter like the rest.
         tx.invoice.groupBy({
           by: ['currency'],
-          where: {
-            overdue: true,
-            ...(range ? { invoiceDate: { gte: range.start, lt: range.end } } : {}),
-            ...(brandId ? { brandId } : {}),
-          },
+          where: { overdue: true, ...(brandId ? { brandId } : {}) },
           _sum: { balanceMinor: true },
         }),
       ]);
@@ -412,29 +304,15 @@ export class DashboardService {
     });
   }
 
-  /**
-   * Invoiced, collected and the collection rate over the chosen period, one
-   * point per day, week or month (trendBuckets). In one currency: the one the
-   * KPI cards show (dominantCurrency), so amounts in different currencies are
-   * never added together.
-   */
-  async getTrend(
-    scope: Scope,
-    brandId: string | null,
-    range?: DateRange,
-  ): Promise<DashboardTrendPoint[]> {
-    const { granularity, buckets } = trendBuckets(range);
-    if (buckets.length === 0) return [];
-    const earliest = buckets[0]!.start;
-    const latest = buckets[buckets.length - 1]!.end;
+  async getTrend(scope: Scope, brandId: string | null): Promise<DashboardTrendPoint[]> {
+    const months = Array.from({ length: 6 }, (_, i) => monthBounds(5 - i));
+    const earliest = months[0]!.start;
 
     return this.prisma.withScope(scope, async (tx) => {
-      const currency = await dominantCurrency(tx, brandId, earliest, latest);
       const [invoiceRows, paymentRows] = await Promise.all([
         tx.invoice.findMany({
           where: {
-            ...invoicedIn(earliest, latest),
-            ...(currency ? { currency } : {}),
+            ...invoicedIn(earliest),
             ...(brandId ? { brandId } : {}),
           },
           select: { invoiceDate: true, totalMinor: true },
@@ -442,15 +320,14 @@ export class DashboardService {
         tx.payment.findMany({
           where: {
             status: 'SETTLED',
-            settledAt: { gte: earliest, lt: latest },
-            ...(currency ? { currency } : {}),
+            settledAt: { gte: earliest },
             ...(brandId ? { brandId } : {}),
           },
           select: { settledAt: true, amountMinor: true },
         }),
       ]);
 
-      return buckets.map(({ start, end, key, label }) => {
+      return months.map(({ start, end, key, label }) => {
         const invoicedMinor = invoiceRows
           .filter((r) => r.invoiceDate >= start && r.invoiceDate < end)
           .reduce((sum, r) => sum + Number(r.totalMinor), 0);
@@ -460,7 +337,6 @@ export class DashboardService {
         return {
           month: key,
           label,
-          granularity,
           invoicedMinor,
           collectedMinor,
           collectionRate: collectionRate(collectedMinor, invoicedMinor),
@@ -477,13 +353,11 @@ export class DashboardService {
     range?: DateRange,
   ): Promise<DashboardStatusBucket[]> {
     return this.prisma.withScope(scope, async (tx) => {
-      const currency = range ? await dominantCurrency(tx, brandId, range.start, range.end) : null;
       const rows = await tx.invoice.groupBy({
         by: ['status', 'overdue'],
         where: {
           status: { not: 'CANCELLED' },
           ...(range ? { invoiceDate: { gte: range.start, lt: range.end } } : {}),
-          ...(currency ? { currency } : {}),
           ...(brandId ? { brandId } : {}),
         },
         _sum: { totalMinor: true },
@@ -504,23 +378,14 @@ export class DashboardService {
     });
   }
 
-  /** The customers owing the most overdue, as of today, on invoices dated in
-   * the chosen period (all invoices without one), in the KPI cards' currency. */
   async getTopOverdueCustomers(
     scope: Scope,
     brandId: string | null,
-    range?: DateRange,
   ): Promise<TopOverdueCustomer[]> {
     return this.prisma.withScope(scope, async (tx) => {
-      const currency = range ? await dominantCurrency(tx, brandId, range.start, range.end) : null;
       const grouped = await tx.invoice.groupBy({
         by: ['customerId'],
-        where: {
-          overdue: true,
-          ...(range ? { invoiceDate: { gte: range.start, lt: range.end } } : {}),
-          ...(currency ? { currency } : {}),
-          ...(brandId ? { brandId } : {}),
-        },
+        where: { overdue: true, ...(brandId ? { brandId } : {}) },
         _sum: { balanceMinor: true },
         _max: { dueDate: true },
         orderBy: { _sum: { balanceMinor: 'desc' } },
@@ -627,21 +492,11 @@ export class DashboardService {
     });
   }
 
-  /** The latest activity, within the chosen period when there is one. */
-  async getRecentActivity(
-    scope: Scope,
-    brandId: string | null,
-    range?: DateRange,
-  ): Promise<RecentActivityItem[]> {
-    const within = range ? { gte: range.start, lt: range.end } : undefined;
+  async getRecentActivity(scope: Scope, brandId: string | null): Promise<RecentActivityItem[]> {
     return this.prisma.withScope(scope, async (tx) => {
       const [payments, issued, customersCreated, customersUpdated] = await Promise.all([
         tx.payment.findMany({
-          where: {
-            status: 'SETTLED',
-            ...(within ? { settledAt: within } : {}),
-            ...(brandId ? { brandId } : {}),
-          },
+          where: { status: 'SETTLED', ...(brandId ? { brandId } : {}) },
           orderBy: { settledAt: 'desc' },
           take: 10,
           select: {
@@ -654,11 +509,7 @@ export class DashboardService {
           },
         }),
         tx.invoiceEvent.findMany({
-          where: {
-            eventType: 'ISSUE',
-            ...(within ? { occurredAt: within } : {}),
-            ...(brandId ? { invoice: { brandId } } : {}),
-          },
+          where: { eventType: 'ISSUE', ...(brandId ? { invoice: { brandId } } : {}) },
           orderBy: { occurredAt: 'desc' },
           take: 10,
           select: {
@@ -674,7 +525,7 @@ export class DashboardService {
           },
         }),
         tx.customer.findMany({
-          where: { ...(within ? { createdAt: within } : {}), ...(brandId ? { brandId } : {}) },
+          where: { ...(brandId ? { brandId } : {}) },
           orderBy: { createdAt: 'desc' },
           take: 10,
           select: {
@@ -689,7 +540,7 @@ export class DashboardService {
         // updatedAt equal to createdAt on insert, so `updatedAt > createdAt`
         // is exactly "has been edited at least once since it was created."
         tx.customer.findMany({
-          where: { ...(within ? { updatedAt: within } : {}), ...(brandId ? { brandId } : {}) },
+          where: { ...(brandId ? { brandId } : {}) },
           orderBy: { updatedAt: 'desc' },
           take: 10,
           select: {

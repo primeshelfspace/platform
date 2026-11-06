@@ -7,13 +7,6 @@ platform, and is deployed by `deploy/deploy.sh`, pm2 (`hq-api`) and nginx.
 Bringing it (or any later product) online means filling in `apps/hq` the way
 `apps/sugrpay` is built. See [decisions/0005](decisions/0005-separate-apis.md).
 
-**Status for HQ:** steps 1, 2 and 5 are done. HQ has its own database
-(`HQ_DATABASE_URL`, its own RDS server in production, set up with
-`deploy/production/add-hq-database.sh`), `HqPrismaService` and
-`HqDatabaseModule`, and a brand copy fed by platform events (the platform
-forwards to `HQ_INTERNAL_URL`). `HqScopeResolver.brandInCompany` reads that
-copy. Steps 3, 4, 6–8 come with HQ's first feature.
-
 ## Backend
 
 1. **Database.** Add `apps/hq/prisma/schema.prisma` (generator output
