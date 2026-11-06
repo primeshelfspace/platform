@@ -797,7 +797,7 @@ export class InvoicesService {
     if (input.brandId !== brandId) {
       throw new BadRequestException('the invoice belongs to the brand in the address');
     }
-    return this.prisma.withScope(scope, async (tx) => {
+    const updated = await this.prisma.withScope(scope, async (tx) => {
       const [locked] = await tx.$queryRaw<Array<{ status: string }>>`
         SELECT status FROM invoice WHERE id = ${id}::uuid AND brand_id = ${brandId}::uuid FOR UPDATE`;
       if (!locked) throw new NotFoundException('invoice not found');
@@ -833,6 +833,16 @@ export class InvoicesService {
         include: { lineItems: { orderBy: { position: 'asc' } } },
       });
     });
+
+    // A draft that is already in Zoho (imported from it, or pushed before)
+    // gets the edit too. Without this an edit made here never reached Zoho,
+    // while edits made in Zoho did reach here. A draft that exists only here
+    // still goes to Zoho when it is issued. Enqueued after commit — see
+    // CustomersService.create for why.
+    if (updated.zohoInvoiceId) {
+      await this.queue.enqueue('sync', 'zoho-push-invoice', { brandId, invoiceId: id });
+    }
+    return updated;
   }
 
   /**
