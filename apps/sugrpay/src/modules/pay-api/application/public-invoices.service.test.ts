@@ -20,6 +20,7 @@ import { InvoicesService } from '../../invoices/application/invoices.service.js'
 import type { StripeAccountService } from '../../platform-access/index.js';
 import type { ZohoPullService } from '../../zoho-sync/application/zoho-pull.service.js';
 import { LocalDiskAdapter } from '@platform/server';
+import { decryptFile, isEncryptedFile } from '@platform/server';
 import { InvoicePdfService } from '../infrastructure/invoice-pdf.service.js';
 import { PublicInvoicesService } from './public-invoices.service.js';
 
@@ -58,6 +59,7 @@ describeWithDb('PublicInvoicesService', () => {
     // No test here creates a Zoho-sourced invoice, so view's on-demand
     // enrichment branch never fires.
     { enrichCustomerFromZohoOnDemand: async () => false } as unknown as ZohoPullService,
+    env!,
   );
   const owner = new PrismaClient({
     datasources: { db: { url: env!.INVOICING_DIRECT_DATABASE_URL ?? env!.INVOICING_DATABASE_URL } },
@@ -269,6 +271,20 @@ describeWithDb('PublicInvoicesService', () => {
         // Unlike a gateway attempt (PaymentsService.createIntent), nothing
         // settles here — this only stores evidence for staff to review.
         expect(invoice.status).toBe('SENT');
+
+        // Stored encrypted: the bytes in storage are not the photo.
+        const storage = new LocalDiskAdapter(env!);
+        for (const [key, original] of [
+          [row.frontImageKey, 'front-bytes'],
+          [row.backImageKey, 'back-bytes'],
+        ] as const) {
+          const stored = await storage.get(key);
+          expect(isEncryptedFile(stored)).toBe(true);
+          expect(stored.includes(Buffer.from(original))).toBe(false);
+          expect(
+            decryptFile(stored, env!.CREDENTIAL_ENCRYPTION_KEY, 'check-image').toString(),
+          ).toBe(original);
+        }
       },
     );
 

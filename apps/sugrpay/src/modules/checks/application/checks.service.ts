@@ -14,13 +14,9 @@ import {
   type StoragePort,
 } from '@platform/kernel';
 import { InvoicingPrismaService } from '../../database/invoicing-prisma.service.js';
+import { ENV, decryptFile, encryptFile, isEncryptedFile, type Env } from '@platform/server';
+import { CHECK_IMAGE_PURPOSE, checkImageType } from '../../../common/check-upload.js';
 import { InvoicesService } from '../../invoices/application/invoices.service.js';
-
-/** Long enough to review one check without the preview expiring mid-read,
- * short enough that a copied link is useless shortly after — same shape as
- * LOGO_URL_TTL_SECONDS elsewhere, just a smaller window for a one-time review
- * rather than a logo reused on every page load. */
-const CHECK_IMAGE_URL_TTL_SECONDS = 15 * 60;
 
 type CheckSubmissionRow = Prisma.CheckSubmissionGetPayload<{
   include: {
@@ -55,8 +51,15 @@ export interface CheckSubmissionDetail extends CheckSubmissionListRow {
   readonly customerNote: string | null;
   readonly reviewNote: string | null;
   readonly reviewedAt: Date | null;
+  /** Where the photos are read: GET /brands/:brandId/checks/:id/images/front
+   * (and /back), signed-in staff only. There is no storage link any more. */
   readonly frontImageUrl: string;
   readonly backImageUrl: string;
+}
+
+export interface CheckImage {
+  readonly body: Buffer;
+  readonly contentType: string;
 }
 
 /**
@@ -73,6 +76,7 @@ export class ChecksService {
     private readonly prisma: InvoicingPrismaService,
     private readonly invoices: InvoicesService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   async list(
@@ -121,14 +125,10 @@ export class ChecksService {
 
   async getDetail(scope: Scope, brandId: string, id: string): Promise<CheckSubmissionDetail> {
     const row = await this.findOrThrow(scope, brandId, id);
-    const [frontImageUrl, backImageUrl] = await Promise.all([
-      this.storage.getSignedUrl(row.frontImageKey, {
-        expiresInSeconds: CHECK_IMAGE_URL_TTL_SECONDS,
-      }),
-      this.storage.getSignedUrl(row.backImageKey, {
-        expiresInSeconds: CHECK_IMAGE_URL_TTL_SECONDS,
-      }),
-    ]);
+    // The photos are encrypted, so there is no storage link to hand out: they
+    // are read through image() below, which checks who is asking.
+    const frontImageUrl = `/brands/${brandId}/checks/${id}/images/front`;
+    const backImageUrl = `/brands/${brandId}/checks/${id}/images/back`;
     return {
       ...this.toListRow(row),
       invoiceId: row.invoiceId,
@@ -138,6 +138,41 @@ export class ChecksService {
       frontImageUrl,
       backImageUrl,
     };
+  }
+
+  /**
+   * One photo of a check, decrypted, for staff who can see this brand's
+   * payments (the route's permission, and findOrThrow's brand scope). A photo
+   * stored before encryption existed is encrypted in place the first time it
+   * is opened, so none stays readable in storage once looked at.
+   */
+  async image(
+    scope: Scope,
+    brandId: string,
+    id: string,
+    side: 'front' | 'back',
+  ): Promise<CheckImage> {
+    const row = await this.findOrThrow(scope, brandId, id);
+    const key = side === 'front' ? row.frontImageKey : row.backImageKey;
+    const stored = await this.storage.get(key);
+    const secret = this.env.CREDENTIAL_ENCRYPTION_KEY;
+
+    let body: Buffer;
+    if (isEncryptedFile(stored)) {
+      body = decryptFile(stored, secret, CHECK_IMAGE_PURPOSE);
+    } else {
+      body = stored;
+      await this.storage.put({
+        key,
+        body: encryptFile(stored, secret, CHECK_IMAGE_PURPOSE),
+        contentType: 'application/octet-stream',
+        metadata: { 'sugrpay-encrypted': 'aes-256-gcm' },
+        encrypt: true,
+      });
+    }
+    const contentType = checkImageType(body);
+    if (!contentType) throw new NotFoundException('check photo is not a readable image');
+    return { body, contentType };
   }
 
   /** Records a SETTLED CHECK payment for the submission's claimed amount

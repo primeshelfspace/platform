@@ -8,6 +8,17 @@ import { contentMatchesType } from '@platform/server';
  */
 export const MAX_CHECK_IMAGE_BYTES = 10 * 1024 * 1024;
 
+/** The purpose check photos are encrypted under (encryptFile/decryptFile). */
+export const CHECK_IMAGE_PURPOSE = 'check-image';
+
+/** The image type of decrypted check photo bytes, from their first bytes. */
+export function checkImageType(buffer: Buffer): string | null {
+  for (const type of CHECK_IMAGE_MIME_TYPES) {
+    if (contentMatchesType(buffer, type)) return type;
+  }
+  return null;
+}
+
 const CHECK_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export interface CheckImageUpload {

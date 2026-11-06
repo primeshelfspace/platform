@@ -122,7 +122,10 @@ export const DESCRIPTIONS = {
   'GET /brands/:brandId/payments':
     'Payments received for a brand, paginated, with search and status filters.',
   'GET /brands/:brandId/checks': 'Checks customers have uploaded, by review status.',
-  'GET /brands/:brandId/checks/:id': 'One uploaded check with signed image links.',
+  'GET /brands/:brandId/checks/:id':
+    'One uploaded check. frontImageUrl/backImageUrl are the signed-in photo routes below, not storage links.',
+  'GET /brands/:brandId/checks/:id/images/:side':
+    'One photo of the check (side: front or back), decrypted. Photos are stored encrypted (AES-256-GCM); this signed-in route is the only way to see them. Answers the image itself, never cached.',
   'POST /brands/:brandId/checks/:id/approve':
     'Approves a check: records the payment against the invoice.',
   'POST /brands/:brandId/checks/:id/reject': 'Rejects a check with a reason.',

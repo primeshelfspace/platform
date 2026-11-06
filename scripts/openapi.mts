@@ -83,6 +83,17 @@ const RAW_RESPONSES: Record<string, Json> = {
       content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
     },
   },
+  checkImage: {
+    '200': {
+      description:
+        'The check photo, decrypted (JPG, PNG or WEBP). Not cached. Use it as an image source.',
+      content: {
+        'image/jpeg': { schema: { type: 'string', format: 'binary' } },
+        'image/png': { schema: { type: 'string', format: 'binary' } },
+        'image/webp': { schema: { type: 'string', format: 'binary' } },
+      },
+    },
+  },
   file: {
     '200': {
       description: 'The file.',
@@ -96,6 +107,7 @@ function rawKind(r: Route): string {
   if (r.path.endsWith('/callback')) return 'callback';
   if (r.path.startsWith('/health')) return 'health';
   if (r.path.endsWith('/pdf')) return 'pdf';
+  if (r.path.endsWith('/checks/:id/images/:side')) return 'checkImage';
   if (r.path.startsWith('/storage')) return 'file';
   throw new Error(`${r.method} ${r.path} writes its own response: describe it in RAW_RESPONSES`);
 }

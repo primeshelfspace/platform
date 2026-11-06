@@ -1,4 +1,6 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { z } from 'zod';
 import {
   checkSubmissionListQuerySchema,
   reviewCheckSubmissionSchema,
@@ -42,6 +44,25 @@ export class ChecksController {
     @Param('id', zodPipe(idSchema)) id: string,
   ): Promise<CheckSubmissionDetail> {
     return this.checks.getDetail(scope, brandId, id);
+  }
+
+  /** One photo of the check (front or back), decrypted. The photos are stored
+   * encrypted; this is the only way to see them, signed in, never cached. */
+  @Get(':id/images/:side')
+  @RequirePermission('PAYMENTS', 'READ')
+  async image(
+    @CurrentScope() scope: Scope,
+    @Param('brandId', zodPipe(idSchema)) brandId: string,
+    @Param('id', zodPipe(idSchema)) id: string,
+    @Param('side', zodPipe(z.enum(['front', 'back']))) side: 'front' | 'back',
+    @Res() response: Response,
+  ): Promise<void> {
+    const image = await this.checks.image(scope, brandId, id, side);
+    response.setHeader('content-type', image.contentType);
+    response.setHeader('content-disposition', 'inline');
+    response.setHeader('cache-control', 'no-store, private');
+    response.setHeader('x-content-type-options', 'nosniff');
+    response.send(image.body);
   }
 
   @Post(':id/approve')
