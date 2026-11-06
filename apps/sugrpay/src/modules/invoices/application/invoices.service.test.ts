@@ -262,6 +262,34 @@ describeWithDb('InvoicesService', () => {
         invoices.updateDraft(ownerScope, solsticeId, randomUUID(), draft()),
       ).rejects.toThrow('invoice not found');
     });
+
+    it('sends the edit to Zoho when the draft is already in Zoho', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+      await owner.invoice.update({
+        where: { id: created.id },
+        // As if imported from Zoho. Unique per run: zoho_invoice_id is unique.
+        data: { zohoInvoiceId: `remote-edit-${Date.now()}` },
+      });
+
+      const enqueueSpy = vi.spyOn(queue, 'enqueue');
+      await invoices.updateDraft(ownerScope, solsticeId, created.id, draft({ notes: 'Edited' }));
+
+      expect(enqueueSpy).toHaveBeenCalledWith('sync', 'zoho-push-invoice', {
+        brandId: solsticeId,
+        invoiceId: created.id,
+      });
+      enqueueSpy.mockRestore();
+    });
+
+    it('keeps a draft that exists only here out of Zoho until it is issued', async () => {
+      const created = await invoices.create(ownerScope, solsticeId, draft());
+
+      const enqueueSpy = vi.spyOn(queue, 'enqueue');
+      await invoices.updateDraft(ownerScope, solsticeId, created.id, draft({ notes: 'Edited' }));
+
+      expect(enqueueSpy).not.toHaveBeenCalled();
+      enqueueSpy.mockRestore();
+    });
   });
 
   it('refuses a PDF for an invoice of another brand or that does not exist', async () => {
